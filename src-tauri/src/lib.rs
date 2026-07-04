@@ -1,7 +1,10 @@
 pub mod agent;
 pub mod db;
+pub mod mcp;
 
 use std::sync::Arc;
+
+use std::collections::HashMap;
 
 use tauri::{AppHandle, Emitter, State};
 
@@ -11,6 +14,7 @@ use agent::{
     new_session_map, SessionMap,
 };
 use db::{Db, TaskRow, TimelineItem};
+use mcp::{McpServer, add_mcp_server, list_mcp_servers, remove_mcp_server, codex_config_path};
 
 // ── Shared state ──────────────────────────────────────────────────────────────
 
@@ -43,7 +47,6 @@ async fn agent_start(
 ) -> Result<String, String> {
     let sessions = state.sessions.clone();
     let trackers = state.trackers.clone();
-    let adapter = state.adapter.clone();
     let db = state.db.clone();
 
     // Pre-generate session_id so we can create DB records before events flow.
@@ -71,7 +74,20 @@ async fn agent_start(
     db.insert_message(&session_id, "user", &prompt)
         .map_err(|e| e.to_string())?;
 
-    let emit_fn = make_emit_fn_with_db(app, db);
+    let emit_fn = make_emit_fn_with_db(app, db.clone());
+
+    // Read reasoning_effort from settings (default "low"); apply via -c flag.
+    let reasoning_effort = db
+        .settings_get("reasoning_effort")
+        .unwrap_or(None)
+        .unwrap_or_else(|| "low".to_string());
+    let adapter = std::sync::Arc::new(CodexAdapter {
+        extra_args: vec![
+            "-c".to_string(),
+            format!("model_reasoning_effort={}", reasoning_effort),
+        ],
+        sandbox: state.adapter.sandbox.clone(),
+    });
 
     adapter
         .start_session(session_id.clone(), sessions, trackers, prompt, workdir, emit_fn)
@@ -95,7 +111,6 @@ async fn agent_followup(
 ) -> Result<(), String> {
     let sessions = state.sessions.clone();
     let trackers = state.trackers.clone();
-    let adapter = state.adapter.clone();
     let db = state.db.clone();
 
     // Always persist the user follow-up message.
@@ -105,6 +120,19 @@ async fn agent_followup(
     let _ = db.update_task_status(&session_id, "running");
 
     let emit_fn = make_emit_fn_with_db(app, db.clone());
+
+    // Read reasoning_effort and build adapter with it.
+    let reasoning_effort = db
+        .settings_get("reasoning_effort")
+        .unwrap_or(None)
+        .unwrap_or_else(|| "low".to_string());
+    let adapter = std::sync::Arc::new(CodexAdapter {
+        extra_args: vec![
+            "-c".to_string(),
+            format!("model_reasoning_effort={}", reasoning_effort),
+        ],
+        sandbox: state.adapter.sandbox.clone(),
+    });
 
     // Check whether the session handle is still alive in memory.
     let in_memory = {
@@ -186,8 +214,10 @@ async fn file_revert(
 ///
 /// 1. If `snapshot_path` is in DB → restore file from snapshot file.
 ///    Error if the snapshot file itself is missing.
-/// 2. If no snapshot in DB → try `git checkout -- <path>` (git mode).
-/// 3. Otherwise → return descriptive error; never silently succeed.
+/// 2. If no snapshot in DB, git mode, kind = "create" → delete the file
+///    (the file was created by the agent and has no HEAD version to restore).
+/// 3. If no snapshot in DB, git mode, other kind → `git checkout -- <path>`.
+/// 4. Otherwise → return descriptive error; never silently fails.
 async fn cold_revert(db: &Db, session_id: &str, path: &str) -> Result<(), String> {
     let snap_path_str = db
         .get_snapshot_path(session_id, path)
@@ -211,7 +241,12 @@ async fn cold_revert(db: &Db, session_id: &str, path: &str) -> Result<(), String
         return Ok(());
     }
 
-    // No snapshot in DB: try git-based revert using workdir from DB.
+    // No snapshot in DB: check file kind so we can handle "create" specially.
+    let kind = db
+        .get_file_change_kind(session_id, path)
+        .map_err(|e| e.to_string())?;
+
+    // Get workdir for git operations.
     let workdir = db
         .get_session_workdir(session_id)
         .map_err(|e| e.to_string())?
@@ -219,6 +254,19 @@ async fn cold_revert(db: &Db, session_id: &str, path: &str) -> Result<(), String
 
     let workdir_path = std::path::PathBuf::from(&workdir);
     if agent::tracker::check_is_git(&workdir_path).await {
+        // For newly created files there is no HEAD version — delete to revert
+        // (aligns cold path with the hot path in FileTracker::git_revert).
+        if kind.as_deref() == Some("create") {
+            let abs_path = std::path::PathBuf::from(path);
+            if abs_path.exists() {
+                tokio::fs::remove_file(&abs_path)
+                    .await
+                    .map_err(|e| e.to_string())?;
+            }
+            return Ok(());
+        }
+
+        // Existing tracked file: restore from HEAD.
         let out = tokio::process::Command::new("git")
             .args(["checkout", "--", path])
             .current_dir(&workdir_path)
@@ -341,6 +389,110 @@ async fn pick_directory(app: AppHandle) -> Result<Option<String>, String> {
     Ok(path.map(|p| p.to_string()))
 }
 
+/// Return all settings as a JSON object (key → value).
+#[tauri::command]
+async fn settings_get_all(state: State<'_, AppState>) -> Result<HashMap<String, String>, String> {
+    state.db.settings_get_all().map_err(|e| e.to_string())
+}
+
+/// Upsert a single setting.
+#[tauri::command]
+async fn settings_set(
+    key: String,
+    value: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.db.settings_set(&key, &value).map_err(|e| e.to_string())
+}
+
+// ── Engine detection ──────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, serde::Serialize)]
+struct EngineStatus {
+    name: String,
+    available: bool,
+    version: Option<String>,
+}
+
+/// Probe a CLI tool by running it with `--version`.
+///
+/// On Windows, wraps with `cmd /c` so `.cmd` shims resolve.
+/// The `cmd_binary` / `cmd_args` parameters are split out for testability:
+/// tests can inject `"echo"` + `["1.2.3"]` to exercise the parsing logic
+/// without a real CLI installed.
+async fn probe_engine_with(name: &str, cmd_binary: &str, args: &[&str]) -> EngineStatus {
+    let output = tokio::process::Command::new(cmd_binary)
+        .args(args)
+        .output()
+        .await;
+
+    match output {
+        Ok(out) if out.status.success() => {
+            let v = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            EngineStatus {
+                name: name.to_string(),
+                available: true,
+                version: if v.is_empty() { None } else { Some(v) },
+            }
+        }
+        _ => EngineStatus {
+            name: name.to_string(),
+            available: false,
+            version: None,
+        },
+    }
+}
+
+/// Detect installed engines (codex, claude). Returns a list of EngineStatus.
+#[tauri::command]
+async fn detect_engines() -> Result<Vec<EngineStatus>, String> {
+    // On Windows, CLI wrappers end in .cmd and require cmd.exe.
+    #[cfg(windows)]
+    let (codex_status, claude_status) = tokio::join!(
+        probe_engine_with("codex", "cmd", &["/c", "codex", "--version"]),
+        probe_engine_with("claude", "cmd", &["/c", "claude", "--version"]),
+    );
+
+    #[cfg(not(windows))]
+    let (codex_status, claude_status) = tokio::join!(
+        probe_engine_with("codex", "codex", &["--version"]),
+        probe_engine_with("claude", "claude", &["--version"]),
+    );
+
+    Ok(vec![codex_status, claude_status])
+}
+
+// ── MCP management ────────────────────────────────────────────────────────────
+
+/// List MCP servers configured in the Codex config.toml.
+#[tauri::command]
+async fn mcp_list() -> Result<Vec<McpServer>, String> {
+    let path = codex_config_path();
+    list_mcp_servers(&path)
+}
+
+/// Add (or replace) an MCP server in the Codex config.toml.
+/// Backs up `config.toml` to `config.toml.bak` before writing.
+#[tauri::command]
+async fn mcp_add(
+    name: String,
+    command: String,
+    args: Vec<String>,
+    env: HashMap<String, String>,
+) -> Result<(), String> {
+    let server = McpServer { name, command, args, env };
+    let path = codex_config_path();
+    add_mcp_server(&path, &server)
+}
+
+/// Remove an MCP server from the Codex config.toml by name.
+/// Backs up `config.toml` to `config.toml.bak` before writing.
+#[tauri::command]
+async fn mcp_remove(name: String) -> Result<(), String> {
+    let path = codex_config_path();
+    remove_mcp_server(&path, &name)
+}
+
 /// Smoke-test ping.
 #[tauri::command]
 fn ping() -> String {
@@ -375,6 +527,12 @@ pub fn run() {
             task_delete,
             task_update_title,
             task_set_status,
+            settings_get_all,
+            settings_set,
+            detect_engines,
+            mcp_list,
+            mcp_add,
+            mcp_remove,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -442,5 +600,91 @@ fn event_type_label(event: &AgentEvent) -> &'static str {
         AgentEvent::Usage { .. } => "usage",
         AgentEvent::TurnCompleted {} => "turn_completed",
         AgentEvent::Error { .. } => "error",
+    }
+}
+
+// ── Unit tests ────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+    use tokio::process::Command as TokioCommand;
+
+    // ── cold_revert: git new file (kind = "create") ───────────────────────────
+
+    /// Verify the cold-revert path deletes a newly created file (kind="create")
+    /// in a git-mode repo without trying to run `git checkout`.
+    #[tokio::test]
+    async fn cold_revert_git_new_file_deletes_file() {
+        let tmp = TempDir::new().unwrap();
+        let workdir = tmp.path();
+
+        // Initialise a bare git repo (no commits needed for check_is_git).
+        let git_init = TokioCommand::new("git")
+            .args(["init"])
+            .current_dir(workdir)
+            .output()
+            .await;
+
+        // Skip this test if git is not installed.
+        let git_ok = git_init.map(|o| o.status.success()).unwrap_or(false);
+        if !git_ok {
+            eprintln!("git not available — skipping cold_revert_git_new_file_deletes_file");
+            return;
+        }
+
+        // Create an untracked file (simulating agent "create").
+        let file_path = workdir.join("created_by_agent.txt");
+        tokio::fs::write(&file_path, "new content\n").await.unwrap();
+        assert!(file_path.exists());
+
+        // Set up an in-memory DB with the "create" kind recorded.
+        let db = crate::db::Db::open_in_memory().unwrap();
+        db.insert_task("cr_t", "T", workdir.to_str().unwrap()).unwrap();
+        db.insert_session("cr_s", "cr_t", "codex").unwrap();
+        db.upsert_file_change(
+            "cr_s",
+            file_path.to_str().unwrap(),
+            "create",
+            5, 0, None, None,
+        )
+        .unwrap();
+
+        // Cold revert: no snapshot, kind="create", workdir is a git repo.
+        cold_revert(&db, "cr_s", file_path.to_str().unwrap())
+            .await
+            .expect("cold_revert should succeed");
+
+        assert!(
+            !file_path.exists(),
+            "cold_revert should delete the newly created file"
+        );
+    }
+
+    // ── probe_engine_with: mock command injection ─────────────────────────────
+
+    /// Verifies that probe_engine_with returns available=true and captures stdout
+    /// when given a command that succeeds. Uses `echo` as a mock "engine".
+    #[tokio::test]
+    async fn probe_engine_with_mock_available() {
+        // `echo 0.1.0` exits 0 and outputs "0.1.0" — usable as a mock CLI.
+        #[cfg(windows)]
+        let result = probe_engine_with("mock", "cmd", &["/c", "echo", "0.1.0"]).await;
+        #[cfg(not(windows))]
+        let result = probe_engine_with("mock", "echo", &["0.1.0"]).await;
+
+        assert!(result.available, "mock engine should report available");
+        let v = result.version.expect("version should be Some");
+        assert!(v.contains("0.1.0"), "version should contain '0.1.0', got: {}", v);
+    }
+
+    /// Verifies that probe_engine_with returns available=false for a nonexistent command.
+    #[tokio::test]
+    async fn probe_engine_with_mock_unavailable() {
+        let result =
+            probe_engine_with("missing", "this_binary_does_not_exist_xyz_123", &[]).await;
+        assert!(!result.available, "nonexistent binary should report unavailable");
+        assert!(result.version.is_none());
     }
 }

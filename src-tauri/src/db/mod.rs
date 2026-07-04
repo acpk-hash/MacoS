@@ -11,6 +11,7 @@
 
 use rusqlite::{Connection, Result as SqlResult, params};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -72,6 +73,14 @@ CREATE INDEX IF NOT EXISTS idx_tasks_updated       ON tasks(updated_at DESC);
 /// V2: adds `snapshot_path` column to `file_changes` for cold-revert support.
 const SCHEMA_V2: &str = r#"
 ALTER TABLE file_changes ADD COLUMN snapshot_path TEXT;
+"#;
+
+/// V3: adds `settings` key-value table for persistent app configuration.
+const SCHEMA_V3: &str = r#"
+CREATE TABLE IF NOT EXISTS settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 "#;
 
 // ── Public row types ──────────────────────────────────────────────────────────
@@ -158,6 +167,10 @@ impl Db {
         if version < 2 {
             conn.execute_batch(SCHEMA_V2)?;
             conn.execute_batch("PRAGMA user_version = 2")?;
+        }
+        if version < 3 {
+            conn.execute_batch(SCHEMA_V3)?;
+            conn.execute_batch("PRAGMA user_version = 3")?;
         }
         Ok(())
     }
@@ -483,6 +496,68 @@ impl Db {
             params![state, session_id, path],
         )?;
         Ok(())
+    }
+
+    // ── Settings ──────────────────────────────────────────────────────────────
+
+    /// Upsert a settings key-value pair.
+    pub fn settings_set(&self, key: &str, value: &str) -> SqlResult<()> {
+        self.conn.lock().unwrap().execute(
+            "INSERT INTO settings (key, value) VALUES (?1, ?2) \
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![key, value],
+        )?;
+        Ok(())
+    }
+
+    /// Get a single setting value by key.
+    pub fn settings_get(&self, key: &str) -> SqlResult<Option<String>> {
+        let conn = self.conn.lock().unwrap();
+        match conn.query_row(
+            "SELECT value FROM settings WHERE key = ?1",
+            params![key],
+            |row| row.get::<_, String>(0),
+        ) {
+            Ok(v) => Ok(Some(v)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Return all settings as a HashMap.
+    pub fn settings_get_all(&self) -> SqlResult<HashMap<String, String>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT key, value FROM settings")?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        let mut map = HashMap::new();
+        for row in rows {
+            let (k, v) = row?;
+            map.insert(k, v);
+        }
+        Ok(map)
+    }
+
+    // ── File change kind lookup ────────────────────────────────────────────────
+
+    /// Return the `kind` field for `(session_id, path)`, used by cold-revert
+    /// to distinguish newly created files (kind = "create") from updates.
+    pub fn get_file_change_kind(
+        &self,
+        session_id: &str,
+        path: &str,
+    ) -> SqlResult<Option<String>> {
+        let conn = self.conn.lock().unwrap();
+        match conn.query_row(
+            "SELECT kind FROM file_changes WHERE session_id = ?1 AND path = ?2",
+            params![session_id, path],
+            |row| row.get::<_, String>(0),
+        ) {
+            Ok(v) => Ok(Some(v)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e),
+        }
     }
 
     // ── Timeline query ────────────────────────────────────────────────────────
@@ -921,6 +996,60 @@ mod tests {
             Some("sess_ls"),
             "last_session_id should be the session we just created"
         );
+    }
+
+    // ── settings CRUD ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn settings_set_and_get() {
+        let db = new_db();
+        db.settings_set("reasoning_effort", "high").unwrap();
+        let v = db.settings_get("reasoning_effort").unwrap();
+        assert_eq!(v.as_deref(), Some("high"));
+    }
+
+    #[test]
+    fn settings_get_missing_returns_none() {
+        let db = new_db();
+        let v = db.settings_get("nonexistent_key").unwrap();
+        assert!(v.is_none());
+    }
+
+    #[test]
+    fn settings_upsert_overwrites() {
+        let db = new_db();
+        db.settings_set("k", "v1").unwrap();
+        db.settings_set("k", "v2").unwrap();
+        let v = db.settings_get("k").unwrap();
+        assert_eq!(v.as_deref(), Some("v2"), "upsert should overwrite");
+    }
+
+    #[test]
+    fn settings_get_all_returns_all() {
+        let db = new_db();
+        db.settings_set("a", "1").unwrap();
+        db.settings_set("b", "2").unwrap();
+        let all = db.settings_get_all().unwrap();
+        assert_eq!(all.get("a").map(|s| s.as_str()), Some("1"));
+        assert_eq!(all.get("b").map(|s| s.as_str()), Some("2"));
+        assert_eq!(all.len(), 2);
+    }
+
+    #[test]
+    fn get_file_change_kind_returns_correct_kind() {
+        let db = new_db();
+        seed_task(&db, "fck_t");
+        seed_session(&db, "fck_s", "fck_t");
+        db.upsert_file_change("fck_s", "new_file.rs", "create", 5, 0, None, None).unwrap();
+        let kind = db.get_file_change_kind("fck_s", "new_file.rs").unwrap();
+        assert_eq!(kind.as_deref(), Some("create"));
+    }
+
+    #[test]
+    fn get_file_change_kind_missing_returns_none() {
+        let db = new_db();
+        let kind = db.get_file_change_kind("no_session", "no_file.rs").unwrap();
+        assert!(kind.is_none());
     }
 
     // ── file_count in list_tasks ──────────────────────────────────────────────

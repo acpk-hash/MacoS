@@ -563,6 +563,7 @@ export default function Chat() {
   const [inputText, setInputText] = useState('')
   const [sending, setSending] = useState(false)
   const [diffPanelOpen, setDiffPanelOpen] = useState(true)
+  const [confirmPolicy, setConfirmPolicy] = useState<string>('auto')
 
   const timelineEndRef = useRef<HTMLDivElement>(null)
 
@@ -575,12 +576,24 @@ export default function Chat() {
       // Allow followup on restored historical sessions too
       (sessions[activeSessionId] != null && !isRunning))
 
-  // Load history on mount.
+  // Load history and settings on mount.
   useEffect(() => {
     if (isTauri) {
       loadHistory()
+      // Load confirmation policy setting for badge display.
+      tauriInvoke<Record<string, string>>('settings_get_all')
+        .then((all) => {
+          if (all['confirmation_policy']) {
+            setConfirmPolicy(all['confirmation_policy'])
+          }
+          // Load default_workdir as initial workdir if workdir is unset.
+          if (all['default_workdir'] && !workdir) {
+            setWorkdir(all['default_workdir'])
+          }
+        })
+        .catch(() => {})
     }
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-scroll to bottom when new entries arrive.
   useEffect(() => {
@@ -721,6 +734,15 @@ export default function Chat() {
           >
             浏览…
           </button>
+
+          {/* Confirmation policy badge (read-only display; set in Settings) */}
+          <span
+            className="flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded border border-gray-700
+                       text-gray-500 bg-gray-800/60 whitespace-nowrap"
+            title="确认策略（在设置中修改）即将生效"
+          >
+            {confirmPolicy === 'per_file' ? '逐文件批准' : '自动执行'}
+          </span>
 
           {activeSession && <StatusBadge status={activeSession.status} />}
 
