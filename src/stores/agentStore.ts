@@ -58,6 +58,35 @@ export interface Session {
   fileEdits: Map<string, FileEditInfo>
 }
 
+// ── History types (from DB via Tauri) ─────────────────────────────────────────
+
+/** Mirrors Rust's TaskRow. */
+export interface TaskRow {
+  id: string
+  title: string
+  status: string
+  workdir: string
+  created_at: number
+  updated_at: number
+  session_count: number
+}
+
+/** Mirrors Rust's TimelineItem. */
+export interface TimelineItem {
+  kind: 'message' | 'file_change'
+  ts: number
+  // message
+  role?: string
+  content?: string
+  // file_change
+  path?: string
+  change_kind?: string
+  added?: number
+  removed?: number
+  diff?: string
+  state?: string
+}
+
 // ── Raw AgentEvent shape from Tauri (mirrors Rust serde output) ───────────────
 
 interface RawAgentEvent {
@@ -93,6 +122,8 @@ interface RawAgentEvent {
 interface AgentStore {
   sessions: Record<string, Session>
   activeSessionId: string | null
+  /** Historical tasks loaded from DB on startup. */
+  historyTasks: TaskRow[]
 
   createSession: (sessionId: string) => void
   setActiveSession: (sessionId: string | null) => void
@@ -106,6 +137,14 @@ interface AgentStore {
     path: string,
     status: FileEditStatus,
   ) => void
+  /** Replace the history task list (called after list_tasks). */
+  setHistoryTasks: (tasks: TaskRow[]) => void
+  /** Restore a historical session from a DB timeline into the in-memory store. */
+  restoreSessionFromTimeline: (
+    sessionId: string,
+    taskStatus: string,
+    timeline: TimelineItem[],
+  ) => void
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────────
@@ -113,6 +152,7 @@ interface AgentStore {
 export const useAgentStore = create<AgentStore>((set) => ({
   sessions: {},
   activeSessionId: null,
+  historyTasks: [],
 
   createSession: (sessionId) => {
     set((state) => ({
@@ -311,6 +351,66 @@ export const useAgentStore = create<AgentStore>((set) => ({
       }
     })
   },
+
+  setHistoryTasks: (tasks) => {
+    set({ historyTasks: tasks })
+  },
+
+  restoreSessionFromTimeline: (sessionId, taskStatus, timeline) => {
+    const entries: TimelineEntry[] = []
+    const fileEdits = new Map<string, FileEditInfo>()
+
+    for (const item of timeline) {
+      if (item.kind === 'message') {
+        if (item.role === 'user') {
+          entries.push({ kind: 'user_message', text: item.content ?? '' })
+        } else {
+          entries.push({ kind: 'assistant_message', text: item.content ?? '' })
+        }
+      } else if (item.kind === 'file_change' && item.path) {
+        const added = item.added ?? 0
+        const removed = item.removed ?? 0
+        const diff = item.diff ?? null
+        const editKind = item.change_kind ?? 'update'
+        entries.push({
+          kind: 'file_edit',
+          path: item.path,
+          editKind,
+          diff,
+          added,
+          removed,
+        })
+        fileEdits.set(item.path, {
+          path: item.path,
+          kind: editKind,
+          diff,
+          added,
+          removed,
+          status: (item.state as FileEditStatus) ?? 'pending',
+        })
+      }
+    }
+
+    const sessionStatus: SessionStatus =
+      taskStatus === 'running'
+        ? 'running'
+        : taskStatus === 'failed'
+          ? 'error'
+          : 'done'
+
+    set((state) => ({
+      sessions: {
+        ...state.sessions,
+        [sessionId]: {
+          sessionId,
+          status: sessionStatus,
+          entries,
+          fileEdits,
+        },
+      },
+      activeSessionId: sessionId,
+    }))
+  },
 }))
 
 // ── Tauri event listener (registered once at startup) ─────────────────────────
@@ -318,16 +418,23 @@ export const useAgentStore = create<AgentStore>((set) => ({
 type UnlistenFn = () => void
 let _unlisten: UnlistenFn | null = null
 
+// Guard: only run inside the Tauri desktop shell
+const isTauriEnv =
+  typeof window !== 'undefined' &&
+  !!(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__
+
+async function tauriInvokeStore<T>(
+  command: string,
+  args?: Record<string, unknown>,
+): Promise<T> {
+  const { invoke } = await import('@tauri-apps/api/core')
+  return invoke<T>(command, args)
+}
+
 export async function initAgentEventListener(): Promise<void> {
   if (_unlisten) return // already registered
 
-  // Guard: only run inside the Tauri desktop shell
-  if (
-    typeof window === 'undefined' ||
-    !(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__
-  ) {
-    return
-  }
+  if (!isTauriEnv) return
 
   try {
     const { listen } = await import('@tauri-apps/api/event')
@@ -340,5 +447,35 @@ export async function initAgentEventListener(): Promise<void> {
     )
   } catch (err) {
     console.warn('[agentStore] failed to register agent-event listener:', err)
+  }
+}
+
+/** Load the task history from DB and populate historyTasks in the store. */
+export async function loadHistory(): Promise<void> {
+  if (!isTauriEnv) return
+  try {
+    const tasks = await tauriInvokeStore<TaskRow[]>('list_tasks')
+    useAgentStore.getState().setHistoryTasks(tasks)
+  } catch (err) {
+    console.warn('[agentStore] loadHistory failed:', err)
+  }
+}
+
+/** Restore a historical session into the store from DB timeline data. */
+export async function restoreSession(
+  sessionId: string,
+  taskStatus: string,
+): Promise<void> {
+  if (!isTauriEnv) return
+  try {
+    const timeline = await tauriInvokeStore<TimelineItem[]>(
+      'get_session_timeline',
+      { sessionId },
+    )
+    useAgentStore
+      .getState()
+      .restoreSessionFromTimeline(sessionId, taskStatus, timeline)
+  } catch (err) {
+    console.warn('[agentStore] restoreSession failed:', err)
   }
 }

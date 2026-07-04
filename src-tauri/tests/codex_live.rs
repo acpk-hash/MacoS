@@ -39,9 +39,10 @@ async fn live_codex_session_emits_expected_events() {
     };
     let sessions = new_session_map();
     let trackers = new_tracker_map();
+    let session_id = uuid::Uuid::new_v4().to_string();
 
     adapter
-        .start_session(sessions, trackers, prompt.to_string(), workdir, move |env| {
+        .start_session(session_id.clone(), sessions, trackers, prompt.to_string(), workdir, move |env| {
             let _ = tx.send(env);
         })
         .await
@@ -128,11 +129,13 @@ async fn live_followup() {
     };
     let sessions = new_session_map();
     let trackers = new_tracker_map();
+    let session_id = uuid::Uuid::new_v4().to_string();
 
     // ── First turn ────────────────────────────────────────────────────────────
     let (tx1, rx1) = mpsc::channel();
-    let session_id = adapter
+    adapter
         .start_session(
+            session_id.clone(),
             sessions.clone(),
             trackers.clone(),
             prompt1.to_string(),

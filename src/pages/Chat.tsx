@@ -3,7 +3,10 @@ import {
   useAgentStore,
   type FileEditInfo,
   type FileEditStatus,
+  type TaskRow,
   type TimelineEntry,
+  loadHistory,
+  restoreSession,
 } from '../stores/agentStore'
 
 // ── Tauri environment guard ───────────────────────────────────────────────────
@@ -445,12 +448,110 @@ function StatusBadge({ status }: { status: string }) {
   return null
 }
 
+// ── Session list (left sidebar) ───────────────────────────────────────────────
+
+function statusBadgeClass(status: string): string {
+  if (status === 'running') return 'bg-blue-900/70 text-blue-300 border-blue-800'
+  if (status === 'failed') return 'bg-red-900/70 text-red-300 border-red-800'
+  if (status === 'awaiting_review') return 'bg-yellow-900/70 text-yellow-300 border-yellow-800'
+  return 'bg-green-900/70 text-green-300 border-green-800'
+}
+
+function statusLabel(status: string): string {
+  if (status === 'running') return '运行中'
+  if (status === 'failed') return '出错'
+  if (status === 'awaiting_review') return '待审'
+  return '完成'
+}
+
+function relativeTime(ms: number): string {
+  const diff = Date.now() - ms
+  const s = Math.floor(diff / 1000)
+  if (s < 60) return `${s}s 前`
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m}m 前`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h 前`
+  return `${Math.floor(h / 24)}d 前`
+}
+
+function SessionListPanel({
+  tasks,
+  activeSessionId,
+  onSelectSession,
+  onNewSession,
+}: {
+  tasks: TaskRow[]
+  activeSessionId: string | null
+  onSelectSession: (task: TaskRow) => void
+  onNewSession: () => void
+}) {
+  return (
+    <div className="flex flex-col w-52 flex-shrink-0 border-r border-gray-800 h-full">
+      {/* Header */}
+      <div className="px-3 py-2 border-b border-gray-800 flex items-center gap-1 flex-shrink-0">
+        <span className="text-xs text-gray-400 font-medium flex-1">会话历史</span>
+        <button
+          onClick={onNewSession}
+          className="text-xs px-2 py-0.5 rounded bg-blue-900/50 hover:bg-blue-800/70 text-blue-300 border border-blue-800 transition-colors whitespace-nowrap"
+          title="新会话"
+        >
+          + 新
+        </button>
+      </div>
+
+      {/* Task list */}
+      <div className="flex-1 overflow-y-auto py-1">
+        {tasks.length === 0 && (
+          <p className="text-gray-600 text-xs text-center mt-4 px-2 select-none">暂无历史</p>
+        )}
+        {tasks.map((task) => {
+          const isActive = task.id === activeSessionId
+          return (
+            <button
+              key={task.id}
+              onClick={() => onSelectSession(task)}
+              className={[
+                'w-full text-left px-3 py-2 border-b border-gray-800/50 transition-colors',
+                isActive
+                  ? 'bg-blue-900/30 border-l-2 border-l-blue-500'
+                  : 'hover:bg-gray-800/60',
+              ].join(' ')}
+            >
+              {/* Title */}
+              <p
+                className="text-xs text-gray-200 leading-snug line-clamp-2 break-words"
+                title={task.title}
+              >
+                {task.title || '(无标题)'}
+              </p>
+
+              {/* Meta row */}
+              <div className="flex items-center gap-1.5 mt-1">
+                <span
+                  className={`text-[10px] px-1 py-0 rounded border ${statusBadgeClass(task.status)}`}
+                >
+                  {statusLabel(task.status)}
+                </span>
+                <span className="text-[10px] text-gray-600">
+                  {relativeTime(task.updated_at)}
+                </span>
+              </div>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ── Main Chat component ───────────────────────────────────────────────────────
 
 export default function Chat() {
   const {
     sessions,
     activeSessionId,
+    historyTasks,
     createSession,
     setActiveSession,
     addUserMessage,
@@ -469,12 +570,36 @@ export default function Chat() {
   const isRunning = activeSession?.status === 'running' || sending
   const canSendFollowup =
     activeSessionId != null &&
-    (activeSession?.status === 'done' || activeSession?.status === 'error')
+    (activeSession?.status === 'done' ||
+      activeSession?.status === 'error' ||
+      // Allow followup on restored historical sessions too
+      (sessions[activeSessionId] != null && !isRunning))
+
+  // Load history on mount.
+  useEffect(() => {
+    if (isTauri) {
+      loadHistory()
+    }
+  }, [])
 
   // Auto-scroll to bottom when new entries arrive.
   useEffect(() => {
     timelineEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [activeSession?.entries.length])
+
+  // ── Session selection ──────────────────────────────────────────────────────
+
+  const handleSelectSession = async (task: TaskRow) => {
+    // If already loaded in store, just switch to it.
+    if (sessions[task.id]) {
+      setActiveSession(task.id)
+      return
+    }
+    // Otherwise load from DB timeline.
+    await restoreSession(task.id, task.status)
+    // After restore, also update workdir input to match the session's workdir.
+    setWorkdir(task.workdir)
+  }
 
   // ── Non-Tauri fallback UI ──────────────────────────────────────────────────
   if (!isTauri) {
@@ -493,6 +618,7 @@ export default function Chat() {
   const handleNewSession = () => {
     setActiveSession(null)
     setInputText('')
+    setWorkdir('')
   }
 
   const handleBrowse = async () => {
@@ -522,8 +648,10 @@ export default function Chat() {
         })
         createSession(sessionId)
         addUserMessage(sessionId, text)
+        // Refresh sidebar to show the new task.
+        loadHistory()
       } else if (canSendFollowup) {
-        // ── Send a follow-up turn ──
+        // ── Send a follow-up turn (hot or cold resume) ──
         addUserMessage(activeSessionId, text)
         markSessionRunning(activeSessionId)
         await tauriInvoke<void>('agent_followup', {
@@ -562,7 +690,15 @@ export default function Chat() {
 
   return (
     <div className="flex h-full">
-      {/* ── Left: chat column ──────────────────────────────────────────────── */}
+      {/* ── Far left: session history list ─────────────────────────────────── */}
+      <SessionListPanel
+        tasks={historyTasks}
+        activeSessionId={activeSessionId}
+        onSelectSession={handleSelectSession}
+        onNewSession={handleNewSession}
+      />
+
+      {/* ── Center: chat column ────────────────────────────────────────────── */}
       <div className="flex flex-col flex-1 min-w-0 h-full">
         {/* ── Top bar ────────────────────────────────────────────────────────── */}
         <div className="px-4 py-2 border-b border-gray-800 flex-shrink-0 flex items-center gap-2 min-h-[44px]">
@@ -581,13 +717,6 @@ export default function Chat() {
             title="选择工作目录"
           >
             浏览…
-          </button>
-
-          <button
-            onClick={handleNewSession}
-            className="flex-shrink-0 text-xs px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 transition-colors whitespace-nowrap"
-          >
-            新会话
           </button>
 
           {activeSession && <StatusBadge status={activeSession.status} />}

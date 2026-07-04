@@ -50,17 +50,19 @@ pub fn new_tracker_map() -> TrackerMap {
 
 #[allow(async_fn_in_trait)] // stable async-in-trait is fine for our single impl
 pub trait AgentAdapter {
-    /// Spawn a new session and return the session_id.
+    /// Spawn a new session. The caller pre-generates `session_id` so it can
+    /// create DB records before events start flowing.
     async fn start_session(
         &self,
+        session_id: String,
         sessions: SessionMap,
         trackers: TrackerMap,
         prompt: String,
         workdir: String,
         emit: impl Fn(AgentEventEnvelope) + Send + Sync + 'static,
-    ) -> Result<String, CodexError>;
+    ) -> Result<(), CodexError>;
 
-    /// Send a follow-up prompt to an existing session (resumes via thread_id).
+    /// Send a follow-up prompt to an existing **in-memory** session.
     async fn send_followup(
         &self,
         sessions: SessionMap,
@@ -103,14 +105,13 @@ impl Default for CodexAdapter {
 impl AgentAdapter for CodexAdapter {
     async fn start_session(
         &self,
+        session_id: String,
         sessions: SessionMap,
         trackers: TrackerMap,
         prompt: String,
         workdir: String,
         emit: impl Fn(AgentEventEnvelope) + Send + Sync + 'static,
-    ) -> Result<String, CodexError> {
-        let session_id = uuid::Uuid::new_v4().to_string();
-
+    ) -> Result<(), CodexError> {
         // Build a FileTracker for this session and store it in the tracker map.
         let tracker = Arc::new(FileTracker::new(&session_id, &workdir).await);
         {
@@ -127,10 +128,9 @@ impl AgentAdapter for CodexAdapter {
             .stderr(Stdio::piped())
             .spawn()?;
 
-        let sid_clone = session_id.clone();
-        drive_process(child, sessions, sid_clone, Some(tracker), emit).await;
+        drive_process(child, sessions, session_id, Some(tracker), emit).await;
 
-        Ok(session_id)
+        Ok(())
     }
 
     async fn send_followup(
@@ -180,6 +180,49 @@ impl AgentAdapter for CodexAdapter {
         } else {
             Err(CodexError::SessionNotFound(session_id))
         }
+    }
+}
+
+impl CodexAdapter {
+    /// Cold-resume a session whose in-memory handle has been lost (e.g. after
+    /// app restart). Accepts the `thread_id` and `workdir` retrieved from the
+    /// database so no in-memory session lookup is required.
+    pub async fn resume_with_thread_id(
+        &self,
+        sessions: SessionMap,
+        trackers: TrackerMap,
+        session_id: String,
+        thread_id: String,
+        workdir: String,
+        text: String,
+        emit: impl Fn(AgentEventEnvelope) + Send + Sync + 'static,
+    ) -> Result<(), CodexError> {
+        // Re-use the existing tracker if it's still alive; otherwise create a
+        // fresh one from the stored workdir.
+        let tracker = {
+            let tmap = trackers.lock().await;
+            tmap.get(&session_id).cloned()
+        };
+        let tracker = match tracker {
+            Some(t) => t,
+            None => {
+                let t = Arc::new(FileTracker::new(&session_id, &workdir).await);
+                trackers.lock().await.insert(session_id.clone(), t.clone());
+                t
+            }
+        };
+
+        let child = codex_cmd()
+            .args(["exec", "resume", "--json"])
+            .args(&self.extra_args)
+            .args([&thread_id, &text])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
+
+        drive_process(child, sessions, session_id, Some(tracker), emit).await;
+        Ok(())
     }
 }
 
