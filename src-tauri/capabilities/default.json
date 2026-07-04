@@ -4,6 +4,7 @@
   "description": "Default capability set for AgentBoard — grants access to core Tauri APIs.",
   "windows": ["main"],
   "permissions": [
-    "core:default"
+    "core:default",
+    "core:event:default"
   ]
 }
