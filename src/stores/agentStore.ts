@@ -4,10 +4,35 @@ import { create } from 'zustand'
 
 export type SessionStatus = 'idle' | 'running' | 'done' | 'error'
 
+/** Status of a file edit in the diff panel. */
+export type FileEditStatus = 'pending' | 'approved' | 'reverted'
+
+/** Per-file aggregated state kept in the diff panel sidebar. */
+export interface FileEditInfo {
+  path: string
+  /** Last edit kind reported by codex (create / update / delete). */
+  kind: string
+  /** Unified diff text (null when unavailable). */
+  diff: string | null
+  /** Lines added (from diff statistics). */
+  added: number
+  /** Lines removed (from diff statistics). */
+  removed: number
+  /** User's approval / revert decision. */
+  status: FileEditStatus
+}
+
 export type TimelineEntry =
   | { kind: 'user_message'; text: string }
   | { kind: 'assistant_message'; text: string }
-  | { kind: 'file_edit'; path: string; editKind: string }
+  | {
+      kind: 'file_edit'
+      path: string
+      editKind: string
+      diff: string | null
+      added: number
+      removed: number
+    }
   | {
       kind: 'command_run'
       cmd: string
@@ -29,6 +54,8 @@ export interface Session {
   status: SessionStatus
   threadId?: string
   entries: TimelineEntry[]
+  /** Aggregated file-change info keyed by path (for the diff panel). */
+  fileEdits: Map<string, FileEditInfo>
 }
 
 // ── Raw AgentEvent shape from Tauri (mirrors Rust serde output) ───────────────
@@ -44,6 +71,9 @@ interface RawAgentEvent {
   // file_edit
   path?: string
   kind?: string
+  diff?: string
+  added?: number
+  removed?: number
   // command_run
   cmd?: string
   exit_code?: number
@@ -70,6 +100,12 @@ interface AgentStore {
   markSessionRunning: (sessionId: string) => void
   dispatchAgentEvent: (sessionId: string, event: RawAgentEvent) => void
   toggleCommandExpanded: (sessionId: string, entryIndex: number) => void
+  /** Update the approval/revert status of a file (frontend-side state). */
+  setFileEditStatus: (
+    sessionId: string,
+    path: string,
+    status: FileEditStatus,
+  ) => void
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────────
@@ -86,6 +122,7 @@ export const useAgentStore = create<AgentStore>((set) => ({
           sessionId,
           status: 'running',
           entries: [],
+          fileEdits: new Map(),
         },
       },
       activeSessionId: sessionId,
@@ -133,11 +170,14 @@ export const useAgentStore = create<AgentStore>((set) => ({
         sessionId,
         status: 'running' as SessionStatus,
         entries: [] as TimelineEntry[],
+        fileEdits: new Map<string, FileEditInfo>(),
       }
 
       let newEntries: TimelineEntry[] = [...existing.entries]
       let newStatus: SessionStatus = existing.status
       let newThreadId: string | undefined = existing.threadId
+      // Clone the fileEdits map so we don't mutate the old reference.
+      const newFileEdits = new Map(existing.fileEdits)
 
       switch (event.type) {
         case 'session_started':
@@ -153,10 +193,31 @@ export const useAgentStore = create<AgentStore>((set) => ({
 
         case 'file_edit':
           if (event.path != null) {
+            const path = event.path
+            const added = event.added ?? 0
+            const removed = event.removed ?? 0
+            const diff = event.diff ?? null
+            const editKind = event.kind ?? 'update'
+
             newEntries.push({
               kind: 'file_edit',
-              path: event.path,
-              editKind: event.kind ?? 'update',
+              path,
+              editKind,
+              diff,
+              added,
+              removed,
+            })
+
+            // Update (or create) the per-file aggregated entry.
+            // Preserve existing status if the user has already reviewed it.
+            const existingInfo = newFileEdits.get(path)
+            newFileEdits.set(path, {
+              path,
+              kind: editKind,
+              diff,
+              added,
+              removed,
+              status: existingInfo?.status ?? 'pending',
             })
           }
           break
@@ -207,6 +268,7 @@ export const useAgentStore = create<AgentStore>((set) => ({
             status: newStatus,
             threadId: newThreadId,
             entries: newEntries,
+            fileEdits: newFileEdits,
           },
         },
       }
@@ -227,6 +289,24 @@ export const useAgentStore = create<AgentStore>((set) => ({
         sessions: {
           ...state.sessions,
           [sessionId]: { ...session, entries },
+        },
+      }
+    })
+  },
+
+  setFileEditStatus: (sessionId, path, status) => {
+    set((state) => {
+      const session = state.sessions[sessionId]
+      if (!session) return state
+      const newFileEdits = new Map(session.fileEdits)
+      const info = newFileEdits.get(path)
+      if (info) {
+        newFileEdits.set(path, { ...info, status })
+      }
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: { ...session, fileEdits: newFileEdits },
         },
       }
     })

@@ -63,7 +63,7 @@ fn exec_contains_file_edit_with_correct_path() {
     let file_edits: Vec<_> = events
         .iter()
         .filter_map(|e| {
-            if let AgentEvent::FileEdit { path, kind } = e {
+            if let AgentEvent::FileEdit { path, kind, .. } = e {
                 Some((path.as_str(), kind.as_str()))
             } else {
                 None
@@ -229,7 +229,11 @@ fn exec_no_started_prefixed_file_edit_events() {
         .iter()
         .filter_map(|e| {
             if let AgentEvent::FileEdit { kind, .. } = e {
-                if kind.starts_with("started:") { Some(kind.as_str()) } else { None }
+                if kind.starts_with("started:") {
+                    Some(kind.as_str())
+                } else {
+                    None
+                }
             } else {
                 None
             }

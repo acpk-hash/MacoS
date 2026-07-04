@@ -7,6 +7,7 @@ use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 
 use crate::agent::events::{AgentEvent, AgentEventEnvelope, RawEvent};
+use crate::agent::tracker::FileTracker;
 
 // ── Error type ────────────────────────────────────────────────────────────────
 
@@ -21,8 +22,11 @@ pub enum CodexError {
 // ── Session handle ────────────────────────────────────────────────────────────
 
 pub struct SessionHandle {
-    thread_id: Option<String>,
+    pub thread_id: Option<String>,
     child: Child,
+    /// FileTracker for this session — survives until the session is explicitly
+    /// removed so follow-up turns can reuse it.
+    pub tracker: Option<Arc<FileTracker>>,
 }
 
 // ── Active session registry ───────────────────────────────────────────────────
@@ -30,6 +34,15 @@ pub struct SessionHandle {
 pub type SessionMap = Arc<Mutex<HashMap<String, SessionHandle>>>;
 
 pub fn new_session_map() -> SessionMap {
+    Arc::new(Mutex::new(HashMap::new()))
+}
+
+/// Separate map that keeps `FileTracker`s alive even after the child process
+/// exits (needed so follow-up turns can reuse the same tracker and `file_revert`
+/// commands can reach it from a Tauri command handler).
+pub type TrackerMap = Arc<Mutex<HashMap<String, Arc<FileTracker>>>>;
+
+pub fn new_tracker_map() -> TrackerMap {
     Arc::new(Mutex::new(HashMap::new()))
 }
 
@@ -41,6 +54,7 @@ pub trait AgentAdapter {
     async fn start_session(
         &self,
         sessions: SessionMap,
+        trackers: TrackerMap,
         prompt: String,
         workdir: String,
         emit: impl Fn(AgentEventEnvelope) + Send + Sync + 'static,
@@ -50,6 +64,7 @@ pub trait AgentAdapter {
     async fn send_followup(
         &self,
         sessions: SessionMap,
+        trackers: TrackerMap,
         session_id: String,
         text: String,
         emit: impl Fn(AgentEventEnvelope) + Send + Sync + 'static,
@@ -89,11 +104,19 @@ impl AgentAdapter for CodexAdapter {
     async fn start_session(
         &self,
         sessions: SessionMap,
+        trackers: TrackerMap,
         prompt: String,
         workdir: String,
         emit: impl Fn(AgentEventEnvelope) + Send + Sync + 'static,
     ) -> Result<String, CodexError> {
         let session_id = uuid::Uuid::new_v4().to_string();
+
+        // Build a FileTracker for this session and store it in the tracker map.
+        let tracker = Arc::new(FileTracker::new(&session_id, &workdir).await);
+        {
+            let mut tmap = trackers.lock().await;
+            tmap.insert(session_id.clone(), tracker.clone());
+        }
 
         let child = codex_cmd()
             .args(["exec", "--json", "-s", &self.sandbox, "-C", &workdir, "--skip-git-repo-check"])
@@ -105,7 +128,7 @@ impl AgentAdapter for CodexAdapter {
             .spawn()?;
 
         let sid_clone = session_id.clone();
-        drive_process(child, sessions, sid_clone, emit).await;
+        drive_process(child, sessions, sid_clone, Some(tracker), emit).await;
 
         Ok(session_id)
     }
@@ -113,6 +136,7 @@ impl AgentAdapter for CodexAdapter {
     async fn send_followup(
         &self,
         sessions: SessionMap,
+        trackers: TrackerMap,
         session_id: String,
         text: String,
         emit: impl Fn(AgentEventEnvelope) + Send + Sync + 'static,
@@ -126,6 +150,12 @@ impl AgentAdapter for CodexAdapter {
                 .ok_or_else(|| CodexError::SessionNotFound(session_id.clone()))?
         };
 
+        // Re-use the existing tracker for this session (if any).
+        let tracker = {
+            let tmap = trackers.lock().await;
+            tmap.get(&session_id).cloned()
+        };
+
         let child = codex_cmd()
             .args(["exec", "resume", "--json"])
             .args(&self.extra_args)
@@ -136,7 +166,7 @@ impl AgentAdapter for CodexAdapter {
             .spawn()?;
 
         let sid_clone = session_id.clone();
-        drive_process(child, sessions, sid_clone, emit).await;
+        drive_process(child, sessions, sid_clone, tracker, emit).await;
 
         Ok(())
     }
@@ -158,10 +188,15 @@ impl AgentAdapter for CodexAdapter {
 /// Registers the child in the session map and spawns a background task that
 /// reads JSONL from stdout, maps each line to AgentEvents via `parse_line_all`,
 /// and calls `emit` for every resulting event.
+///
+/// `tracker` (when `Some`) is used to enrich `FileEdit` events with diff data.
+/// Enrichment is spawned as a separate tokio task so it doesn't block the JSONL
+/// reader; the enriched event is emitted once the diff is computed.
 async fn drive_process(
     mut child: Child,
     sessions: SessionMap,
     session_id: String,
+    tracker: Option<Arc<FileTracker>>,
     emit: impl Fn(AgentEventEnvelope) + Send + Sync + 'static,
 ) {
     // Split stdout/stderr before moving the child into the session map.
@@ -176,6 +211,7 @@ async fn drive_process(
             SessionHandle {
                 thread_id: None,
                 child,
+                tracker: tracker.clone(),
             },
         );
     }
@@ -205,6 +241,26 @@ async fn drive_process(
                         handle.thread_id = Some(thread_id.clone());
                     }
                 }
+
+                // For FileEdit events, enrich asynchronously with diff data.
+                if let AgentEvent::FileEdit { ref path, ref kind, .. } = event {
+                    if let Some(ref t) = tracker {
+                        let t_clone = t.clone();
+                        let path_c = path.clone();
+                        let kind_c = kind.clone();
+                        let sid_c = sid.clone();
+                        let emit_c = emit.clone();
+                        tokio::spawn(async move {
+                            let enriched = t_clone.enrich_file_edit(&path_c, &kind_c).await;
+                            emit_c(AgentEventEnvelope {
+                                session_id: sid_c,
+                                event: enriched,
+                            });
+                        });
+                        continue; // skip the raw (unenriched) emit below
+                    }
+                }
+
                 emit(AgentEventEnvelope {
                     session_id: sid.clone(),
                     event,
@@ -301,12 +357,17 @@ pub fn parse_line_all(line: &str, session_id: &str) -> Vec<AgentEvent> {
 
                 "file_change" => {
                     // Emit one FileEdit per changed path (fixes single-change-only bug).
+                    // diff/added/removed are initially empty; drive_process enriches them
+                    // asynchronously via the FileTracker before re-emitting.
                     let changes = item.changes.unwrap_or_default();
                     changes
                         .into_iter()
                         .map(|c| AgentEvent::FileEdit {
                             path: c.path,
                             kind: c.kind,
+                            diff: None,
+                            added: 0,
+                            removed: 0,
                         })
                         .collect()
                 }
@@ -447,8 +508,8 @@ mod tests {
         );
         match (&events[0], &events[1]) {
             (
-                AgentEvent::FileEdit { path: p0, kind: k0 },
-                AgentEvent::FileEdit { path: p1, kind: k1 },
+                AgentEvent::FileEdit { path: p0, kind: k0, .. },
+                AgentEvent::FileEdit { path: p1, kind: k1, .. },
             ) => {
                 assert!(p0.contains("foo.py"), "wrong path[0]: {}", p0);
                 assert_eq!(k0, "update");
@@ -465,7 +526,7 @@ mod tests {
         let events = parse_line_all(line, SID);
         assert_eq!(events.len(), 1, "expected 1 FileEdit, got: {:?}", events);
         match &events[0] {
-            AgentEvent::FileEdit { path, kind } => {
+            AgentEvent::FileEdit { path, kind, .. } => {
                 assert!(path.contains("only.py"));
                 assert_eq!(kind, "update");
             }

@@ -17,7 +17,16 @@ pub enum AgentEvent {
     /// Any tool invocation (generic; file_change / command_execution get richer events).
     ToolCall { name: String, detail: String },
     /// A file was created, updated, or deleted.
-    FileEdit { path: String, kind: String },
+    /// `diff` is the unified-diff text enriched by FileTracker (None if unavailable).
+    /// `added` / `removed` are line-count statistics derived from the diff.
+    FileEdit {
+        path: String,
+        kind: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        diff: Option<String>,
+        added: u32,
+        removed: u32,
+    },
     /// A shell command ran to completion (or failure).
     CommandRun {
         cmd: String,

@@ -5,7 +5,7 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
 
 use agent::{
-    codex::{AgentAdapter, CodexAdapter},
+    codex::{AgentAdapter, CodexAdapter, TrackerMap, new_tracker_map},
     events::AgentEventEnvelope,
     new_session_map, SessionMap,
 };
@@ -14,6 +14,7 @@ use agent::{
 
 struct AppState {
     sessions: SessionMap,
+    trackers: TrackerMap,
     adapter: Arc<CodexAdapter>,
 }
 
@@ -29,12 +30,13 @@ async fn agent_start(
     app: AppHandle,
 ) -> Result<String, String> {
     let sessions = state.sessions.clone();
+    let trackers = state.trackers.clone();
     let adapter = state.adapter.clone();
 
     let emit_fn = make_emit_fn(app);
 
     adapter
-        .start_session(sessions, prompt, workdir, emit_fn)
+        .start_session(sessions, trackers, prompt, workdir, emit_fn)
         .await
         .map_err(|e| e.to_string())
 }
@@ -48,12 +50,13 @@ async fn agent_followup(
     app: AppHandle,
 ) -> Result<(), String> {
     let sessions = state.sessions.clone();
+    let trackers = state.trackers.clone();
     let adapter = state.adapter.clone();
 
     let emit_fn = make_emit_fn(app);
 
     adapter
-        .send_followup(sessions, session_id, text, emit_fn)
+        .send_followup(sessions, trackers, session_id, text, emit_fn)
         .await
         .map_err(|e| e.to_string())
 }
@@ -73,6 +76,52 @@ async fn agent_cancel(
         .map_err(|e| e.to_string())
 }
 
+/// Revert a file to its pre-session state (git checkout or snapshot restore).
+#[tauri::command]
+async fn file_revert(
+    session_id: String,
+    path: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let tmap = state.trackers.lock().await;
+    if let Some(tracker) = tmap.get(&session_id) {
+        tracker
+            .revert(&path)
+            .await
+            .map_err(|e| e.to_string())
+    } else {
+        Err(format!("no tracker for session {session_id}"))
+    }
+}
+
+/// Mark a file as approved (accounting only; does not touch the file).
+#[tauri::command]
+async fn file_approve(
+    session_id: String,
+    path: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let tmap = state.trackers.lock().await;
+    if let Some(tracker) = tmap.get(&session_id) {
+        tracker.approve(&path);
+        Ok(())
+    } else {
+        Err(format!("no tracker for session {session_id}"))
+    }
+}
+
+/// Open a system directory-picker dialog and return the selected path.
+/// Requires `tauri-plugin-dialog` and the `dialog:allow-open` capability.
+#[tauri::command]
+async fn pick_directory(app: AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let path = app
+        .dialog()
+        .file()
+        .blocking_pick_folder();
+    Ok(path.map(|p| p.to_string()))
+}
+
 // ── Example ping (kept for IPC smoke test) ────────────────────────────────────
 
 #[tauri::command]
@@ -85,8 +134,10 @@ fn ping() -> String {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(AppState {
             sessions: new_session_map(),
+            trackers: new_tracker_map(),
             adapter: Arc::new(CodexAdapter::default()),
         })
         .invoke_handler(tauri::generate_handler![
@@ -94,6 +145,9 @@ pub fn run() {
             agent_start,
             agent_followup,
             agent_cancel,
+            file_revert,
+            file_approve,
+            pick_directory,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
