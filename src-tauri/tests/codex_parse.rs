@@ -220,6 +220,40 @@ fn resume_ends_with_turn_completed() {
     );
 }
 
+// ── item.started filtering (no "started:" prefixed events) ───────────────────
+
+#[test]
+fn exec_no_started_prefixed_file_edit_events() {
+    let events = parse_fixture(EXEC_FIXTURE);
+    let started_edits: Vec<_> = events
+        .iter()
+        .filter_map(|e| {
+            if let AgentEvent::FileEdit { kind, .. } = e {
+                if kind.starts_with("started:") { Some(kind.as_str()) } else { None }
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert!(
+        started_edits.is_empty(),
+        "unexpected 'started:' prefixed FileEdit events: {:?}",
+        started_edits
+    );
+}
+
+#[test]
+fn exec_file_edit_count_equals_completed_items_only() {
+    // The exec fixture has exactly 1 item.completed file_change (item_6).
+    // The item.started for item_6 must not produce any FileEdit event.
+    let events = parse_fixture(EXEC_FIXTURE);
+    let file_edit_count = events
+        .iter()
+        .filter(|e| matches!(e, AgentEvent::FileEdit { .. }))
+        .count();
+    assert_eq!(file_edit_count, 1, "expected exactly 1 FileEdit event (from item.completed only)");
+}
+
 // ── fallback / unknown line tests ─────────────────────────────────────────────
 
 #[test]

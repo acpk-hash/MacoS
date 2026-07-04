@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::process::Stdio;
 use std::sync::Arc;
 
-use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
@@ -62,7 +61,29 @@ pub trait AgentAdapter {
 
 // ── CodexAdapter ──────────────────────────────────────────────────────────────
 
-pub struct CodexAdapter;
+/// Adapter that drives `codex exec --json` as a child process.
+///
+/// `extra_args` are inserted into the `codex exec` invocation before the prompt,
+/// e.g. `["-c", "model_reasoning_effort=low"]`.
+///
+/// `sandbox` controls the `-s` flag (default: `"workspace-write"`).
+/// Use `"danger-full-access"` in environments where the Windows elevated
+/// sandbox is not initialised (e.g. CI / integration tests).
+pub struct CodexAdapter {
+    /// Extra CLI args appended after `--skip-git-repo-check` and before the prompt.
+    pub extra_args: Vec<String>,
+    /// Codex sandbox level passed as `-s <sandbox>`. Default: `"workspace-write"`.
+    pub sandbox: String,
+}
+
+impl Default for CodexAdapter {
+    fn default() -> Self {
+        Self {
+            extra_args: vec![],
+            sandbox: "workspace-write".to_string(),
+        }
+    }
+}
 
 impl AgentAdapter for CodexAdapter {
     async fn start_session(
@@ -74,17 +95,11 @@ impl AgentAdapter for CodexAdapter {
     ) -> Result<String, CodexError> {
         let session_id = uuid::Uuid::new_v4().to_string();
 
-        let child = Command::new("codex")
-            .args([
-                "exec",
-                "--json",
-                "-s",
-                "workspace-write",
-                "-C",
-                &workdir,
-                "--skip-git-repo-check",
-                &prompt,
-            ])
+        let child = codex_cmd()
+            .args(["exec", "--json", "-s", &self.sandbox, "-C", &workdir, "--skip-git-repo-check"])
+            .args(&self.extra_args)
+            .arg(&prompt)
+            .stdin(Stdio::null()) // prevent codex from blocking on interactive stdin
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()?;
@@ -111,8 +126,11 @@ impl AgentAdapter for CodexAdapter {
                 .ok_or_else(|| CodexError::SessionNotFound(session_id.clone()))?
         };
 
-        let child = Command::new("codex")
-            .args(["exec", "resume", "--json", &thread_id, &text])
+        let child = codex_cmd()
+            .args(["exec", "resume", "--json"])
+            .args(&self.extra_args)
+            .args([&thread_id, &text])
+            .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()?;
@@ -138,15 +156,15 @@ impl AgentAdapter for CodexAdapter {
 // ── Process driver ────────────────────────────────────────────────────────────
 
 /// Registers the child in the session map and spawns a background task that
-/// reads JSONL from stdout, maps each line to AgentEvent, and calls `emit`.
+/// reads JSONL from stdout, maps each line to AgentEvents via `parse_line_all`,
+/// and calls `emit` for every resulting event.
 async fn drive_process(
     mut child: Child,
     sessions: SessionMap,
     session_id: String,
     emit: impl Fn(AgentEventEnvelope) + Send + Sync + 'static,
 ) {
-    // We need to move `child` into the task but also store a handle. Split
-    // stdout/stderr before moving the child into the session map.
+    // Split stdout/stderr before moving the child into the session map.
     let stdout = child.stdout.take().expect("stdout piped");
     let stderr = child.stderr.take().expect("stderr piped");
 
@@ -177,7 +195,9 @@ async fn drive_process(
                 continue;
             }
 
-            if let Some(event) = parse_line(trimmed, &sid) {
+            // Use parse_line_all so every event on a line (e.g. Usage + TurnCompleted
+            // from turn.completed, or multiple FileEdit from file_change) is emitted.
+            for event in parse_line_all(trimmed, &sid) {
                 // If we got session_started, stash the thread_id.
                 if let AgentEvent::SessionStarted { ref thread_id, .. } = event {
                     let mut guard = sessions_task.lock().await;
@@ -222,140 +242,133 @@ async fn drive_process(
 
 // ── JSONL → AgentEvent parser ─────────────────────────────────────────────────
 
-/// Parse a single JSONL line into an AgentEvent.
-/// Returns None for events we intentionally ignore (e.g. item.started without
-/// actionable info). Falls back to ToolCall{unknown} for unrecognised lines.
-pub fn parse_line(line: &str, session_id: &str) -> Option<AgentEvent> {
+/// Parse a single JSONL line and return ALL resulting events.
+///
+/// Key behaviours:
+/// - `item.started` events are **filtered out** entirely; the frontend only
+///   needs `item.completed` data.
+/// - `item.completed` with `file_change` emits **one `FileEdit` per entry** in
+///   `changes[]` (fixes the previous single-change bug).
+/// - `turn.completed` emits both `Usage` (when present) and `TurnCompleted`.
+pub fn parse_line_all(line: &str, session_id: &str) -> Vec<AgentEvent> {
     let raw: RawEvent = match serde_json::from_str(line) {
         Ok(v) => v,
         Err(_) => {
-            // Not valid JSON — emit as unknown tool_call
-            return Some(AgentEvent::ToolCall {
+            return vec![AgentEvent::ToolCall {
                 name: "unknown".to_string(),
                 detail: line.to_string(),
-            });
+            }];
         }
     };
 
     match raw.kind.as_str() {
         "thread.started" => {
             let thread_id = raw.thread_id.unwrap_or_default();
-            Some(AgentEvent::SessionStarted {
+            vec![AgentEvent::SessionStarted {
                 session_id: session_id.to_string(),
                 thread_id,
-            })
+            }]
         }
 
-        "turn.started" => None, // no useful payload for frontend yet
+        "turn.started" => vec![], // no useful payload for frontend
 
-        "item.started" => {
-            // Only file_change item.started carries useful info (the path).
-            let item = raw.item?;
-            match item.kind.as_str() {
-                "file_change" => {
-                    // Emit one FileEdit per changed path.
-                    // We return only the first; callers see multiple lines anyway.
-                    let changes = item.changes.unwrap_or_default();
-                    changes.into_iter().next().map(|c| AgentEvent::FileEdit {
-                        path: c.path,
-                        kind: format!("started:{}", c.kind),
-                    })
-                }
-                _ => None, // command_execution item.started has empty output; skip
-            }
-        }
+        // item.started: always filtered out — frontend only needs completed data.
+        // (Previously file_change item.started was forwarded with a "started:" kind
+        // prefix; that was noisy and is now dropped here.)
+        "item.started" => vec![],
 
         "item.completed" => {
-            let item = raw.item?;
+            let item = match raw.item {
+                Some(i) => i,
+                None => return vec![],
+            };
             match item.kind.as_str() {
-                "agent_message" => Some(AgentEvent::AssistantMessage {
+                "agent_message" => vec![AgentEvent::AssistantMessage {
                     text: item.text.unwrap_or_default(),
-                }),
+                }],
 
                 "command_execution" => {
                     let cmd = item.command.unwrap_or_default();
                     let output = item.aggregated_output.unwrap_or_default();
                     let output_tail = tail_2000(&output);
                     let exit_code = extract_exit_code(item.exit_code);
-                    Some(AgentEvent::CommandRun {
+                    vec![AgentEvent::CommandRun {
                         cmd,
                         exit_code,
                         output_tail,
-                    })
+                    }]
                 }
 
                 "file_change" => {
+                    // Emit one FileEdit per changed path (fixes single-change-only bug).
                     let changes = item.changes.unwrap_or_default();
-                    // Emit first change; adapter callers see one event per line.
-                    changes.into_iter().next().map(|c| AgentEvent::FileEdit {
-                        path: c.path,
-                        kind: c.kind,
-                    })
+                    changes
+                        .into_iter()
+                        .map(|c| AgentEvent::FileEdit {
+                            path: c.path,
+                            kind: c.kind,
+                        })
+                        .collect()
                 }
 
-                other => Some(AgentEvent::ToolCall {
+                other => vec![AgentEvent::ToolCall {
                     name: other.to_string(),
                     detail: line_truncated(line),
-                }),
+                }],
             }
         }
 
         "turn.completed" => {
+            // Emit Usage (when present) followed by TurnCompleted.
+            let mut events = Vec::new();
             if let Some(usage) = raw.usage {
-                // Emit Usage then TurnCompleted via a trick: we can only return one.
-                // We emit Usage here; TurnCompleted is emitted by a separate synthetic
-                // parse on the same line — callers must handle both.
-                // Actually we'll emit Usage; the caller gets TurnCompleted separately
-                // only if we split. For simplicity, emit Usage; TurnCompleted is emitted
-                // as a second call. We return Usage here.
-                // NOTE: the driver loop calls parse_line once per line, so we can only
-                // return one event. We choose Usage because it carries the data. The
-                // frontend can treat the absence of further events as turn-end, OR we
-                // can emit TurnCompleted from a secondary path. For now emit Usage and
-                // then synthesize TurnCompleted too — handled in parse_line_all below.
-                Some(AgentEvent::Usage {
+                events.push(AgentEvent::Usage {
                     input_tokens: usage.input_tokens,
                     cached_input_tokens: usage.cached_input_tokens,
                     output_tokens: usage.output_tokens,
                     reasoning_output_tokens: usage.reasoning_output_tokens,
-                })
-            } else {
-                Some(AgentEvent::TurnCompleted {})
+                });
             }
+            events.push(AgentEvent::TurnCompleted {});
+            events
         }
 
         _ => {
             // Unknown top-level type — emit as tool_call fallback.
-            Some(AgentEvent::ToolCall {
+            vec![AgentEvent::ToolCall {
                 name: "unknown".to_string(),
                 detail: line_truncated(line),
-            })
+            }]
         }
     }
 }
 
-/// Parse a single JSONL line and return ALL resulting events (e.g. turn.completed
-/// yields both Usage and TurnCompleted).
-pub fn parse_line_all(line: &str, session_id: &str) -> Vec<AgentEvent> {
-    // Check if it's a turn.completed with usage first, so we can emit both.
-    if let Ok(v) = serde_json::from_str::<Value>(line) {
-        if v.get("type").and_then(|t| t.as_str()) == Some("turn.completed") {
-            if v.get("usage").is_some() {
-                let mut events = Vec::new();
-                if let Some(ev) = parse_line(line, session_id) {
-                    events.push(ev);
-                }
-                events.push(AgentEvent::TurnCompleted {});
-                return events;
-            }
-        }
-    }
-    parse_line(line, session_id)
-        .into_iter()
-        .collect()
+/// Parse a single JSONL line into the first AgentEvent it produces.
+/// Prefer `parse_line_all` when multiple events per line are expected
+/// (e.g. `turn.completed` → Usage + TurnCompleted).
+pub fn parse_line(line: &str, session_id: &str) -> Option<AgentEvent> {
+    parse_line_all(line, session_id).into_iter().next()
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+/// Return a `Command` that will invoke the `codex` CLI.
+///
+/// On Windows, `.cmd` wrappers cannot be spawned directly by `CreateProcess`;
+/// they must be run through `cmd.exe /c`. On other platforms, `codex` is
+/// invoked directly.
+fn codex_cmd() -> Command {
+    #[cfg(windows)]
+    {
+        let mut cmd = Command::new("cmd");
+        cmd.args(["/c", "codex"]);
+        cmd
+    }
+    #[cfg(not(windows))]
+    {
+        Command::new("codex")
+    }
+}
 
 fn tail_2000(s: &str) -> String {
     if s.len() <= 2000 {
@@ -373,9 +386,9 @@ fn tail_2000(s: &str) -> String {
     }
 }
 
-fn extract_exit_code(v: Option<Value>) -> i64 {
+fn extract_exit_code(v: Option<serde_json::Value>) -> i64 {
     match v {
-        Some(Value::Number(n)) => n.as_i64().unwrap_or(-1),
+        Some(serde_json::Value::Number(n)) => n.as_i64().unwrap_or(-1),
         _ => -1,
     }
 }
@@ -385,5 +398,134 @@ fn line_truncated(line: &str) -> String {
         format!("{}…", &line[..500])
     } else {
         line.to_string()
+    }
+}
+
+// ── Unit tests ────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SID: &str = "test-session";
+
+    // ── item.started filtering ────────────────────────────────────────────────
+
+    #[test]
+    fn item_started_file_change_emits_no_events() {
+        let line = r#"{"type":"item.started","item":{"id":"item_6","type":"file_change","changes":[{"path":"/tmp/foo.py","kind":"update"}],"status":"in_progress"}}"#;
+        let events = parse_line_all(line, SID);
+        assert!(
+            events.is_empty(),
+            "expected no events for item.started file_change, got: {:?}",
+            events
+        );
+    }
+
+    #[test]
+    fn item_started_command_execution_emits_no_events() {
+        let line = r#"{"type":"item.started","item":{"id":"item_2","type":"command_execution","command":"echo hi","aggregated_output":"","exit_code":null,"status":"in_progress"}}"#;
+        let events = parse_line_all(line, SID);
+        assert!(
+            events.is_empty(),
+            "expected no events for item.started command_execution, got: {:?}",
+            events
+        );
+    }
+
+    // ── multi-change file_change ──────────────────────────────────────────────
+
+    #[test]
+    fn item_completed_file_change_multi_emits_all_changes() {
+        let line = r#"{"type":"item.completed","item":{"id":"item_6","type":"file_change","changes":[{"path":"/tmp/foo.py","kind":"update"},{"path":"/tmp/bar.rs","kind":"create"}],"status":"completed"}}"#;
+        let events = parse_line_all(line, SID);
+        assert_eq!(
+            events.len(),
+            2,
+            "expected 2 FileEdit events, got: {:?}",
+            events
+        );
+        match (&events[0], &events[1]) {
+            (
+                AgentEvent::FileEdit { path: p0, kind: k0 },
+                AgentEvent::FileEdit { path: p1, kind: k1 },
+            ) => {
+                assert!(p0.contains("foo.py"), "wrong path[0]: {}", p0);
+                assert_eq!(k0, "update");
+                assert!(p1.contains("bar.rs"), "wrong path[1]: {}", p1);
+                assert_eq!(k1, "create");
+            }
+            _ => panic!("unexpected events: {:?}", events),
+        }
+    }
+
+    #[test]
+    fn item_completed_file_change_single_emits_one() {
+        let line = r#"{"type":"item.completed","item":{"id":"item_6","type":"file_change","changes":[{"path":"/tmp/only.py","kind":"update"}],"status":"completed"}}"#;
+        let events = parse_line_all(line, SID);
+        assert_eq!(events.len(), 1, "expected 1 FileEdit, got: {:?}", events);
+        match &events[0] {
+            AgentEvent::FileEdit { path, kind } => {
+                assert!(path.contains("only.py"));
+                assert_eq!(kind, "update");
+            }
+            other => panic!("expected FileEdit, got {:?}", other),
+        }
+    }
+
+    // ── turn.completed emits both Usage and TurnCompleted ────────────────────
+
+    #[test]
+    fn turn_completed_emits_usage_then_turn_completed() {
+        let line = r#"{"type":"turn.completed","usage":{"input_tokens":100,"cached_input_tokens":50,"output_tokens":20,"reasoning_output_tokens":5}}"#;
+        let events = parse_line_all(line, SID);
+        assert_eq!(events.len(), 2, "expected 2 events, got: {:?}", events);
+        match &events[0] {
+            AgentEvent::Usage {
+                input_tokens,
+                cached_input_tokens,
+                output_tokens,
+                reasoning_output_tokens,
+            } => {
+                assert_eq!(*input_tokens, 100);
+                assert_eq!(*cached_input_tokens, 50);
+                assert_eq!(*output_tokens, 20);
+                assert_eq!(*reasoning_output_tokens, 5);
+            }
+            other => panic!("expected Usage, got {:?}", other),
+        }
+        assert!(
+            matches!(events[1], AgentEvent::TurnCompleted {}),
+            "expected TurnCompleted, got {:?}",
+            events[1]
+        );
+    }
+
+    #[test]
+    fn turn_completed_without_usage_emits_only_turn_completed() {
+        let line = r#"{"type":"turn.completed"}"#;
+        let events = parse_line_all(line, SID);
+        assert_eq!(events.len(), 1, "expected 1 event, got: {:?}", events);
+        assert!(matches!(events[0], AgentEvent::TurnCompleted {}));
+    }
+
+    // ── parse_line returns first event only ───────────────────────────────────
+
+    #[test]
+    fn parse_line_returns_first_of_turn_completed() {
+        let line = r#"{"type":"turn.completed","usage":{"input_tokens":1,"cached_input_tokens":0,"output_tokens":1,"reasoning_output_tokens":0}}"#;
+        let ev = parse_line(line, SID);
+        assert!(
+            matches!(ev, Some(AgentEvent::Usage { .. })),
+            "expected Some(Usage), got {:?}",
+            ev
+        );
+    }
+
+    #[test]
+    fn parse_line_returns_none_for_item_started() {
+        let line = r#"{"type":"item.started","item":{"id":"x","type":"file_change","changes":[{"path":"/a","kind":"update"}],"status":"in_progress"}}"#;
+        let ev = parse_line(line, SID);
+        assert!(ev.is_none(), "expected None for item.started, got {:?}", ev);
     }
 }

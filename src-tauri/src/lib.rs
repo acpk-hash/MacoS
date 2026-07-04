@@ -87,7 +87,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(AppState {
             sessions: new_session_map(),
-            adapter: Arc::new(CodexAdapter),
+            adapter: Arc::new(CodexAdapter::default()),
         })
         .invoke_handler(tauri::generate_handler![
             ping,
