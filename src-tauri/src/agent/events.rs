@@ -26,6 +26,10 @@ pub enum AgentEvent {
         diff: Option<String>,
         added: u32,
         removed: u32,
+        /// Snapshot file path (non-git mode only; persisted to DB for cold revert).
+        /// Never sent to the frontend — skipped during serialization.
+        #[serde(skip)]
+        snapshot_path: Option<String>,
     },
     /// A shell command ran to completion (or failure).
     CommandRun {

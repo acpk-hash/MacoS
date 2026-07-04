@@ -82,6 +82,13 @@ impl FileTracker {
             self.snapshot_diff(path, kind).await.unwrap_or_default()
         };
 
+        // For non-git mode, snapshot_path is now populated after snapshot_diff ran.
+        let snapshot_path = if !self.is_git {
+            self.get_snapshot_path(path)
+        } else {
+            None
+        };
+
         // Cache for later retrieval.
         if let Ok(mut map) = self.diffs.lock() {
             map.insert(path.to_string(), (diff_text.clone(), added, removed));
@@ -97,6 +104,7 @@ impl FileTracker {
             },
             added,
             removed,
+            snapshot_path,
         }
     }
 
@@ -117,6 +125,21 @@ impl FileTracker {
     pub fn approve(&self, path: &str) {
         if let Ok(mut set) = self.approved.lock() {
             set.insert(path.to_string());
+        }
+    }
+
+    /// Return the on-disk snapshot path for `path` if a snapshot has been taken
+    /// (non-git mode only).  Used to persist the path in the DB for cold revert.
+    pub fn get_snapshot_path(&self, path: &str) -> Option<String> {
+        let snapshotted = self
+            .snapshotted
+            .lock()
+            .map(|g| g.contains(path))
+            .unwrap_or(false);
+        if snapshotted {
+            Some(self.snapshot_path(path).to_string_lossy().into_owned())
+        } else {
+            None
         }
     }
 

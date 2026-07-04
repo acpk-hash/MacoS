@@ -69,6 +69,10 @@ export interface TaskRow {
   created_at: number
   updated_at: number
   session_count: number
+  /** Distinct file paths changed across all sessions (for Board badges). */
+  file_count: number
+  /** Most recent session id for this task; null for pure todo tasks. */
+  last_session_id: string | null
 }
 
 /** Mirrors Rust's TimelineItem. */

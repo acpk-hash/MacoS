@@ -411,6 +411,7 @@ pub fn parse_line_all(line: &str, session_id: &str) -> Vec<AgentEvent> {
                             diff: None,
                             added: 0,
                             removed: 0,
+                            snapshot_path: None,
                         })
                         .collect()
                 }

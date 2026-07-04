@@ -3,8 +3,8 @@
 /// Database location: `%APPDATA%/agentboard/data.db` (Windows) or
 /// `~/.local/share/agentboard/data.db` (other platforms).
 ///
-/// Schema versioning: `PRAGMA user_version` — current version is 1.
-/// Migrations check the version on open and apply the V1 DDL if needed.
+/// Schema versioning: `PRAGMA user_version` — current version is 2.
+/// Migrations check the version on open and apply DDL incrementally.
 ///
 /// Connection management: single `Mutex<Connection>` — acceptable for
 /// single-user desktop use where all operations complete in microseconds.
@@ -69,6 +69,11 @@ CREATE INDEX IF NOT EXISTS idx_file_changes_session ON file_changes(session_id, 
 CREATE INDEX IF NOT EXISTS idx_tasks_updated       ON tasks(updated_at DESC);
 "#;
 
+/// V2: adds `snapshot_path` column to `file_changes` for cold-revert support.
+const SCHEMA_V2: &str = r#"
+ALTER TABLE file_changes ADD COLUMN snapshot_path TEXT;
+"#;
+
 // ── Public row types ──────────────────────────────────────────────────────────
 
 /// Returned by `list_tasks` — one row per task, ordered by updated_at DESC.
@@ -81,6 +86,10 @@ pub struct TaskRow {
     pub created_at: i64,
     pub updated_at: i64,
     pub session_count: i64,
+    /// Distinct file paths changed across all sessions for this task.
+    pub file_count: i64,
+    /// Most recently started session for this task (None for pure todo tasks).
+    pub last_session_id: Option<String>,
 }
 
 /// A single merged timeline item returned by `get_session_timeline`.
@@ -146,17 +155,34 @@ impl Db {
             conn.execute_batch(SCHEMA_V1)?;
             conn.execute_batch("PRAGMA user_version = 1")?;
         }
+        if version < 2 {
+            conn.execute_batch(SCHEMA_V2)?;
+            conn.execute_batch("PRAGMA user_version = 2")?;
+        }
         Ok(())
     }
 
     // ── Task ──────────────────────────────────────────────────────────────────
 
-    /// Insert a new task record with status `"running"`.
+    /// Insert a new task record with status `"running"` (used when agent_start
+    /// creates both task and session atomically).
     pub fn insert_task(&self, id: &str, title: &str, workdir: &str) -> SqlResult<()> {
         let now = now_ms();
         self.conn.lock().unwrap().execute(
             "INSERT INTO tasks (id, title, status, workdir, created_at, updated_at) \
              VALUES (?1, ?2, 'running', ?3, ?4, ?4)",
+            params![id, title, workdir, now],
+        )?;
+        Ok(())
+    }
+
+    /// Insert a new task with status `"todo"` (created from the Board view before
+    /// being dispatched to an agent).
+    pub fn insert_task_todo(&self, id: &str, title: &str, workdir: &str) -> SqlResult<()> {
+        let now = now_ms();
+        self.conn.lock().unwrap().execute(
+            "INSERT INTO tasks (id, title, status, workdir, created_at, updated_at) \
+             VALUES (?1, ?2, 'todo', ?3, ?4, ?4)",
             params![id, title, workdir, now],
         )?;
         Ok(())
@@ -172,17 +198,112 @@ impl Db {
         Ok(())
     }
 
+    /// Update task title and bump `updated_at`.
+    pub fn update_task_title(&self, task_id: &str, title: &str) -> SqlResult<()> {
+        let now = now_ms();
+        self.conn.lock().unwrap().execute(
+            "UPDATE tasks SET title = ?1, updated_at = ?2 WHERE id = ?3",
+            params![title, now, task_id],
+        )?;
+        Ok(())
+    }
+
+    /// Retrieve the current status string for a task, or None if not found.
+    pub fn get_task_status(&self, task_id: &str) -> SqlResult<Option<String>> {
+        let conn = self.conn.lock().unwrap();
+        match conn.query_row(
+            "SELECT status FROM tasks WHERE id = ?1",
+            params![task_id],
+            |row| row.get(0),
+        ) {
+            Ok(v) => Ok(Some(v)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Validate a manual status transition and apply it.
+    ///
+    /// Allowed manual transitions (via the Board drag-and-drop or API):
+    /// - `awaiting_review` → `done`  (human confirms the work)
+    ///
+    /// All other transitions are rejected with an error message.
+    pub fn set_task_status_validated(
+        &self,
+        task_id: &str,
+        new_status: &str,
+    ) -> Result<(), String> {
+        let current = self
+            .get_task_status(task_id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("任务 {} 不存在", task_id))?;
+
+        let allowed = matches!(
+            (current.as_str(), new_status),
+            ("awaiting_review", "done")
+        );
+
+        if !allowed {
+            return Err(format!(
+                "不允许的状态转换：{} → {}（仅支持 awaiting_review → done）",
+                current, new_status
+            ));
+        }
+
+        self.update_task_status(task_id, new_status)
+            .map_err(|e| e.to_string())
+    }
+
+    /// Delete a task and cascade-delete all dependent records:
+    /// sessions → messages, events, file_changes.
+    pub fn delete_task(&self, task_id: &str) -> SqlResult<()> {
+        let conn = self.conn.lock().unwrap();
+
+        // Collect session ids for this task.
+        let session_ids: Vec<String> = {
+            let mut stmt = conn.prepare("SELECT id FROM sessions WHERE task_id = ?1")?;
+            let ids = stmt.query_map(params![task_id], |row| row.get(0))?
+                .collect::<SqlResult<Vec<_>>>()?;
+            ids
+        };
+
+        // Cascade-delete child records for each session.
+        for sid in &session_ids {
+            conn.execute("DELETE FROM file_changes WHERE session_id = ?1", params![sid])?;
+            conn.execute("DELETE FROM messages    WHERE session_id = ?1", params![sid])?;
+            conn.execute("DELETE FROM events      WHERE session_id = ?1", params![sid])?;
+        }
+
+        conn.execute("DELETE FROM sessions WHERE task_id = ?1", params![task_id])?;
+        conn.execute("DELETE FROM tasks    WHERE id = ?1",      params![task_id])?;
+        Ok(())
+    }
+
     /// Return tasks ordered by `updated_at DESC`, at most 100 rows.
     pub fn list_tasks(&self) -> SqlResult<Vec<TaskRow>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT t.id, t.title, t.status, t.workdir, t.created_at, t.updated_at, \
-                    COUNT(s.id) AS session_count \
-             FROM tasks t \
+            "SELECT \
+               t.id, t.title, t.status, t.workdir, t.created_at, t.updated_at, \
+               COUNT(DISTINCT s.id) AS session_count, \
+               COALESCE(( \
+                   SELECT COUNT(DISTINCT fc.path) \
+                   FROM   file_changes fc \
+                   JOIN   sessions     s2 ON fc.session_id = s2.id \
+                   WHERE  s2.task_id = t.id \
+               ), 0) AS file_count, \
+               ( \
+                   SELECT s3.id \
+                   FROM   sessions s3 \
+                   WHERE  s3.task_id = t.id \
+                   ORDER BY s3.started_at DESC \
+                   LIMIT 1 \
+               ) AS last_session_id \
+             FROM   tasks t \
              LEFT JOIN sessions s ON s.task_id = t.id \
-             GROUP BY t.id \
-             ORDER BY t.updated_at DESC \
-             LIMIT 100",
+             GROUP  BY t.id \
+             ORDER  BY t.updated_at DESC \
+             LIMIT  100",
         )?;
         let rows = stmt.query_map([], |row| {
             Ok(TaskRow {
@@ -193,6 +314,8 @@ impl Db {
                 created_at: row.get(4)?,
                 updated_at: row.get(5)?,
                 session_count: row.get(6)?,
+                file_count: row.get(7)?,
+                last_session_id: row.get(8)?,
             })
         })?;
         rows.collect()
@@ -286,7 +409,10 @@ impl Db {
     // ── File changes ──────────────────────────────────────────────────────────
 
     /// Insert or update a file-change record for `(session_id, path)`.
-    /// On update: overwrites kind/added/removed/diff and bumps ts.
+    ///
+    /// On INSERT: writes all fields including `snapshot_path`.
+    /// On UPDATE: overwrites kind/added/removed/diff/ts but preserves `snapshot_path`
+    ///            (the snapshot is taken once on first touch and must not be overwritten).
     pub fn upsert_file_change(
         &self,
         session_id: &str,
@@ -295,6 +421,7 @@ impl Db {
         added: i64,
         removed: i64,
         diff: Option<&str>,
+        snapshot_path: Option<&str>,
     ) -> SqlResult<()> {
         let now = now_ms();
         let conn = self.conn.lock().unwrap();
@@ -316,12 +443,31 @@ impl Db {
         } else {
             conn.execute(
                 "INSERT INTO file_changes \
-                 (session_id, path, kind, added, removed, diff, state, ts) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'pending', ?7)",
-                params![session_id, path, kind, added, removed, diff, now],
+                 (session_id, path, kind, added, removed, diff, state, snapshot_path, ts) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'pending', ?7, ?8)",
+                params![session_id, path, kind, added, removed, diff, snapshot_path, now],
             )?;
         }
         Ok(())
+    }
+
+    /// Return the snapshot_path stored for `(session_id, path)`, or None.
+    /// Used by the cold-revert path after an app restart.
+    pub fn get_snapshot_path(
+        &self,
+        session_id: &str,
+        path: &str,
+    ) -> SqlResult<Option<String>> {
+        let conn = self.conn.lock().unwrap();
+        match conn.query_row(
+            "SELECT snapshot_path FROM file_changes WHERE session_id = ?1 AND path = ?2",
+            params![session_id, path],
+            |row| row.get::<_, Option<String>>(0),
+        ) {
+            Ok(v) => Ok(v),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e),
+        }
     }
 
     /// Update the review state of a file change (`pending` → `approved` | `reverted`).
@@ -449,7 +595,6 @@ mod tests {
     #[test]
     fn schema_created_on_open() {
         let db = new_db();
-        // list_tasks should return empty without error
         assert!(db.list_tasks().unwrap().is_empty());
     }
 
@@ -498,7 +643,6 @@ mod tests {
         seed_task(&db, "t4");
         seed_session(&db, "s4", "t4");
 
-        // Insert with explicit timestamps via raw SQL so we control ordering.
         {
             let conn = db.conn.lock().unwrap();
             conn.execute(
@@ -538,7 +682,7 @@ mod tests {
         seed_task(&db, "t5");
         seed_session(&db, "s5", "t5");
 
-        db.upsert_file_change("s5", "src/lib.rs", "update", 10, 2, Some("diff…"))
+        db.upsert_file_change("s5", "src/lib.rs", "update", 10, 2, Some("diff…"), None)
             .unwrap();
 
         let tl = db.get_session_timeline("s5").unwrap();
@@ -559,14 +703,17 @@ mod tests {
         seed_task(&db, "t6");
         seed_session(&db, "s6", "t6");
 
-        db.upsert_file_change("s6", "a.rs", "create", 3, 0, None).unwrap();
-        db.upsert_file_change("s6", "a.rs", "update", 7, 2, Some("new diff")).unwrap();
+        db.upsert_file_change("s6", "a.rs", "create", 3, 0, None, Some("/snap/a.rs")).unwrap();
+        db.upsert_file_change("s6", "a.rs", "update", 7, 2, Some("new diff"), None).unwrap();
 
         let tl = db.get_session_timeline("s6").unwrap();
-        // Should still be 1 row (upserted, not duplicated)
         assert_eq!(tl.len(), 1);
         assert_eq!(tl[0].added, Some(7));
         assert_eq!(tl[0].diff.as_deref(), Some("new diff"));
+
+        // snapshot_path should be preserved from the first insert.
+        let snap = db.get_snapshot_path("s6", "a.rs").unwrap();
+        assert_eq!(snap.as_deref(), Some("/snap/a.rs"), "snapshot_path must survive upsert update");
     }
 
     // ── thread_id cold-resume path ────────────────────────────────────────────
@@ -621,14 +768,174 @@ mod tests {
     #[test]
     fn list_tasks_ordered_by_updated_at_desc() {
         let db = new_db();
-        // Insert two tasks; update second one to make it newer
         db.insert_task("older", "Older Task", "/a").unwrap();
         db.insert_task("newer", "Newer Task", "/b").unwrap();
-        // Touch "newer" last
         db.update_task_status("newer", "running").unwrap();
 
         let tasks = db.list_tasks().unwrap();
         assert_eq!(tasks[0].id, "newer", "most recently updated first");
         assert_eq!(tasks[1].id, "older");
+    }
+
+    // ── V2: snapshot_path storage & retrieval ─────────────────────────────────
+
+    #[test]
+    fn migration_v2_snapshot_path_column_exists() {
+        // After open_in_memory(), both V1 and V2 migrations ran.
+        // Inserting with snapshot_path should succeed.
+        let db = new_db();
+        seed_task(&db, "snap_t");
+        seed_session(&db, "snap_s", "snap_t");
+        db.upsert_file_change(
+            "snap_s",
+            "foo.txt",
+            "create",
+            5,
+            0,
+            None,
+            Some("/snapshots/foo.txt"),
+        )
+        .unwrap();
+
+        let snap = db.get_snapshot_path("snap_s", "foo.txt").unwrap();
+        assert_eq!(snap.as_deref(), Some("/snapshots/foo.txt"));
+    }
+
+    #[test]
+    fn old_rows_without_snapshot_path_are_null() {
+        let db = new_db();
+        seed_task(&db, "old_t");
+        seed_session(&db, "old_s", "old_t");
+
+        // Insert via raw SQL without snapshot_path (simulates a V1 row).
+        {
+            let conn = db.conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO file_changes (session_id, path, kind, added, removed, state, ts) \
+                 VALUES ('old_s', 'bar.rs', 'update', 1, 0, 'pending', 1000)",
+                [],
+            )
+            .unwrap();
+        }
+
+        let snap = db.get_snapshot_path("old_s", "bar.rs").unwrap();
+        assert!(snap.is_none(), "V1-style rows must have NULL snapshot_path");
+    }
+
+    // ── todo task creation ────────────────────────────────────────────────────
+
+    #[test]
+    fn insert_task_todo_creates_todo_status() {
+        let db = new_db();
+        db.insert_task_todo("td1", "My Todo Task", "/work").unwrap();
+        let tasks = db.list_tasks().unwrap();
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].status, "todo");
+        assert_eq!(tasks[0].last_session_id, None, "no session yet for todo task");
+    }
+
+    // ── update_task_title ─────────────────────────────────────────────────────
+
+    #[test]
+    fn update_task_title_changes_title() {
+        let db = new_db();
+        db.insert_task_todo("tt1", "Original Title", "/work").unwrap();
+        db.update_task_title("tt1", "Updated Title").unwrap();
+        let tasks = db.list_tasks().unwrap();
+        assert_eq!(tasks[0].title, "Updated Title");
+    }
+
+    // ── delete_task cascade ───────────────────────────────────────────────────
+
+    #[test]
+    fn delete_task_cascades_all_child_records() {
+        let db = new_db();
+        seed_task(&db, "del_t");
+        seed_session(&db, "del_s1", "del_t");
+        seed_session(&db, "del_s2", "del_t");
+        db.insert_message("del_s1", "user", "hi").unwrap();
+        db.upsert_file_change("del_s1", "x.rs", "create", 1, 0, None, None).unwrap();
+        db.insert_event("del_s2", "turn_completed", "{}").unwrap();
+
+        db.delete_task("del_t").unwrap();
+
+        // task should be gone
+        let tasks = db.list_tasks().unwrap();
+        assert!(tasks.is_empty(), "task should be deleted");
+
+        // Verify cascade by attempting to read timeline (should be empty, not error).
+        let tl = db.get_session_timeline("del_s1").unwrap();
+        assert!(tl.is_empty(), "messages and file_changes should be cascade-deleted");
+    }
+
+    // ── state machine: valid transition ──────────────────────────────────────
+
+    #[test]
+    fn status_machine_awaiting_review_to_done_allowed() {
+        let db = new_db();
+        seed_task(&db, "sm1");
+        db.update_task_status("sm1", "awaiting_review").unwrap();
+
+        db.set_task_status_validated("sm1", "done").unwrap();
+
+        let status = db.get_task_status("sm1").unwrap();
+        assert_eq!(status.as_deref(), Some("done"));
+    }
+
+    // ── state machine: invalid transitions ───────────────────────────────────
+
+    #[test]
+    fn status_machine_todo_to_done_rejected() {
+        let db = new_db();
+        db.insert_task_todo("sm2", "T", "/").unwrap();
+        let err = db.set_task_status_validated("sm2", "done").unwrap_err();
+        assert!(err.contains("不允许"), "expected rejection, got: {}", err);
+    }
+
+    #[test]
+    fn status_machine_running_to_done_rejected() {
+        let db = new_db();
+        seed_task(&db, "sm3"); // status = running
+        let err = db.set_task_status_validated("sm3", "done").unwrap_err();
+        assert!(err.contains("不允许"), "expected rejection, got: {}", err);
+    }
+
+    #[test]
+    fn status_machine_nonexistent_task_rejected() {
+        let db = new_db();
+        let err = db.set_task_status_validated("nope", "done").unwrap_err();
+        assert!(err.contains("不存在"), "expected not-found error, got: {}", err);
+    }
+
+    // ── last_session_id populated after dispatch ──────────────────────────────
+
+    #[test]
+    fn list_tasks_returns_last_session_id() {
+        let db = new_db();
+        db.insert_task_todo("task_ls", "Dispatched Task", "/w").unwrap();
+        db.insert_session("sess_ls", "task_ls", "codex").unwrap();
+
+        let tasks = db.list_tasks().unwrap();
+        assert_eq!(
+            tasks[0].last_session_id.as_deref(),
+            Some("sess_ls"),
+            "last_session_id should be the session we just created"
+        );
+    }
+
+    // ── file_count in list_tasks ──────────────────────────────────────────────
+
+    #[test]
+    fn list_tasks_file_count() {
+        let db = new_db();
+        seed_task(&db, "fc_t");
+        seed_session(&db, "fc_s", "fc_t");
+        db.upsert_file_change("fc_s", "a.rs", "create", 1, 0, None, None).unwrap();
+        db.upsert_file_change("fc_s", "b.rs", "create", 2, 0, None, None).unwrap();
+        // Upsert same path again — should not increase count.
+        db.upsert_file_change("fc_s", "a.rs", "update", 3, 1, None, None).unwrap();
+
+        let tasks = db.list_tasks().unwrap();
+        assert_eq!(tasks[0].file_count, 2, "2 distinct paths");
     }
 }

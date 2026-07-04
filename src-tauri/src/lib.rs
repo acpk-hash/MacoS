@@ -24,12 +24,20 @@ struct AppState {
 // ── Tauri commands ────────────────────────────────────────────────────────────
 
 /// Start a new Codex agent session.
-/// The caller-supplied `prompt` is stored as the task title (truncated to 120 chars).
+///
+/// - If `task_id` is `None`: creates a new task (status = running) whose id
+///   equals the session id — the original behaviour, preserving Chat page
+///   session-restore compatibility.
+/// - If `task_id` is `Some(id)`: the task already exists in DB (status = todo);
+///   creates a new session linked to that task, updates task status to `running`,
+///   and returns the new session id.
+///
 /// Returns the session_id the frontend uses for follow-up / cancel calls.
 #[tauri::command]
 async fn agent_start(
     prompt: String,
     workdir: String,
+    task_id: Option<String>,
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<String, String> {
@@ -43,10 +51,23 @@ async fn agent_start(
 
     // Persist task + session + user message BEFORE spawning (avoids FK races).
     let title: String = prompt.chars().take(120).collect();
-    db.insert_task(&session_id, &title, &workdir)
-        .map_err(|e| e.to_string())?;
-    db.insert_session(&session_id, &session_id, "codex")
-        .map_err(|e| e.to_string())?;
+
+    match task_id {
+        None => {
+            // No pre-existing task: create task and session with the same id.
+            db.insert_task(&session_id, &title, &workdir)
+                .map_err(|e| e.to_string())?;
+            db.insert_session(&session_id, &session_id, "codex")
+                .map_err(|e| e.to_string())?;
+        }
+        Some(ref tid) => {
+            // Pre-existing todo task: create a new session linked to it.
+            db.insert_session(&session_id, tid, "codex")
+                .map_err(|e| e.to_string())?;
+            db.update_task_status(tid, "running")
+                .map_err(|e| e.to_string())?;
+        }
+    }
     db.insert_message(&session_id, "user", &prompt)
         .map_err(|e| e.to_string())?;
 
@@ -92,7 +113,6 @@ async fn agent_followup(
     };
 
     if in_memory {
-        // Hot path.
         adapter
             .send_followup(sessions, trackers, session_id, text, emit_fn)
             .await
@@ -134,19 +154,92 @@ async fn agent_cancel(
 
 /// Revert a file to its pre-session state (git checkout or snapshot restore).
 /// Also updates the file-change state in the DB to `"reverted"`.
+///
+/// Hot path: in-memory `FileTracker` handles the revert.
+/// Cold path (after app restart): reads `snapshot_path` from DB and restores
+///   the file directly; if git mode, falls back to `git checkout`; if neither
+///   is available, returns a descriptive error (never silently fails).
 #[tauri::command]
 async fn file_revert(
     session_id: String,
     path: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let tmap = state.trackers.lock().await;
-    if let Some(tracker) = tmap.get(&session_id) {
+    // Clone the tracker Arc so we can release the map lock before awaiting.
+    let tracker_opt = {
+        let tmap = state.trackers.lock().await;
+        tmap.get(&session_id).cloned()
+    };
+
+    if let Some(tracker) = tracker_opt {
         tracker.revert(&path).await.map_err(|e| e.to_string())?;
+    } else {
+        // Cold path: tracker not in memory (app restarted).
+        cold_revert(&state.db, &session_id, &path).await?;
     }
-    drop(tmap);
+
     let _ = state.db.update_file_change_state(&session_id, &path, "reverted");
     Ok(())
+}
+
+/// Cold revert: no in-memory tracker available.
+///
+/// 1. If `snapshot_path` is in DB → restore file from snapshot file.
+///    Error if the snapshot file itself is missing.
+/// 2. If no snapshot in DB → try `git checkout -- <path>` (git mode).
+/// 3. Otherwise → return descriptive error; never silently succeed.
+async fn cold_revert(db: &Db, session_id: &str, path: &str) -> Result<(), String> {
+    let snap_path_str = db
+        .get_snapshot_path(session_id, path)
+        .map_err(|e| e.to_string())?;
+
+    if let Some(snap) = snap_path_str {
+        // Non-git snapshot mode: restore from the snapshot file.
+        let snap_content = tokio::fs::read_to_string(&snap).await.map_err(|_| {
+            format!(
+                "快照文件丢失，无法回滚 {}（快照路径: {}）",
+                path, snap
+            )
+        })?;
+        let abs_path = std::path::PathBuf::from(path);
+        if let Some(parent) = abs_path.parent() {
+            let _ = tokio::fs::create_dir_all(parent).await;
+        }
+        tokio::fs::write(&abs_path, snap_content)
+            .await
+            .map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+
+    // No snapshot in DB: try git-based revert using workdir from DB.
+    let workdir = db
+        .get_session_workdir(session_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "找不到会话工作目录，无法回滚".to_string())?;
+
+    let workdir_path = std::path::PathBuf::from(&workdir);
+    if agent::tracker::check_is_git(&workdir_path).await {
+        let out = tokio::process::Command::new("git")
+            .args(["checkout", "--", path])
+            .current_dir(&workdir_path)
+            .output()
+            .await
+            .map_err(|e| e.to_string())?;
+        if !out.status.success() {
+            let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
+            return Err(if stderr.is_empty() {
+                "git checkout 失败".to_string()
+            } else {
+                stderr
+            });
+        }
+        Ok(())
+    } else {
+        Err(format!(
+            "无法回滚 {}：应用重启后快照已丢失，且工作目录不是 git 仓库",
+            path
+        ))
+    }
 }
 
 /// Mark a file as approved (accounting only; does not touch the file).
@@ -167,7 +260,7 @@ async fn file_approve(
 }
 
 /// Return all tasks ordered by `updated_at DESC` (max 100).
-/// Called by the frontend on startup to populate the session list.
+/// Called by the frontend on startup to populate the session list and board.
 #[tauri::command]
 async fn list_tasks(state: State<'_, AppState>) -> Result<Vec<TaskRow>, String> {
     state.db.list_tasks().map_err(|e| e.to_string())
@@ -184,6 +277,60 @@ async fn get_session_timeline(
         .db
         .get_session_timeline(&session_id)
         .map_err(|e| e.to_string())
+}
+
+/// Create a new task in `todo` status without starting an agent session.
+/// Used by the Board's "新任务" input.  Returns the new task id.
+#[tauri::command]
+async fn task_create(
+    title: String,
+    workdir: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let id = uuid::Uuid::new_v4().to_string();
+    state
+        .db
+        .insert_task_todo(&id, &title, &workdir)
+        .map_err(|e| e.to_string())?;
+    Ok(id)
+}
+
+/// Delete a task and cascade-delete all its sessions, messages, events, and
+/// file_changes.  Only todo tasks should be deleted from the UI.
+#[tauri::command]
+async fn task_delete(
+    task_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.db.delete_task(&task_id).map_err(|e| e.to_string())
+}
+
+/// Update the title of a todo task.
+#[tauri::command]
+async fn task_update_title(
+    task_id: String,
+    title: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state
+        .db
+        .update_task_title(&task_id, &title)
+        .map_err(|e| e.to_string())
+}
+
+/// Manually transition a task's status following the validated state machine.
+///
+/// Allowed transitions:
+/// - `awaiting_review` → `done` (human confirms the work via Board drag-drop)
+///
+/// All other transitions are rejected with a descriptive error.
+#[tauri::command]
+async fn task_set_status(
+    task_id: String,
+    status: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.db.set_task_status_validated(&task_id, &status)
 }
 
 /// Open a system directory-picker dialog and return the selected path.
@@ -224,6 +371,10 @@ pub fn run() {
             pick_directory,
             list_tasks,
             get_session_timeline,
+            task_create,
+            task_delete,
+            task_update_title,
+            task_set_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -254,7 +405,7 @@ fn make_emit_fn_with_db(
             AgentEvent::AssistantMessage { text } => {
                 let _ = db.insert_message(sid, "assistant", text);
             }
-            AgentEvent::FileEdit { path, kind, diff, added, removed } => {
+            AgentEvent::FileEdit { path, kind, diff, added, removed, snapshot_path } => {
                 let _ = db.upsert_file_change(
                     sid,
                     path,
@@ -262,6 +413,7 @@ fn make_emit_fn_with_db(
                     *added as i64,
                     *removed as i64,
                     diff.as_deref(),
+                    snapshot_path.as_deref(),
                 );
             }
             AgentEvent::TurnCompleted {} => {

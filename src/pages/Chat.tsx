@@ -506,7 +506,7 @@ function SessionListPanel({
           <p className="text-gray-600 text-xs text-center mt-4 px-2 select-none">暂无历史</p>
         )}
         {tasks.map((task) => {
-          const isActive = task.id === activeSessionId
+          const isActive = (task.last_session_id ?? task.id) === activeSessionId
           return (
             <button
               key={task.id}
@@ -590,13 +590,16 @@ export default function Chat() {
   // ── Session selection ──────────────────────────────────────────────────────
 
   const handleSelectSession = async (task: TaskRow) => {
+    // Use the most recent session id; fall back to task.id for tasks created
+    // the old way (where task.id === session.id).
+    const sessionId = task.last_session_id ?? task.id
     // If already loaded in store, just switch to it.
-    if (sessions[task.id]) {
-      setActiveSession(task.id)
+    if (sessions[sessionId]) {
+      setActiveSession(sessionId)
       return
     }
     // Otherwise load from DB timeline.
-    await restoreSession(task.id, task.status)
+    await restoreSession(sessionId, task.status)
     // After restore, also update workdir input to match the session's workdir.
     setWorkdir(task.workdir)
   }
