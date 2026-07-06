@@ -1,5 +1,6 @@
 pub mod agent;
 pub mod db;
+pub mod engine_config;
 pub mod feishu;
 pub mod mcp;
 
@@ -406,6 +407,41 @@ async fn settings_set(
     state.db.settings_set(&key, &value).map_err(|e| e.to_string())
 }
 
+// ── Engine API configuration ──────────────────────────────────────────────────
+
+/// Read the engine configuration from config.toml + auth.json.
+///
+/// Returns provider settings and a key mask; the plaintext API key is never
+/// returned to the frontend.
+#[tauri::command]
+async fn engine_config_get() -> Result<engine_config::EngineConfigInfo, String> {
+    let config_path = mcp::codex_config_path();
+    let auth_path = engine_config::auth_json_path();
+    engine_config::engine_config_get(&config_path, &auth_path)
+}
+
+/// Persist engine configuration to config.toml and (optionally) auth.json.
+///
+/// Security guarantees:
+/// - API key is NOT stored in SQLite (only written to auth.json on disk).
+/// - API key is NOT logged anywhere (neither Rust nor frontend should log it).
+/// - API key is NOT returned to the frontend (use `engine_config_get` for mask).
+#[tauri::command]
+async fn engine_config_set(cfg: engine_config::EngineConfigInput) -> Result<(), String> {
+    let config_path = mcp::codex_config_path();
+    let auth_path = engine_config::auth_json_path();
+    engine_config::engine_config_set(&config_path, &auth_path, cfg)
+}
+
+/// Run a one-shot `codex exec` connectivity test.
+///
+/// Runs with `model_reasoning_effort=low` in a throwaway temp directory.
+/// Times out after 30 seconds.
+#[tauri::command]
+async fn engine_config_test() -> Result<engine_config::TestResult, String> {
+    engine_config::engine_config_test().await
+}
+
 // ── Engine detection ──────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -551,6 +587,9 @@ pub fn run() {
             settings_get_all,
             settings_set,
             detect_engines,
+            engine_config_get,
+            engine_config_set,
+            engine_config_test,
             mcp_list,
             mcp_add,
             mcp_remove,

@@ -25,9 +25,278 @@ interface McpServer {
   env: Record<string, string>
 }
 
+interface EngineConfigInfo {
+  provider_name: string
+  base_url: string
+  wire_api: string
+  model: string
+  model_reasoning_effort: string
+  has_api_key: boolean
+  key_mask: string
+}
+
+interface TestResult {
+  success: boolean
+  message: string
+  elapsed_ms: number
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const REASONING_EFFORT_OPTIONS = ['low', 'medium', 'high', 'xhigh']
+
+// ── Model Service Sub-section ─────────────────────────────────────────────────
+
+const WIRE_API_OPTIONS = ['responses', 'chat']
+
+function ModelServiceSection() {
+  const [cfg, setCfg] = useState<EngineConfigInfo | null>(null)
+  const [form, setForm] = useState({
+    provider_name: '',
+    base_url: '',
+    wire_api: 'responses',
+    model: '',
+    model_reasoning_effort: 'xhigh',
+    api_key: '',
+  })
+  const [saving, setSaving] = useState(false)
+  const [saveResult, setSaveResult] = useState<string | null>(null)
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<TestResult | null>(null)
+
+  const loadCfg = useCallback(async () => {
+    try {
+      const info = await tauriInvoke<EngineConfigInfo>('engine_config_get')
+      setCfg(info)
+      setForm((f) => ({
+        ...f,
+        provider_name: info.provider_name,
+        base_url: info.base_url,
+        wire_api: info.wire_api,
+        model: info.model,
+        model_reasoning_effort: info.model_reasoning_effort,
+        api_key: '', // never pre-fill; placeholder shows mask
+      }))
+    } catch (e) {
+      console.error('engine_config_get failed:', e)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadCfg()
+  }, [loadCfg])
+
+  const handleSave = async () => {
+    setSaving(true)
+    setSaveResult(null)
+    try {
+      await tauriInvoke('engine_config_set', {
+        cfg: {
+          provider_name: form.provider_name,
+          base_url: form.base_url,
+          wire_api: form.wire_api,
+          model: form.model,
+          model_reasoning_effort: form.model_reasoning_effort,
+          // Empty string → leave auth.json untouched (Rust trims and checks)
+          api_key: form.api_key || null,
+        },
+      })
+      // Also sync reasoning_effort to SQLite so agent sessions pick it up.
+      await tauriInvoke('settings_set', {
+        key: 'reasoning_effort',
+        value: form.model_reasoning_effort,
+      })
+      setSaveResult('已保存')
+      // Refresh mask display.
+      await loadCfg()
+    } catch (e) {
+      setSaveResult(`保存失败: ${String(e)}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleTest = async () => {
+    setTesting(true)
+    setTestResult(null)
+    try {
+      const result = await tauriInvoke<TestResult>('engine_config_test')
+      setTestResult(result)
+    } catch (e) {
+      setTestResult({ success: false, message: String(e), elapsed_ms: 0 })
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  const keyPlaceholder =
+    cfg?.has_api_key ? `已设置（${cfg.key_mask}）` : '输入 API Key…'
+
+  return (
+    <div className="bg-gray-900 border border-gray-700 rounded-xl p-4 space-y-4">
+      <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+        模型服务
+      </h3>
+      <p className="text-xs text-gray-500 -mt-2">
+        写入 <code className="text-gray-400">~/.codex/config.toml</code> 和{' '}
+        <code className="text-gray-400">auth.json</code>；修改对新会话生效，写入前自动备份。
+      </p>
+
+      <div className="space-y-3">
+        {/* Provider name */}
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">服务商名称 (model_provider)</label>
+          <input
+            type="text"
+            value={form.provider_name}
+            onChange={(e) => setForm((f) => ({ ...f, provider_name: e.target.value }))}
+            placeholder="OpenAI"
+            className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm
+                       text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500
+                       transition-colors"
+          />
+        </div>
+
+        {/* base_url */}
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">Base URL</label>
+          <input
+            type="text"
+            value={form.base_url}
+            onChange={(e) => setForm((f) => ({ ...f, base_url: e.target.value }))}
+            placeholder="https://api.openai.com"
+            className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm
+                       text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500
+                       transition-colors"
+          />
+        </div>
+
+        {/* wire_api */}
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">Wire API</label>
+          <select
+            value={form.wire_api}
+            onChange={(e) => setForm((f) => ({ ...f, wire_api: e.target.value }))}
+            className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm
+                       text-gray-200 focus:outline-none focus:border-blue-500 transition-colors"
+          >
+            {WIRE_API_OPTIONS.map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* model */}
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">模型名称 (model)</label>
+          <input
+            type="text"
+            value={form.model}
+            onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}
+            placeholder="gpt-5.5"
+            className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm
+                       text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500
+                       transition-colors"
+          />
+        </div>
+
+        {/* reasoning effort — reuses REASONING_EFFORT_OPTIONS, linked to the
+            existing "推理深度" dropdown via settings_set on save */}
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">
+            推理力度 (model_reasoning_effort)
+          </label>
+          <select
+            value={form.model_reasoning_effort}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, model_reasoning_effort: e.target.value }))
+            }
+            className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm
+                       text-gray-200 focus:outline-none focus:border-blue-500 transition-colors"
+          >
+            {REASONING_EFFORT_OPTIONS.map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-gray-600 mt-0.5">
+            保存时同步写入 config.toml 和应用设置
+          </p>
+        </div>
+
+        {/* API Key */}
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">
+            API Key{' '}
+            {cfg?.has_api_key && (
+              <span className="text-green-600 ml-1">（已设置）</span>
+            )}
+          </label>
+          <input
+            type="password"
+            value={form.api_key}
+            onChange={(e) => setForm((f) => ({ ...f, api_key: e.target.value }))}
+            placeholder={keyPlaceholder}
+            autoComplete="new-password"
+            className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm
+                       text-gray-200 placeholder-gray-500 focus:outline-none focus:border-blue-500
+                       transition-colors"
+          />
+          <p className="text-xs text-gray-600 mt-0.5">
+            留空=不修改；写入 auth.json（无 BOM UTF-8，不入数据库）
+          </p>
+        </div>
+      </div>
+
+      {/* Action buttons */}
+      <div className="flex gap-2 pt-1">
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700
+                     text-white text-sm rounded-lg transition-colors"
+        >
+          {saving ? '保存中…' : '保存配置'}
+        </button>
+        <button
+          onClick={handleTest}
+          disabled={testing}
+          className="px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800
+                     text-gray-200 text-sm rounded-lg transition-colors"
+        >
+          {testing ? '测试中…' : '测试连通'}
+        </button>
+      </div>
+
+      {/* Save result */}
+      {saveResult && (
+        <p
+          className={`text-xs ${
+            saveResult.startsWith('保存失败') ? 'text-red-400' : 'text-green-400'
+          }`}
+        >
+          {saveResult}
+        </p>
+      )}
+
+      {/* Test result */}
+      {testResult && (
+        <div
+          className={`text-xs rounded-lg p-3 font-mono whitespace-pre-wrap break-words ${
+            testResult.success
+              ? 'bg-green-900/30 text-green-300'
+              : 'bg-red-900/30 text-red-300'
+          }`}
+        >
+          {testResult.message}
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ── Engine Section ────────────────────────────────────────────────────────────
 
@@ -254,6 +523,9 @@ function EngineSection() {
           <p className="text-xs text-blue-400 mt-1">已保存</p>
         )}
       </div>
+
+      {/* Model service config (config.toml + auth.json) */}
+      <ModelServiceSection />
     </div>
   )
 }
