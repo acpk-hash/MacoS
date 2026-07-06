@@ -579,7 +579,16 @@ fn wecom_recent_logs() -> Vec<String> {
 /// Safe to call when already running — it will restart.
 #[tauri::command]
 async fn bridge_start(state: State<'_, AppState>, app: AppHandle) -> Result<(), String> {
-    state.bridge.start(state.db.clone(), app).await
+    state
+        .bridge
+        .start(
+            state.db.clone(),
+            state.sessions.clone(),
+            state.trackers.clone(),
+            state.adapter.clone(),
+            app,
+        )
+        .await
 }
 
 /// Stop the Feishu inbound bridge.
@@ -648,7 +657,17 @@ pub fn run() {
                     settings.get("bridge_autostart").map(|s| s == "true").unwrap_or(false);
                 if feishu_enabled && autostart {
                     let state = handle.state::<AppState>();
-                    if let Err(e) = state.bridge.start(db_clone, handle.clone()).await {
+                    if let Err(e) = state
+                        .bridge
+                        .start(
+                            db_clone,
+                            state.sessions.clone(),
+                            state.trackers.clone(),
+                            state.adapter.clone(),
+                            handle.clone(),
+                        )
+                        .await
+                    {
                         eprintln!("[bridge] 自动启动失败: {e}");
                     }
                 }
@@ -697,7 +716,7 @@ pub fn run() {
 /// Build an emit closure that:
 /// 1. Persists the event (and derived records) to the DB.
 /// 2. Forwards the envelope to the frontend via Tauri's event system.
-fn make_emit_fn_with_db(
+pub(crate) fn make_emit_fn_with_db(
     app: AppHandle,
     db: Arc<Db>,
 ) -> impl Fn(AgentEventEnvelope) + Send + Sync + 'static {
@@ -738,6 +757,10 @@ fn make_emit_fn_with_db(
                     let started_at = db.get_session_started_at(sid).unwrap_or(None);
                     let file_count = db.get_session_file_count(sid).unwrap_or(0);
                     let tokens = db.get_last_usage_tokens(sid).unwrap_or(None);
+                    // Resolve the task_id so the accept button can target it.
+                    let task_id = db.get_task_id_for_session(sid)
+                        .unwrap_or(None)
+                        .unwrap_or_else(|| sid.to_string());
 
                     let now_ms = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
@@ -760,6 +783,7 @@ fn make_emit_fn_with_db(
                             file_count,
                             input_tok,
                             output_tok,
+                            &task_id,
                         );
                         feishu::spawn_send(cfg, card, format!("完成: {}", title));
                     }

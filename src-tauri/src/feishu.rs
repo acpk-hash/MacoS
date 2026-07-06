@@ -175,7 +175,8 @@ pub fn load_config(settings: &HashMap<String, String>) -> Option<FeishuConfig> {
 /// 任务完成卡片（绿色 header）。
 ///
 /// Fields: 任务标题、工作目录、耗时、文件改动数、token 用量，
-/// note 提示"回到电脑查看 diff 并验收"。
+/// note 提示"回到电脑查看 diff 并验收"；底部附【✅ 验收通过】按钮。
+/// `task_id` 写入按钮 value，供飞书卡片回调路由使用。
 pub fn card_completed(
     title: &str,
     workdir: &str,
@@ -183,6 +184,7 @@ pub fn card_completed(
     file_count: i64,
     input_tokens: u64,
     output_tokens: u64,
+    task_id: &str,
 ) -> serde_json::Value {
     let elapsed_str = fmt_elapsed(elapsed_secs);
     json!({
@@ -234,6 +236,17 @@ pub fn card_completed(
                 "elements": [
                     { "tag": "plain_text", "content": "回到电脑查看 diff 并验收" }
                 ]
+            },
+            {
+                "tag": "action",
+                "actions": [
+                    {
+                        "tag": "button",
+                        "text": { "tag": "plain_text", "content": "✅ 验收通过" },
+                        "type": "primary",
+                        "value": { "action": "accept", "task_id": task_id }
+                    }
+                ]
             }
         ]
     })
@@ -261,8 +274,9 @@ pub fn card_failed(title: &str, error_summary: &str) -> serde_json::Value {
 
 /// 已建卡片（蓝色 header）——飞书指派通道创建任务后回复给来源 chat。
 ///
-/// 正文显示任务标题，note 提示打开 AgentBoard 派发。
-pub fn card_task_created(title: &str) -> serde_json::Value {
+/// 正文显示任务标题，底部附【🚀 立即派发】按钮。
+/// `task_id` 写入按钮 value，供飞书卡片回调路由使用。
+pub fn card_task_created(title: &str, task_id: &str) -> serde_json::Value {
     json!({
         "header": {
             "title": { "tag": "plain_text", "content": "📋 已创建任务" },
@@ -277,11 +291,13 @@ pub fn card_task_created(title: &str) -> serde_json::Value {
                 }
             },
             {
-                "tag": "note",
-                "elements": [
+                "tag": "action",
+                "actions": [
                     {
-                        "tag": "plain_text",
-                        "content": "打开 AgentBoard 派发，或等待后续版本卡片按钮直接派发"
+                        "tag": "button",
+                        "text": { "tag": "plain_text", "content": "🚀 立即派发" },
+                        "type": "primary",
+                        "value": { "action": "dispatch", "task_id": task_id }
                     }
                 ]
             }
@@ -400,23 +416,53 @@ mod tests {
 
     #[test]
     fn card_completed_green_header_and_structure() {
-        let card = card_completed("测试任务", "/tmp/work", 125, 3, 1000, 500);
+        let card = card_completed("测试任务", "/tmp/work", 125, 3, 1000, 500, "task-001");
         assert_eq!(card["header"]["template"].as_str(), Some("green"));
         let title = card["header"]["title"]["content"].as_str().unwrap();
         assert!(title.contains("测试任务"), "title should include task name");
         let elements = card["elements"].as_array().unwrap();
-        assert_eq!(elements.len(), 3, "completed card has 2 divs + 1 note");
-        assert_eq!(elements[2]["tag"].as_str(), Some("note"), "last element is note");
+        assert_eq!(elements.len(), 4, "completed card has 2 divs + note + action button");
+        assert_eq!(elements[2]["tag"].as_str(), Some("note"), "third element is note");
         let note_text = elements[2]["elements"][0]["content"].as_str().unwrap();
         assert!(note_text.contains("diff"), "note should reference diff");
     }
 
     #[test]
     fn card_completed_elapsed_formats_minutes() {
-        let card = card_completed("T", "/", 90, 0, 0, 0);
+        let card = card_completed("T", "/", 90, 0, 0, 0, "t-elapsed");
         let fields = card["elements"][0]["fields"].as_array().unwrap();
         let elapsed_content = fields[1]["text"]["content"].as_str().unwrap();
         assert!(elapsed_content.contains("分"), "90s should show minutes");
+    }
+
+    #[test]
+    fn card_completed_has_accept_button() {
+        let card = card_completed("验收测试", "/work", 0, 0, 0, 0, "task-accept-123");
+        let elements = card["elements"].as_array().unwrap();
+        let action = elements.last().unwrap();
+        assert_eq!(action["tag"].as_str(), Some("action"), "last element should be action group");
+        let btn = &action["actions"][0];
+        assert_eq!(btn["tag"].as_str(), Some("button"));
+        assert_eq!(btn["value"]["action"].as_str(), Some("accept"), "button action should be accept");
+        assert_eq!(btn["value"]["task_id"].as_str(), Some("task-accept-123"), "task_id should match");
+        let btn_text = btn["text"]["content"].as_str().unwrap();
+        assert!(btn_text.contains("验收"), "button text should mention 验收");
+    }
+
+    #[test]
+    fn card_task_created_has_dispatch_button() {
+        let card = card_task_created("派发测试任务", "task-dispatch-456");
+        assert_eq!(card["header"]["template"].as_str(), Some("blue"));
+        let elements = card["elements"].as_array().unwrap();
+        assert_eq!(elements.len(), 2, "created card has div + action");
+        let action = elements.last().unwrap();
+        assert_eq!(action["tag"].as_str(), Some("action"), "last element should be action group");
+        let btn = &action["actions"][0];
+        assert_eq!(btn["tag"].as_str(), Some("button"));
+        assert_eq!(btn["value"]["action"].as_str(), Some("dispatch"), "button action should be dispatch");
+        assert_eq!(btn["value"]["task_id"].as_str(), Some("task-dispatch-456"), "task_id should match");
+        let btn_text = btn["text"]["content"].as_str().unwrap();
+        assert!(btn_text.contains("派发"), "button text should mention 派发");
     }
 
     #[test]

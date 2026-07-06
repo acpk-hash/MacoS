@@ -235,6 +235,38 @@ impl Db {
         }
     }
 
+    /// Return the task_id for a session row.
+    pub fn get_task_id_for_session(&self, session_id: &str) -> SqlResult<Option<String>> {
+        let conn = self.conn.lock().unwrap();
+        match conn.query_row(
+            "SELECT task_id FROM sessions WHERE id = ?1",
+            params![session_id],
+            |row| row.get::<_, String>(0),
+        ) {
+            Ok(v) => Ok(Some(v)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Return `(title, workdir, status)` for a task by its id.
+    pub fn get_task_by_id(&self, task_id: &str) -> SqlResult<Option<(String, String, String)>> {
+        let conn = self.conn.lock().unwrap();
+        match conn.query_row(
+            "SELECT title, workdir, status FROM tasks WHERE id = ?1",
+            params![task_id],
+            |row| Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            )),
+        ) {
+            Ok(v) => Ok(Some(v)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
     /// Validate a manual status transition and apply it.
     ///
     /// Allowed manual transitions (via the Board drag-and-drop or API):

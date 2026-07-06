@@ -1,8 +1,9 @@
 //! 飞书指派通道：本地 HTTP 端点 + Node sidecar 生命周期管理
 //!
 //! ## HTTP 服务器选型：手写 tokio 极简解析器（非 axum）
-//! 理由：仅一个路由 POST /feishu/inbound，引入 axum/hyper 会增加约 20 个传递依赖
-//! 且无显著收益；手写解析器 < 100 行，Bearer token 校验 + JSON 解析已覆盖安全风险。
+//! 理由：仅两个路由 POST /feishu/inbound 和 POST /feishu/card-action，
+//! 引入 axum/hyper 会增加约 20 个传递依赖且无显著收益；
+//! 手写解析器 < 200 行，Bearer token 校验 + JSON 解析已覆盖安全风险。
 //!
 //! ## Node sidecar 生命周期状态机
 //! ```text
@@ -27,6 +28,7 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::sync::{watch, Mutex};
 
+use crate::agent::codex::{AgentAdapter, CodexAdapter, SessionMap, TrackerMap};
 use crate::db::Db;
 use crate::feishu;
 
@@ -111,7 +113,14 @@ impl BridgeManager {
     }
 
     /// Start (or restart) the bridge. Idempotent if called while already running.
-    pub async fn start(&self, db: Arc<Db>, app: AppHandle) -> Result<(), String> {
+    pub async fn start(
+        &self,
+        db: Arc<Db>,
+        sessions: SessionMap,
+        trackers: TrackerMap,
+        adapter: Arc<CodexAdapter>,
+        app: AppHandle,
+    ) -> Result<(), String> {
         let mut g = self.inner.lock().await;
 
         // Cancel any existing supervisor/HTTP server.
@@ -144,7 +153,17 @@ impl BridgeManager {
 
         // Spawn HTTP server (lives for the full bridge session).
         tokio::spawn(async move {
-            run_http_server(listener, token_http, db_http, app_http, http_stop_rx).await;
+            run_http_server(
+                listener,
+                token_http,
+                db_http,
+                sessions,
+                trackers,
+                adapter,
+                app_http,
+                http_stop_rx,
+            )
+            .await;
         });
 
         // Spawn supervisor (manages node sidecar lifecycle + restarts).
@@ -183,10 +202,14 @@ impl BridgeManager {
 
 // ── HTTP server ───────────────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 async fn run_http_server(
     listener: TcpListener,
     token: String,
     db: Arc<Db>,
+    sessions: SessionMap,
+    trackers: TrackerMap,
+    adapter: Arc<CodexAdapter>,
     app: AppHandle,
     mut stop_rx: watch::Receiver<bool>,
 ) {
@@ -197,9 +220,16 @@ async fn run_http_server(
                     Ok((stream, _peer)) => {
                         let tok = token.clone();
                         let db2 = db.clone();
+                        let sessions2 = sessions.clone();
+                        let trackers2 = trackers.clone();
+                        let adapter2 = adapter.clone();
                         let app2 = app.clone();
                         tokio::spawn(async move {
-                            if let Err(e) = handle_inbound(stream, &tok, &db2, &app2).await {
+                            if let Err(e) = handle_connection(
+                                stream, &tok, &db2, &sessions2, &trackers2, &adapter2, &app2,
+                            )
+                            .await
+                            {
                                 eprintln!("[bridge-http] connection error: {e}");
                             }
                         });
@@ -214,25 +244,15 @@ async fn run_http_server(
     }
 }
 
-// ── Minimal HTTP handler ──────────────────────────────────────────────────────
+// ── Connection router ─────────────────────────────────────────────────────────
 
-#[derive(serde::Deserialize)]
-struct InboundPayload {
-    text: String,
-    #[serde(default)]
-    #[allow(dead_code)]
-    sender_open_id: String,
-    #[serde(default)]
-    chat_id: String,
-    #[serde(default)]
-    #[allow(dead_code)]
-    message_id: String,
-}
-
-async fn handle_inbound(
+async fn handle_connection(
     mut stream: tokio::net::TcpStream,
     token: &str,
     db: &Arc<Db>,
+    sessions: &SessionMap,
+    trackers: &TrackerMap,
+    adapter: &Arc<CodexAdapter>,
     app: &AppHandle,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // ── Read until end-of-headers ─────────────────────────────────────────────
@@ -258,9 +278,12 @@ async fn handle_inbound(
 
     let header_str = std::str::from_utf8(&buf[..header_end]).unwrap_or("");
 
-    // ── Validate method + path ────────────────────────────────────────────────
+    // ── Route on method + path ────────────────────────────────────────────────
     let first_line = header_str.lines().next().unwrap_or("");
-    if !first_line.starts_with("POST /feishu/inbound") {
+    let is_inbound = first_line.starts_with("POST /feishu/inbound");
+    let is_card_action = first_line.starts_with("POST /feishu/card-action");
+
+    if !is_inbound && !is_card_action {
         write_response(&mut stream, 404, "Not Found").await?;
         return Ok(());
     }
@@ -296,9 +319,40 @@ async fn handle_inbound(
         }
         body.extend_from_slice(&tmp[..n]);
     }
+    let body_slice = &body[..content_length.min(body.len())];
 
+    if is_inbound {
+        handle_inbound(stream, token, header_str, body_slice, db, app).await
+    } else {
+        handle_card_action(stream, body_slice, db, sessions, trackers, adapter, app).await
+    }
+}
+
+// ── /feishu/inbound handler ───────────────────────────────────────────────────
+
+#[derive(serde::Deserialize)]
+struct InboundPayload {
+    text: String,
+    #[serde(default)]
+    #[allow(dead_code)]
+    sender_open_id: String,
+    #[serde(default)]
+    chat_id: String,
+    #[serde(default)]
+    #[allow(dead_code)]
+    message_id: String,
+}
+
+async fn handle_inbound(
+    mut stream: tokio::net::TcpStream,
+    _token: &str,
+    _header_str: &str,
+    body_slice: &[u8],
+    db: &Arc<Db>,
+    app: &AppHandle,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // ── Parse JSON payload ────────────────────────────────────────────────────
-    let payload: InboundPayload = match serde_json::from_slice(&body[..content_length.min(body.len())]) {
+    let payload: InboundPayload = match serde_json::from_slice(body_slice) {
         Ok(p) => p,
         Err(e) => {
             write_response(&mut stream, 400, "Bad Request").await?;
@@ -329,6 +383,7 @@ async fn handle_inbound(
     // ── Async confirmation card (fire-and-forget) ─────────────────────────────
     let chat_id = payload.chat_id.clone();
     let title2 = title.clone();
+    let task_id2 = task_id.clone();
     let db2 = db.clone();
     if !chat_id.is_empty() {
         tokio::spawn(async move {
@@ -342,7 +397,7 @@ async fn handle_inbound(
                         receive_id_type: "chat_id".to_string(),
                         receive_id: chat_id,
                     };
-                    let card = feishu::card_task_created(&title2);
+                    let card = feishu::card_task_created(&title2, &task_id2);
                     if let Err(e) = feishu::send_card(&cfg, card).await {
                         eprintln!("[bridge-http] 回复确认卡片失败: {e}");
                     }
@@ -351,6 +406,219 @@ async fn handle_inbound(
         });
     }
 
+    Ok(())
+}
+
+// ── /feishu/card-action handler ───────────────────────────────────────────────
+
+#[derive(serde::Deserialize)]
+struct CardActionPayload {
+    action: String,
+    task_id: String,
+    #[serde(default)]
+    #[allow(dead_code)]
+    operator_open_id: String,
+}
+
+#[derive(serde::Serialize)]
+struct CardActionResponse {
+    toast: String,
+    ok: bool,
+}
+
+/// Pure validation + state-machine logic for a card action.
+///
+/// Returns `Ok((toast, ok_flag))` — callers should always return HTTP 200
+/// and embed these in the response body.  Only actual protocol errors
+/// (bad JSON, missing task) return `Err`.
+pub(crate) async fn validate_card_action(
+    action: &str,
+    task_id: &str,
+    db: &Arc<Db>,
+) -> Result<(String, bool), String> {
+    match action {
+        "dispatch" => {
+            let (title, workdir, status) = db
+                .get_task_by_id(task_id)
+                .map_err(|e| e.to_string())?
+                .ok_or_else(|| format!("任务 {} 不存在", task_id))?;
+
+            if status != "todo" {
+                return Ok((
+                    format!("任务已在进行中（当前状态：{}）", status),
+                    false,
+                ));
+            }
+            if workdir.trim().is_empty() {
+                return Ok((
+                    "未设置工作目录，请在电脑上派发".to_string(),
+                    false,
+                ));
+            }
+
+            // Return the title and workdir for the caller to use.
+            // We embed them in the Ok payload via a sentinel string so the
+            // caller doesn't need a separate DB query.
+            let _ = title; // validated; caller re-fetches from DB
+            Ok(("ok:dispatch".to_string(), true))
+        }
+        "accept" => {
+            let (_title, _workdir, status) = db
+                .get_task_by_id(task_id)
+                .map_err(|e| e.to_string())?
+                .ok_or_else(|| format!("任务 {} 不存在", task_id))?;
+
+            if status != "awaiting_review" {
+                return Ok((
+                    format!("任务不在待验收状态（当前状态：{}）", status),
+                    false,
+                ));
+            }
+            Ok(("ok:accept".to_string(), true))
+        }
+        _ => Err(format!("未知操作：{}", action)),
+    }
+}
+
+async fn handle_card_action(
+    mut stream: tokio::net::TcpStream,
+    body_slice: &[u8],
+    db: &Arc<Db>,
+    sessions: &SessionMap,
+    trackers: &TrackerMap,
+    adapter: &Arc<CodexAdapter>,
+    app: &AppHandle,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let payload: CardActionPayload = match serde_json::from_slice(body_slice) {
+        Ok(p) => p,
+        Err(_) => {
+            write_response(&mut stream, 400, "Bad Request").await?;
+            return Ok(());
+        }
+    };
+
+    if payload.action.is_empty() || payload.task_id.is_empty() {
+        let resp = serde_json::to_string(&CardActionResponse {
+            toast: "请求缺少 action 或 task_id 字段".to_string(),
+            ok: false,
+        })
+        .unwrap_or_default();
+        write_json_response(&mut stream, 400, "Bad Request", &resp).await?;
+        return Ok(());
+    }
+
+    // Validate action name before touching DB.
+    if payload.action != "dispatch" && payload.action != "accept" {
+        let resp = serde_json::to_string(&CardActionResponse {
+            toast: format!("未知操作：{}", payload.action),
+            ok: false,
+        })
+        .unwrap_or_default();
+        write_json_response(&mut stream, 400, "Bad Request", &resp).await?;
+        return Ok(());
+    }
+
+    let (toast, ok) = match validate_card_action(&payload.action, &payload.task_id, db).await {
+        Ok((sentinel, true)) => {
+            // Sentinel "ok:dispatch" / "ok:accept" — proceed with side effects.
+            match sentinel.as_str() {
+                "ok:dispatch" => {
+                    match do_dispatch(&payload.task_id, db, sessions, trackers, adapter, app).await
+                    {
+                        Ok(()) => ("已派发 ✔".to_string(), true),
+                        Err(e) => {
+                            eprintln!("[bridge-card] dispatch 失败: {e}");
+                            (format!("派发失败：{e}"), false)
+                        }
+                    }
+                }
+                "ok:accept" => {
+                    match do_accept(&payload.task_id, db, app).await {
+                        Ok(()) => ("已验收 ✔".to_string(), true),
+                        Err(e) => {
+                            eprintln!("[bridge-card] accept 失败: {e}");
+                            (format!("验收失败：{e}"), false)
+                        }
+                    }
+                }
+                _ => unreachable!(),
+            }
+        }
+        Ok((msg, false)) => (msg, false),
+        Err(e) => {
+            eprintln!("[bridge-card] 校验失败: {e}");
+            (e, false)
+        }
+    };
+
+    let resp = serde_json::to_string(&CardActionResponse { toast, ok }).unwrap_or_default();
+    write_json_response(&mut stream, 200, "OK", &resp).await?;
+    Ok(())
+}
+
+/// Core dispatch logic: create session, start agent.
+///
+/// Mirrors `agent_start` in lib.rs (task_id already exists, status = todo).
+async fn do_dispatch(
+    task_id: &str,
+    db: &Arc<Db>,
+    sessions: &SessionMap,
+    trackers: &TrackerMap,
+    adapter: &Arc<CodexAdapter>,
+    app: &AppHandle,
+) -> Result<(), String> {
+    let (title, workdir, _) = db
+        .get_task_by_id(task_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("任务 {} 不存在", task_id))?;
+
+    let session_id = uuid::Uuid::new_v4().to_string();
+
+    db.insert_session(&session_id, task_id, "codex")
+        .map_err(|e| e.to_string())?;
+    db.update_task_status(task_id, "running")
+        .map_err(|e| e.to_string())?;
+    db.insert_message(&session_id, "user", &title)
+        .map_err(|e| e.to_string())?;
+
+    let emit_fn = crate::make_emit_fn_with_db(app.clone(), db.clone());
+
+    let reasoning_effort = db
+        .settings_get("reasoning_effort")
+        .unwrap_or(None)
+        .unwrap_or_else(|| "low".to_string());
+
+    let session_adapter = Arc::new(CodexAdapter {
+        extra_args: vec![
+            "-c".to_string(),
+            format!("model_reasoning_effort={}", reasoning_effort),
+        ],
+        sandbox: adapter.sandbox.clone(),
+    });
+
+    session_adapter
+        .start_session(
+            session_id.clone(),
+            sessions.clone(),
+            trackers.clone(),
+            title,
+            workdir,
+            emit_fn,
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Notify frontend board to refresh.
+    let _ = app.emit("bridge-task-created", task_id);
+
+    Ok(())
+}
+
+/// Core accept logic: transition awaiting_review → done.
+async fn do_accept(task_id: &str, db: &Arc<Db>, app: &AppHandle) -> Result<(), String> {
+    db.set_task_status_validated(task_id, "done")?;
+    // Notify frontend board to refresh.
+    let _ = app.emit("bridge-task-created", task_id);
     Ok(())
 }
 
@@ -382,6 +650,20 @@ async fn write_response(
 ) -> tokio::io::Result<()> {
     let resp = format!(
         "HTTP/1.1 {status} {reason}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+    );
+    stream.write_all(resp.as_bytes()).await
+}
+
+async fn write_json_response(
+    stream: &mut tokio::net::TcpStream,
+    status: u16,
+    reason: &str,
+    body: &str,
+) -> tokio::io::Result<()> {
+    let resp = format!(
+        "HTTP/1.1 {status} {reason}\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        body.len(),
+        body
     );
     stream.write_all(resp.as_bytes()).await
 }
@@ -854,5 +1136,88 @@ mod tests {
         // 4th crash should exceed limit.
         let allowed = check_should_restart(&mut inner);
         assert!(!allowed, "4th crash in window must be denied");
+    }
+
+    // ── validate_card_action ──────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn card_action_dispatch_valid_todo_task() {
+        let db = Arc::new(crate::db::Db::open_in_memory().unwrap());
+        db.insert_task_todo("t1", "测试任务", "/work/dir").unwrap();
+
+        let (sentinel, ok) = validate_card_action("dispatch", "t1", &db)
+            .await
+            .unwrap();
+        assert!(ok, "valid todo task with workdir should succeed");
+        assert_eq!(sentinel, "ok:dispatch");
+    }
+
+    #[tokio::test]
+    async fn card_action_dispatch_already_running() {
+        let db = Arc::new(crate::db::Db::open_in_memory().unwrap());
+        db.insert_task("t2", "运行中任务", "/work").unwrap(); // status = running
+        db.insert_session("s2", "t2", "codex").unwrap();
+
+        let (toast, ok) = validate_card_action("dispatch", "t2", &db)
+            .await
+            .unwrap();
+        assert!(!ok, "running task should return ok=false");
+        assert!(toast.contains("进行中"), "toast should indicate already running");
+    }
+
+    #[tokio::test]
+    async fn card_action_dispatch_missing_workdir() {
+        let db = Arc::new(crate::db::Db::open_in_memory().unwrap());
+        db.insert_task_todo("t3", "无工作目录", "").unwrap(); // empty workdir
+
+        let (toast, ok) = validate_card_action("dispatch", "t3", &db)
+            .await
+            .unwrap();
+        assert!(!ok, "empty workdir should return ok=false");
+        assert!(toast.contains("工作目录"), "toast should mention 工作目录");
+    }
+
+    #[tokio::test]
+    async fn card_action_accept_valid_awaiting_review() {
+        let db = Arc::new(crate::db::Db::open_in_memory().unwrap());
+        db.insert_task("t4", "待验收任务", "/work").unwrap();
+        db.insert_session("s4", "t4", "codex").unwrap();
+        db.update_task_status("t4", "awaiting_review").unwrap();
+
+        let (sentinel, ok) = validate_card_action("accept", "t4", &db)
+            .await
+            .unwrap();
+        assert!(ok, "awaiting_review task should succeed");
+        assert_eq!(sentinel, "ok:accept");
+    }
+
+    #[tokio::test]
+    async fn card_action_accept_wrong_status() {
+        let db = Arc::new(crate::db::Db::open_in_memory().unwrap());
+        db.insert_task("t5", "运行中", "/work").unwrap(); // status = running
+        db.insert_session("s5", "t5", "codex").unwrap();
+
+        let (toast, ok) = validate_card_action("accept", "t5", &db)
+            .await
+            .unwrap();
+        assert!(!ok, "non-awaiting_review status should return ok=false");
+        assert!(toast.contains("待验收"), "toast should explain the status issue");
+    }
+
+    #[tokio::test]
+    async fn card_action_unknown_action_returns_err() {
+        let db = Arc::new(crate::db::Db::open_in_memory().unwrap());
+        db.insert_task_todo("t6", "任务", "/work").unwrap();
+
+        let result = validate_card_action("unknown_action", "t6", &db).await;
+        assert!(result.is_err(), "unknown action should return Err");
+    }
+
+    #[tokio::test]
+    async fn card_action_nonexistent_task_returns_err() {
+        let db = Arc::new(crate::db::Db::open_in_memory().unwrap());
+
+        let result = validate_card_action("dispatch", "nonexistent-id", &db).await;
+        assert!(result.is_err(), "nonexistent task should return Err");
     }
 }
