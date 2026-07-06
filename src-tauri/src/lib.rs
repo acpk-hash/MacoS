@@ -1,5 +1,6 @@
 pub mod agent;
 pub mod db;
+pub mod feishu;
 pub mod mcp;
 
 use std::sync::Arc;
@@ -493,6 +494,26 @@ async fn mcp_remove(name: String) -> Result<(), String> {
     remove_mcp_server(&path, &name)
 }
 
+/// Send a test Feishu card to verify the notification configuration.
+/// Returns a human-readable success or error message (error text is transparent).
+#[tauri::command]
+async fn feishu_test(state: State<'_, AppState>) -> Result<String, String> {
+    let settings = state.db.settings_get_all().map_err(|e| e.to_string())?;
+    let config = feishu::load_config(&settings).ok_or_else(|| {
+        "飞书通知未启用或配置不完整（请填写 App ID、App Secret 和接收者 ID）".to_string()
+    })?;
+    feishu::send_card(&config, feishu::card_test())
+        .await
+        .map_err(|e| e)?;
+    Ok("测试卡片发送成功".to_string())
+}
+
+/// Return the recent Feishu push log entries (newest first, max 50).
+#[tauri::command]
+fn feishu_recent_logs() -> Vec<String> {
+    feishu::recent_logs()
+}
+
 /// Smoke-test ping.
 #[tauri::command]
 fn ping() -> String {
@@ -533,6 +554,8 @@ pub fn run() {
             mcp_list,
             mcp_add,
             mcp_remove,
+            feishu_test,
+            feishu_recent_logs,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -577,9 +600,52 @@ fn make_emit_fn_with_db(
             AgentEvent::TurnCompleted {} => {
                 let _ = db.update_task_status(sid, "awaiting_review");
                 let _ = db.end_session(sid);
+                // Feishu notification (fire-and-forget, never blocks the pipeline)
+                if let Ok(settings) = db.settings_get_all() {
+                    if let Some(cfg) = feishu::load_config(&settings) {
+                        let title_wd = db.get_task_info_for_session(sid).unwrap_or(None);
+                        let started_at = db.get_session_started_at(sid).unwrap_or(None);
+                        let file_count = db.get_session_file_count(sid).unwrap_or(0);
+                        let tokens = db.get_last_usage_tokens(sid).unwrap_or(None);
+
+                        let now_ms = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_millis() as i64)
+                            .unwrap_or(0);
+                        let elapsed_secs = started_at
+                            .map(|s| ((now_ms - s).max(0) as u64) / 1000)
+                            .unwrap_or(0);
+
+                        let (title, workdir) = title_wd
+                            .unwrap_or_else(|| (sid.to_string(), "?".to_string()));
+                        let (input_tok, _, output_tok, _) = tokens.unwrap_or((0, 0, 0, 0));
+
+                        let card = feishu::card_completed(
+                            &title,
+                            &workdir,
+                            elapsed_secs,
+                            file_count,
+                            input_tok,
+                            output_tok,
+                        );
+                        feishu::spawn_send(cfg, card, format!("完成: {}", title));
+                    }
+                }
             }
-            AgentEvent::Error { .. } => {
+            AgentEvent::Error { message } => {
                 let _ = db.update_task_status(sid, "failed");
+                // Feishu notification (fire-and-forget)
+                if let Ok(settings) = db.settings_get_all() {
+                    if let Some(cfg) = feishu::load_config(&settings) {
+                        let title = db
+                            .get_task_info_for_session(sid)
+                            .unwrap_or(None)
+                            .map(|(t, _)| t)
+                            .unwrap_or_else(|| sid.to_string());
+                        let card = feishu::card_failed(&title, message);
+                        feishu::spawn_send(cfg, card, format!("失败: {}", title));
+                    }
+                }
             }
             _ => {}
         }

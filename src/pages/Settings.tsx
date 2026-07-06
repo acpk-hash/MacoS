@@ -510,6 +510,235 @@ function McpSection() {
   )
 }
 
+// ── Feishu Section ────────────────────────────────────────────────────────────
+
+function FeishuSection() {
+  const [settings, setSettings] = useState<Record<string, string>>({})
+  const [testResult, setTestResult] = useState<string | null>(null)
+  const [testing, setTesting] = useState(false)
+  const [showLogs, setShowLogs] = useState(false)
+  const [logs, setLogs] = useState<string[]>([])
+  const [showGuide, setShowGuide] = useState(false)
+
+  const loadSettings = useCallback(async () => {
+    try {
+      const all = await tauriInvoke<Record<string, string>>('settings_get_all')
+      setSettings(all)
+    } catch (e) {
+      console.error('Failed to load settings:', e)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadSettings()
+  }, [loadSettings])
+
+  const saveSetting = async (key: string, value: string) => {
+    try {
+      await tauriInvoke('settings_set', { key, value })
+      setSettings((s) => ({ ...s, [key]: value }))
+    } catch (e) {
+      console.error('settings_set failed:', e)
+    }
+  }
+
+  const sendTest = async () => {
+    setTesting(true)
+    setTestResult(null)
+    try {
+      const msg = await tauriInvoke<string>('feishu_test')
+      setTestResult(`成功：${msg}`)
+    } catch (e) {
+      setTestResult(`失败：${String(e)}`)
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  const loadLogs = async () => {
+    try {
+      const ls = await tauriInvoke<string[]>('feishu_recent_logs')
+      setLogs(ls)
+    } catch (e) {
+      console.error('feishu_recent_logs failed:', e)
+    }
+    setShowLogs(true)
+  }
+
+  const enabled = settings['feishu_enabled'] === 'true'
+
+  return (
+    <div className="space-y-5">
+      {/* 开关 */}
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium text-gray-200">启用飞书推送</p>
+          <p className="text-xs text-gray-500 mt-0.5">
+            任务完成或失败时向指定用户发送交互卡片
+          </p>
+        </div>
+        <button
+          onClick={() => saveSetting('feishu_enabled', enabled ? 'false' : 'true')}
+          className={`relative w-11 h-6 rounded-full transition-colors focus:outline-none ${
+            enabled ? 'bg-blue-500' : 'bg-gray-600'
+          }`}
+          aria-label="Toggle Feishu notifications"
+        >
+          <span
+            className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+              enabled ? 'translate-x-6' : 'translate-x-1'
+            }`}
+          />
+        </button>
+      </div>
+
+      {/* Config fields */}
+      <div className="space-y-3">
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">App ID</label>
+          <input
+            type="text"
+            value={settings['feishu_app_id'] ?? ''}
+            onChange={(e) =>
+              setSettings((s) => ({ ...s, feishu_app_id: e.target.value }))
+            }
+            onBlur={(e) => saveSetting('feishu_app_id', e.target.value)}
+            placeholder="cli_xxxxxxxxxxxxxxxx"
+            className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm
+                       text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500
+                       transition-colors"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">App Secret</label>
+          <input
+            type="password"
+            value={settings['feishu_app_secret'] ?? ''}
+            onChange={(e) =>
+              setSettings((s) => ({ ...s, feishu_app_secret: e.target.value }))
+            }
+            onBlur={(e) => saveSetting('feishu_app_secret', e.target.value)}
+            placeholder="••••••••••••••••"
+            className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm
+                       text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500
+                       transition-colors"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">接收者 ID 类型</label>
+          <select
+            value={settings['feishu_receive_id_type'] ?? 'open_id'}
+            onChange={(e) => saveSetting('feishu_receive_id_type', e.target.value)}
+            className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm
+                       text-gray-200 focus:outline-none focus:border-blue-500 transition-colors"
+          >
+            <option value="open_id">open_id（个人）</option>
+            <option value="chat_id">chat_id（群组）</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">接收者 ID</label>
+          <input
+            type="text"
+            value={settings['feishu_receive_id'] ?? ''}
+            onChange={(e) =>
+              setSettings((s) => ({ ...s, feishu_receive_id: e.target.value }))
+            }
+            onBlur={(e) => saveSetting('feishu_receive_id', e.target.value)}
+            placeholder="ou_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+            className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm
+                       text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500
+                       transition-colors"
+          />
+        </div>
+      </div>
+
+      {/* Test button */}
+      <div>
+        <button
+          onClick={sendTest}
+          disabled={testing}
+          className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 text-white
+                     text-sm rounded-lg transition-colors"
+        >
+          {testing ? '发送中…' : '发送测试卡片'}
+        </button>
+        {testResult && (
+          <p
+            className={`text-xs mt-2 ${
+              testResult.startsWith('成功') ? 'text-green-400' : 'text-red-400'
+            }`}
+          >
+            {testResult}
+          </p>
+        )}
+      </div>
+
+      {/* Recent logs */}
+      <div>
+        <button
+          onClick={showLogs ? () => setShowLogs(false) : loadLogs}
+          className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+        >
+          {showLogs ? '收起推送日志 ▲' : '最近推送日志 ▼'}
+        </button>
+        {showLogs && (
+          <div className="mt-2 bg-gray-900 rounded-lg p-3 space-y-1 max-h-48 overflow-y-auto">
+            {logs.length === 0 ? (
+              <p className="text-xs text-gray-600 italic">暂无日志</p>
+            ) : (
+              logs.map((entry, i) => (
+                <p
+                  key={i}
+                  className={`text-xs font-mono ${
+                    entry.includes('ERR') ? 'text-red-400' : 'text-green-400'
+                  }`}
+                >
+                  {entry}
+                </p>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Setup guide (collapsible) */}
+      <div>
+        <button
+          onClick={() => setShowGuide(!showGuide)}
+          className="text-xs text-gray-500 hover:text-gray-400 transition-colors"
+        >
+          {showGuide ? '收起配置指引 ▲' : '如何配置 ▼'}
+        </button>
+        {showGuide && (
+          <div className="mt-2 bg-gray-900 rounded-lg p-3 text-xs text-gray-400 space-y-2 leading-relaxed">
+            <p>
+              1. 打开{' '}
+              <code className="text-gray-300">open.feishu.cn</code> →
+              开发者后台 → 创建企业自建应用
+            </p>
+            <p>2. 应用能力里开启「机器人」</p>
+            <p>
+              3. 权限管理开通{' '}
+              <code className="text-gray-300">im:message</code>
+              （获取与发送单聊、群组消息）并发布版本
+            </p>
+            <p>
+              4. 凭证与基础信息页复制 App ID 和 App Secret 填到这里
+            </p>
+            <p>
+              5. receive_id 填你自己的 open_id（可在飞书管理后台或通过给机器人发消息后从事件日志获取），类型选 open_id
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Skills Section (static) ───────────────────────────────────────────────────
 
 function SkillsSection() {
@@ -582,7 +811,7 @@ function AgentMarketSection() {
 
 // ── Settings page ─────────────────────────────────────────────────────────────
 
-type SectionId = 'engine' | 'mcp' | 'skills' | 'market'
+type SectionId = 'engine' | 'mcp' | 'feishu' | 'skills' | 'market'
 
 interface Section {
   id: SectionId
@@ -600,6 +829,11 @@ const SECTIONS: Section[] = [
     id: 'mcp',
     title: 'MCP 工具',
     description: '管理 Model Context Protocol 工具连接，扩展 Agent 能力。',
+  },
+  {
+    id: 'feishu',
+    title: '手机通知（飞书）',
+    description: '任务完成或失败时向飞书账号推送交互卡片通知。',
   },
   {
     id: 'skills',
@@ -673,6 +907,7 @@ export default function Settings() {
           <div>
             {activeSection === 'engine' && <EngineSection />}
             {activeSection === 'mcp' && <McpSection />}
+            {activeSection === 'feishu' && <FeishuSection />}
             {activeSection === 'skills' && <SkillsSection />}
             {activeSection === 'market' && <AgentMarketSection />}
           </div>

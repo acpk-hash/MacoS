@@ -539,6 +539,86 @@ impl Db {
         Ok(map)
     }
 
+    // ── Feishu stats helpers ──────────────────────────────────────────────────
+
+    /// Return (title, workdir) for the task associated with `session_id`.
+    pub fn get_task_info_for_session(
+        &self,
+        session_id: &str,
+    ) -> SqlResult<Option<(String, String)>> {
+        let conn = self.conn.lock().unwrap();
+        match conn.query_row(
+            "SELECT t.title, t.workdir \
+             FROM tasks t JOIN sessions s ON s.task_id = t.id \
+             WHERE s.id = ?1",
+            params![session_id],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        ) {
+            Ok(v) => Ok(Some(v)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Return the `started_at` timestamp (ms since epoch) for a session.
+    pub fn get_session_started_at(&self, session_id: &str) -> SqlResult<Option<i64>> {
+        let conn = self.conn.lock().unwrap();
+        match conn.query_row(
+            "SELECT started_at FROM sessions WHERE id = ?1",
+            params![session_id],
+            |row| row.get::<_, i64>(0),
+        ) {
+            Ok(v) => Ok(Some(v)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Return the count of distinct file paths changed during a session.
+    pub fn get_session_file_count(&self, session_id: &str) -> SqlResult<i64> {
+        let conn = self.conn.lock().unwrap();
+        conn.query_row(
+            "SELECT COUNT(DISTINCT path) FROM file_changes WHERE session_id = ?1",
+            params![session_id],
+            |row| row.get::<_, i64>(0),
+        )
+    }
+
+    /// Return the most recent usage token counts for a session, or `None` if
+    /// no usage event has been recorded yet.
+    /// Returns `(input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens)`.
+    pub fn get_last_usage_tokens(
+        &self,
+        session_id: &str,
+    ) -> SqlResult<Option<(u64, u64, u64, u64)>> {
+        // Fetch the JSON payload while holding the lock, then release before parsing.
+        let json_str: Option<String> = {
+            let conn = self.conn.lock().unwrap();
+            match conn.query_row(
+                "SELECT payload_json FROM events \
+                 WHERE session_id = ?1 AND type = 'usage' \
+                 ORDER BY ts DESC LIMIT 1",
+                params![session_id],
+                |row| row.get::<_, String>(0),
+            ) {
+                Ok(s) => Some(s),
+                Err(rusqlite::Error::QueryReturnedNoRows) => None,
+                Err(e) => return Err(e),
+            }
+        };
+
+        Ok(json_str.map(|s| {
+            let v: serde_json::Value =
+                serde_json::from_str(&s).unwrap_or(serde_json::Value::Null);
+            (
+                v["input_tokens"].as_u64().unwrap_or(0),
+                v["cached_input_tokens"].as_u64().unwrap_or(0),
+                v["output_tokens"].as_u64().unwrap_or(0),
+                v["reasoning_output_tokens"].as_u64().unwrap_or(0),
+            )
+        }))
+    }
+
     // ── File change kind lookup ────────────────────────────────────────────────
 
     /// Return the `kind` field for `(session_id, path)`, used by cold-revert
