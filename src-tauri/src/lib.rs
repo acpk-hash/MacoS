@@ -3,6 +3,7 @@ pub mod db;
 pub mod engine_config;
 pub mod feishu;
 pub mod mcp;
+pub mod wecom;
 
 use std::sync::Arc;
 
@@ -550,6 +551,26 @@ fn feishu_recent_logs() -> Vec<String> {
     feishu::recent_logs()
 }
 
+/// Send a test WeChat Work textcard to verify the notification configuration.
+/// Returns a human-readable success or error message (error text is transparent).
+#[tauri::command]
+async fn wecom_test(state: State<'_, AppState>) -> Result<String, String> {
+    let settings = state.db.settings_get_all().map_err(|e| e.to_string())?;
+    let config = wecom::load_config(&settings).ok_or_else(|| {
+        "企业微信通知未启用或配置不完整（请填写企业ID、应用Secret 和 AgentId）".to_string()
+    })?;
+    wecom::send(&config, wecom::msg_test(&config))
+        .await
+        .map_err(|e| e)?;
+    Ok("测试消息发送成功".to_string())
+}
+
+/// Return the recent WeChat Work push log entries (newest first, max 50).
+#[tauri::command]
+fn wecom_recent_logs() -> Vec<String> {
+    wecom::recent_logs()
+}
+
 /// Smoke-test ping.
 #[tauri::command]
 fn ping() -> String {
@@ -595,6 +616,8 @@ pub fn run() {
             mcp_remove,
             feishu_test,
             feishu_recent_logs,
+            wecom_test,
+            wecom_recent_logs,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -639,26 +662,28 @@ fn make_emit_fn_with_db(
             AgentEvent::TurnCompleted {} => {
                 let _ = db.update_task_status(sid, "awaiting_review");
                 let _ = db.end_session(sid);
-                // Feishu notification (fire-and-forget, never blocks the pipeline)
+
+                // Gather notification data once; each channel gates independently.
                 if let Ok(settings) = db.settings_get_all() {
+                    let title_wd = db.get_task_info_for_session(sid).unwrap_or(None);
+                    let started_at = db.get_session_started_at(sid).unwrap_or(None);
+                    let file_count = db.get_session_file_count(sid).unwrap_or(0);
+                    let tokens = db.get_last_usage_tokens(sid).unwrap_or(None);
+
+                    let now_ms = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_millis() as i64)
+                        .unwrap_or(0);
+                    let elapsed_secs = started_at
+                        .map(|s| ((now_ms - s).max(0) as u64) / 1000)
+                        .unwrap_or(0);
+
+                    let (title, workdir) = title_wd
+                        .unwrap_or_else(|| (sid.to_string(), "?".to_string()));
+                    let (input_tok, _, output_tok, _) = tokens.unwrap_or((0, 0, 0, 0));
+
+                    // Feishu notification (fire-and-forget, never blocks the pipeline)
                     if let Some(cfg) = feishu::load_config(&settings) {
-                        let title_wd = db.get_task_info_for_session(sid).unwrap_or(None);
-                        let started_at = db.get_session_started_at(sid).unwrap_or(None);
-                        let file_count = db.get_session_file_count(sid).unwrap_or(0);
-                        let tokens = db.get_last_usage_tokens(sid).unwrap_or(None);
-
-                        let now_ms = std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .map(|d| d.as_millis() as i64)
-                            .unwrap_or(0);
-                        let elapsed_secs = started_at
-                            .map(|s| ((now_ms - s).max(0) as u64) / 1000)
-                            .unwrap_or(0);
-
-                        let (title, workdir) = title_wd
-                            .unwrap_or_else(|| (sid.to_string(), "?".to_string()));
-                        let (input_tok, _, output_tok, _) = tokens.unwrap_or((0, 0, 0, 0));
-
                         let card = feishu::card_completed(
                             &title,
                             &workdir,
@@ -669,20 +694,42 @@ fn make_emit_fn_with_db(
                         );
                         feishu::spawn_send(cfg, card, format!("完成: {}", title));
                     }
+
+                    // WeChat Work notification (fire-and-forget, independent gate)
+                    if let Some(cfg) = wecom::load_config(&settings) {
+                        let body = wecom::msg_completed(
+                            &cfg,
+                            &title,
+                            &workdir,
+                            elapsed_secs,
+                            file_count,
+                            input_tok,
+                            output_tok,
+                        );
+                        wecom::spawn_send(cfg, body, format!("完成: {}", title));
+                    }
                 }
             }
             AgentEvent::Error { message } => {
                 let _ = db.update_task_status(sid, "failed");
-                // Feishu notification (fire-and-forget)
+
                 if let Ok(settings) = db.settings_get_all() {
+                    let title = db
+                        .get_task_info_for_session(sid)
+                        .unwrap_or(None)
+                        .map(|(t, _)| t)
+                        .unwrap_or_else(|| sid.to_string());
+
+                    // Feishu notification (fire-and-forget)
                     if let Some(cfg) = feishu::load_config(&settings) {
-                        let title = db
-                            .get_task_info_for_session(sid)
-                            .unwrap_or(None)
-                            .map(|(t, _)| t)
-                            .unwrap_or_else(|| sid.to_string());
                         let card = feishu::card_failed(&title, message);
                         feishu::spawn_send(cfg, card, format!("失败: {}", title));
+                    }
+
+                    // WeChat Work notification (fire-and-forget, independent gate)
+                    if let Some(cfg) = wecom::load_config(&settings) {
+                        let body = wecom::msg_failed(&cfg, &title, message);
+                        wecom::spawn_send(cfg, body, format!("失败: {}", title));
                     }
                 }
             }

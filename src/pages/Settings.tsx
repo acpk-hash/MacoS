@@ -1081,9 +1081,287 @@ function AgentMarketSection() {
   )
 }
 
+// ── WeChat Work Section ───────────────────────────────────────────────────────
+
+function WecomSection() {
+  const [settings, setSettings] = useState<Record<string, string>>({})
+  const [testResult, setTestResult] = useState<string | null>(null)
+  const [testing, setTesting] = useState(false)
+  const [showLogs, setShowLogs] = useState(false)
+  const [logs, setLogs] = useState<string[]>([])
+  const [showGuide, setShowGuide] = useState(false)
+
+  const loadSettings = useCallback(async () => {
+    try {
+      const all = await tauriInvoke<Record<string, string>>('settings_get_all')
+      setSettings(all)
+    } catch (e) {
+      console.error('Failed to load settings:', e)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadSettings()
+  }, [loadSettings])
+
+  const saveSetting = async (key: string, value: string) => {
+    try {
+      await tauriInvoke('settings_set', { key, value })
+      setSettings((s) => ({ ...s, [key]: value }))
+    } catch (e) {
+      console.error('settings_set failed:', e)
+    }
+  }
+
+  const sendTest = async () => {
+    setTesting(true)
+    setTestResult(null)
+    try {
+      const msg = await tauriInvoke<string>('wecom_test')
+      setTestResult(`成功：${msg}`)
+    } catch (e) {
+      setTestResult(`失败：${String(e)}`)
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  const loadLogs = async () => {
+    try {
+      const ls = await tauriInvoke<string[]>('wecom_recent_logs')
+      setLogs(ls)
+    } catch (e) {
+      console.error('wecom_recent_logs failed:', e)
+    }
+    setShowLogs(true)
+  }
+
+  const enabled = settings['wecom_enabled'] === 'true'
+  const qrUrl = settings['wecom_qr_url']?.trim() ?? ''
+
+  return (
+    <div className="space-y-5">
+      {/* 开关 */}
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium text-gray-200">启用企业微信推送</p>
+          <p className="text-xs text-gray-500 mt-0.5">
+            任务完成或失败时向个人微信发送通知（需先扫码关注）
+          </p>
+        </div>
+        <button
+          onClick={() => saveSetting('wecom_enabled', enabled ? 'false' : 'true')}
+          className={`relative w-11 h-6 rounded-full transition-colors focus:outline-none ${
+            enabled ? 'bg-blue-500' : 'bg-gray-600'
+          }`}
+          aria-label="Toggle WeChat Work notifications"
+        >
+          <span
+            className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+              enabled ? 'translate-x-6' : 'translate-x-1'
+            }`}
+          />
+        </button>
+      </div>
+
+      {/* Config fields */}
+      <div className="space-y-3">
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">企业ID (corpid)</label>
+          <input
+            type="text"
+            value={settings['wecom_corpid'] ?? ''}
+            onChange={(e) =>
+              setSettings((s) => ({ ...s, wecom_corpid: e.target.value }))
+            }
+            onBlur={(e) => saveSetting('wecom_corpid', e.target.value)}
+            placeholder="ww_xxxxxxxxxxxxxxxx"
+            className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm
+                       text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500
+                       transition-colors"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">应用 Secret (corpsecret)</label>
+          <input
+            type="password"
+            value={settings['wecom_corpsecret'] ?? ''}
+            onChange={(e) =>
+              setSettings((s) => ({ ...s, wecom_corpsecret: e.target.value }))
+            }
+            onBlur={(e) => saveSetting('wecom_corpsecret', e.target.value)}
+            placeholder="••••••••••••••••"
+            className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm
+                       text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500
+                       transition-colors"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">AgentId</label>
+          <input
+            type="text"
+            value={settings['wecom_agentid'] ?? ''}
+            onChange={(e) =>
+              setSettings((s) => ({ ...s, wecom_agentid: e.target.value }))
+            }
+            onBlur={(e) => saveSetting('wecom_agentid', e.target.value)}
+            placeholder="1000002"
+            className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm
+                       text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500
+                       transition-colors"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">
+            接收者 (touser)
+            <span className="ml-1 text-gray-600">— 默认 @all</span>
+          </label>
+          <input
+            type="text"
+            value={settings['wecom_touser'] ?? ''}
+            onChange={(e) =>
+              setSettings((s) => ({ ...s, wecom_touser: e.target.value }))
+            }
+            onBlur={(e) => saveSetting('wecom_touser', e.target.value)}
+            placeholder="@all 或成员账号"
+            className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm
+                       text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500
+                       transition-colors"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">
+            微信插件二维码链接 (wecom_qr_url)
+            <span className="ml-1 text-gray-600">— 可选</span>
+          </label>
+          <input
+            type="text"
+            value={settings['wecom_qr_url'] ?? ''}
+            onChange={(e) =>
+              setSettings((s) => ({ ...s, wecom_qr_url: e.target.value }))
+            }
+            onBlur={(e) => saveSetting('wecom_qr_url', e.target.value)}
+            placeholder="https://..."
+            className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm
+                       text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500
+                       transition-colors"
+          />
+        </div>
+      </div>
+
+      {/* QR code display */}
+      <div className="bg-gray-900 border border-gray-700 rounded-lg p-4">
+        <p className="text-xs text-gray-500 mb-3">
+          微信插件二维码 — 成员扫码后应用消息直达个人微信
+        </p>
+        {qrUrl ? (
+          <img
+            src={qrUrl}
+            alt="企业微信微信插件二维码"
+            className="w-40 h-40 object-contain rounded-lg border border-gray-600"
+          />
+        ) : (
+          <p className="text-xs text-gray-600 italic leading-relaxed">
+            在企业微信管理后台 → 我的企业 → 微信插件 页面获取邀请二维码链接，填入上方字段后此处将显示二维码。
+          </p>
+        )}
+      </div>
+
+      {/* Test button */}
+      <div>
+        <button
+          onClick={sendTest}
+          disabled={testing}
+          className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 text-white
+                     text-sm rounded-lg transition-colors"
+        >
+          {testing ? '发送中…' : '发送测试消息'}
+        </button>
+        {testResult && (
+          <p
+            className={`text-xs mt-2 ${
+              testResult.startsWith('成功') ? 'text-green-400' : 'text-red-400'
+            }`}
+          >
+            {testResult}
+          </p>
+        )}
+      </div>
+
+      {/* Recent logs */}
+      <div>
+        <button
+          onClick={showLogs ? () => setShowLogs(false) : loadLogs}
+          className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+        >
+          {showLogs ? '收起推送日志 ▲' : '最近推送日志 ▼'}
+        </button>
+        {showLogs && (
+          <div className="mt-2 bg-gray-900 rounded-lg p-3 space-y-1 max-h-48 overflow-y-auto">
+            {logs.length === 0 ? (
+              <p className="text-xs text-gray-600 italic">暂无日志</p>
+            ) : (
+              logs.map((entry, i) => (
+                <p
+                  key={i}
+                  className={`text-xs font-mono ${
+                    entry.includes('ERR') ? 'text-red-400' : 'text-green-400'
+                  }`}
+                >
+                  {entry}
+                </p>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Setup guide (collapsible) */}
+      <div>
+        <button
+          onClick={() => setShowGuide(!showGuide)}
+          className="text-xs text-gray-500 hover:text-gray-400 transition-colors"
+        >
+          {showGuide ? '收起配置指引 ▲' : '如何配置 ▼'}
+        </button>
+        {showGuide && (
+          <div className="mt-2 bg-gray-900 rounded-lg p-3 text-xs text-gray-400 space-y-2 leading-relaxed">
+            <p>
+              1. 前往{' '}
+              <code className="text-gray-300">qy.weixin.qq.com</code>{' '}
+              注册企业微信（个人也可注册，免认证）
+            </p>
+            <p>
+              2. 管理后台 → 应用管理 → 创建自建应用，记下{' '}
+              <code className="text-gray-300">AgentId</code> 和{' '}
+              <code className="text-gray-300">Secret</code>
+            </p>
+            <p>
+              3. 管理后台 → 我的企业，记下{' '}
+              <code className="text-gray-300">企业ID (corpid)</code>，填入上方
+            </p>
+            <p>
+              4. 管理后台 → 我的企业 → 微信插件：开启后让成员用个人微信扫码关注，
+              之后应用消息可直达个人微信。将二维码图片链接填入上方"二维码链接"字段
+            </p>
+            <p>
+              5. 应用详情页 → 企业可信IP：添加本机的公网出口 IP（企业微信 API 要求）；
+              发送报错 60020 时按提示添加
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Settings page ─────────────────────────────────────────────────────────────
 
-type SectionId = 'engine' | 'mcp' | 'feishu' | 'skills' | 'market'
+type SectionId = 'engine' | 'mcp' | 'feishu' | 'wecom' | 'skills' | 'market'
 
 interface Section {
   id: SectionId
@@ -1106,6 +1384,11 @@ const SECTIONS: Section[] = [
     id: 'feishu',
     title: '手机通知（飞书）',
     description: '任务完成或失败时向飞书账号推送交互卡片通知。',
+  },
+  {
+    id: 'wecom',
+    title: '微信通知（企业微信）',
+    description: '任务完成或失败时通过企业微信应用消息直达个人微信，需先扫码关注微信插件。',
   },
   {
     id: 'skills',
@@ -1180,6 +1463,7 @@ export default function Settings() {
             {activeSection === 'engine' && <EngineSection />}
             {activeSection === 'mcp' && <McpSection />}
             {activeSection === 'feishu' && <FeishuSection />}
+            {activeSection === 'wecom' && <WecomSection />}
             {activeSection === 'skills' && <SkillsSection />}
             {activeSection === 'market' && <AgentMarketSection />}
           </div>
