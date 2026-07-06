@@ -782,6 +782,15 @@ function McpSection() {
   )
 }
 
+// ── Bridge status type ────────────────────────────────────────────────────────
+
+interface BridgeStatusInfo {
+  state: 'running' | 'stopped' | 'error'
+  message: string
+  port: number
+  logs: string[]
+}
+
 // ── Feishu Section ────────────────────────────────────────────────────────────
 
 function FeishuSection() {
@@ -792,6 +801,18 @@ function FeishuSection() {
   const [logs, setLogs] = useState<string[]>([])
   const [showGuide, setShowGuide] = useState(false)
 
+  // Bridge sub-block state
+  const [bridgeStatus, setBridgeStatus] = useState<BridgeStatusInfo>({
+    state: 'stopped',
+    message: '',
+    port: 0,
+    logs: [],
+  })
+  const [bridgeStarting, setBridgeStarting] = useState(false)
+  const [bridgeStopping, setBridgeStopping] = useState(false)
+  const [showBridgeLogs, setShowBridgeLogs] = useState(false)
+  const [nodeVersion, setNodeVersion] = useState<string | null | undefined>(undefined) // undefined=loading
+
   const loadSettings = useCallback(async () => {
     try {
       const all = await tauriInvoke<Record<string, string>>('settings_get_all')
@@ -801,9 +822,23 @@ function FeishuSection() {
     }
   }, [])
 
+  const loadBridgeStatus = useCallback(async () => {
+    try {
+      const info = await tauriInvoke<BridgeStatusInfo>('bridge_status')
+      setBridgeStatus(info)
+    } catch (e) {
+      console.error('bridge_status failed:', e)
+    }
+  }, [])
+
   useEffect(() => {
     loadSettings()
-  }, [loadSettings])
+    loadBridgeStatus()
+    tauriInvoke<string | null>('bridge_node_version').then(setNodeVersion).catch(() => setNodeVersion(null))
+    // Poll bridge status every 5 seconds.
+    const timer = setInterval(loadBridgeStatus, 5000)
+    return () => clearInterval(timer)
+  }, [loadSettings, loadBridgeStatus])
 
   const saveSetting = async (key: string, value: string) => {
     try {
@@ -837,7 +872,32 @@ function FeishuSection() {
     setShowLogs(true)
   }
 
+  const handleBridgeStart = async () => {
+    setBridgeStarting(true)
+    try {
+      await tauriInvoke('bridge_start')
+      await loadBridgeStatus()
+    } catch (e) {
+      console.error('bridge_start failed:', e)
+    } finally {
+      setBridgeStarting(false)
+    }
+  }
+
+  const handleBridgeStop = async () => {
+    setBridgeStopping(true)
+    try {
+      await tauriInvoke('bridge_stop')
+      await loadBridgeStatus()
+    } catch (e) {
+      console.error('bridge_stop failed:', e)
+    } finally {
+      setBridgeStopping(false)
+    }
+  }
+
   const enabled = settings['feishu_enabled'] === 'true'
+  const bridgeAutostart = settings['bridge_autostart'] === 'true'
 
   return (
     <div className="space-y-5">
@@ -977,6 +1037,145 @@ function FeishuSection() {
         )}
       </div>
 
+      {/* ── 指派通道（长连接）sub-block ─────────────────────────────────── */}
+      <div className="bg-gray-900 border border-gray-700 rounded-xl p-4 space-y-4">
+        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+          指派通道（长连接）
+        </h3>
+        <p className="text-xs text-gray-500 -mt-2 leading-relaxed">
+          手机给飞书机器人发一句话 → 桌面端自动建 todo 任务卡并回复确认卡片。
+          需本机安装 Node.js；飞书应用需订阅{' '}
+          <code className="text-gray-400">im.message.receive_v1</code> 并启用长连接模式。
+        </p>
+
+        {/* Node detection */}
+        <div className="flex items-center gap-2">
+          <span
+            className={`w-2 h-2 rounded-full flex-shrink-0 ${
+              nodeVersion ? 'bg-green-400' : nodeVersion === null ? 'bg-red-500' : 'bg-gray-600'
+            }`}
+          />
+          <span className="text-xs text-gray-400">
+            {nodeVersion === undefined
+              ? 'Node 检测中…'
+              : nodeVersion
+                ? `Node ${nodeVersion}`
+                : 'Node 未安装 — 请先安装 Node.js'}
+          </span>
+        </div>
+
+        {/* Auto-start toggle */}
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs font-medium text-gray-300">应用启动时自动开启</p>
+            <p className="text-xs text-gray-600 mt-0.5">需同时启用飞书推送且已配置凭据</p>
+          </div>
+          <button
+            onClick={() => saveSetting('bridge_autostart', bridgeAutostart ? 'false' : 'true')}
+            className={`relative w-9 h-5 rounded-full transition-colors focus:outline-none ${
+              bridgeAutostart ? 'bg-blue-500' : 'bg-gray-600'
+            }`}
+            aria-label="Toggle bridge autostart"
+          >
+            <span
+              className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                bridgeAutostart ? 'translate-x-4' : 'translate-x-0.5'
+              }`}
+            />
+          </button>
+        </div>
+
+        {/* Status badge */}
+        <div className="flex items-center gap-2">
+          <span
+            className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium ${
+              bridgeStatus.state === 'running'
+                ? 'bg-green-900/40 text-green-300'
+                : bridgeStatus.state === 'error'
+                  ? 'bg-red-900/40 text-red-300'
+                  : 'bg-gray-800 text-gray-500'
+            }`}
+          >
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
+                bridgeStatus.state === 'running'
+                  ? 'bg-green-400'
+                  : bridgeStatus.state === 'error'
+                    ? 'bg-red-400'
+                    : 'bg-gray-600'
+              }`}
+            />
+            {bridgeStatus.state === 'running'
+              ? `运行中 (端口 ${bridgeStatus.port})`
+              : bridgeStatus.state === 'error'
+                ? '错误'
+                : '已停止'}
+          </span>
+          {bridgeStatus.state === 'error' && bridgeStatus.message && (
+            <span className="text-xs text-red-400 truncate">{bridgeStatus.message}</span>
+          )}
+        </div>
+
+        {/* Start / Stop buttons */}
+        <div className="flex gap-2">
+          <button
+            onClick={handleBridgeStart}
+            disabled={bridgeStarting || bridgeStopping || !nodeVersion}
+            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700
+                       disabled:text-gray-500 text-white text-xs rounded-lg transition-colors"
+            title={!nodeVersion ? '需要先安装 Node.js' : undefined}
+          >
+            {bridgeStarting ? '启动中…' : '启动'}
+          </button>
+          <button
+            onClick={handleBridgeStop}
+            disabled={bridgeStopping || bridgeStarting || bridgeStatus.state === 'stopped'}
+            className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800
+                       disabled:text-gray-600 text-gray-200 text-xs rounded-lg transition-colors"
+          >
+            {bridgeStopping ? '停止中…' : '停止'}
+          </button>
+          <button
+            onClick={loadBridgeStatus}
+            className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-400 transition-colors"
+          >
+            刷新
+          </button>
+        </div>
+
+        {/* Sidecar log (collapsible) */}
+        <div>
+          <button
+            onClick={() => setShowBridgeLogs((v) => !v)}
+            className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+          >
+            {showBridgeLogs ? 'Sidecar 日志 ▲' : 'Sidecar 日志 ▼'}
+          </button>
+          {showBridgeLogs && (
+            <div className="mt-2 bg-gray-950 rounded-lg p-3 space-y-0.5 max-h-40 overflow-y-auto">
+              {bridgeStatus.logs.length === 0 ? (
+                <p className="text-xs text-gray-600 italic">暂无日志</p>
+              ) : (
+                bridgeStatus.logs.map((entry, i) => (
+                  <p
+                    key={i}
+                    className={`text-xs font-mono leading-relaxed ${
+                      entry.includes('[ERR]') || entry.includes('[err]')
+                        ? 'text-red-400'
+                        : entry.includes('[WARN]')
+                          ? 'text-yellow-400'
+                          : 'text-gray-400'
+                    }`}
+                  >
+                    {entry}
+                  </p>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Setup guide (collapsible) */}
       <div>
         <button
@@ -1003,6 +1202,10 @@ function FeishuSection() {
             </p>
             <p>
               5. receive_id 填你自己的 open_id（可在飞书管理后台或通过给机器人发消息后从事件日志获取），类型选 open_id
+            </p>
+            <p>
+              6. 指派通道：开发者后台 → 事件与回调 → 长连接模式：启用；
+              订阅 <code className="text-gray-300">im.message.receive_v1</code> 事件
             </p>
           </div>
         )}

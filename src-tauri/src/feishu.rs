@@ -259,6 +259,36 @@ pub fn card_failed(title: &str, error_summary: &str) -> serde_json::Value {
     })
 }
 
+/// 已建卡片（蓝色 header）——飞书指派通道创建任务后回复给来源 chat。
+///
+/// 正文显示任务标题，note 提示打开 AgentBoard 派发。
+pub fn card_task_created(title: &str) -> serde_json::Value {
+    json!({
+        "header": {
+            "title": { "tag": "plain_text", "content": "📋 已创建任务" },
+            "template": "blue"
+        },
+        "elements": [
+            {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": format!("**{}**", title)
+                }
+            },
+            {
+                "tag": "note",
+                "elements": [
+                    {
+                        "tag": "plain_text",
+                        "content": "打开 AgentBoard 派发，或等待后续版本卡片按钮直接派发"
+                    }
+                ]
+            }
+        ]
+    })
+}
+
 /// 测试卡片（蓝色 header）。
 pub fn card_test() -> serde_json::Value {
     json!({

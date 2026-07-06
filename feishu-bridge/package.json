@@ -1,0 +1,13 @@
+{
+  "name": "feishu-bridge",
+  "version": "1.0.0",
+  "description": "飞书长连接 sidecar，将飞书消息转发到 AgentBoard 本地 HTTP 端点",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "check": "node --check index.js"
+  },
+  "dependencies": {
+    "@larksuiteoapi/node-sdk": "^1"
+  }
+}

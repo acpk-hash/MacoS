@@ -1,4 +1,5 @@
 pub mod agent;
+pub mod bridge;
 pub mod db;
 pub mod engine_config;
 pub mod feishu;
@@ -9,7 +10,7 @@ use std::sync::Arc;
 
 use std::collections::HashMap;
 
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use agent::{
     codex::{AgentAdapter, CodexAdapter, TrackerMap, new_tracker_map},
@@ -26,6 +27,7 @@ struct AppState {
     trackers: TrackerMap,
     adapter: Arc<CodexAdapter>,
     db: Arc<Db>,
+    bridge: bridge::BridgeManager,
 }
 
 // ── Tauri commands ────────────────────────────────────────────────────────────
@@ -571,6 +573,47 @@ fn wecom_recent_logs() -> Vec<String> {
     wecom::recent_logs()
 }
 
+// ── Feishu bridge commands ────────────────────────────────────────────────────
+
+/// Start the Feishu inbound bridge (HTTP listener + Node sidecar).
+/// Safe to call when already running — it will restart.
+#[tauri::command]
+async fn bridge_start(state: State<'_, AppState>, app: AppHandle) -> Result<(), String> {
+    state.bridge.start(state.db.clone(), app).await
+}
+
+/// Stop the Feishu inbound bridge.
+#[tauri::command]
+async fn bridge_stop(state: State<'_, AppState>) -> Result<(), String> {
+    state.bridge.stop().await;
+    Ok(())
+}
+
+/// Return bridge status (state, port, recent logs).
+#[tauri::command]
+async fn bridge_status(state: State<'_, AppState>) -> Result<bridge::BridgeStatusInfo, String> {
+    Ok(state.bridge.status().await)
+}
+
+/// Detect whether `node` is installed.  Returns the version string or `null`.
+#[tauri::command]
+async fn bridge_node_version() -> Option<String> {
+    #[cfg(windows)]
+    let out = tokio::process::Command::new("cmd")
+        .args(["/c", "node", "--version"])
+        .output()
+        .await;
+    #[cfg(not(windows))]
+    let out = tokio::process::Command::new("node")
+        .arg("--version")
+        .output()
+        .await;
+
+    out.ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+}
+
 /// Smoke-test ping.
 #[tauri::command]
 fn ping() -> String {
@@ -590,6 +633,28 @@ pub fn run() {
             trackers: new_tracker_map(),
             adapter: Arc::new(CodexAdapter::default()),
             db,
+            bridge: bridge::BridgeManager::new(),
+        })
+        .setup(|app| {
+            // Auto-start bridge if feishu_enabled && bridge_autostart both "true".
+            let handle = app.handle().clone();
+            let db_clone = app.state::<AppState>().db.clone();
+
+            tauri::async_runtime::spawn(async move {
+                let settings = db_clone.settings_get_all().unwrap_or_default();
+                let feishu_enabled =
+                    settings.get("feishu_enabled").map(|s| s == "true").unwrap_or(false);
+                let autostart =
+                    settings.get("bridge_autostart").map(|s| s == "true").unwrap_or(false);
+                if feishu_enabled && autostart {
+                    let state = handle.state::<AppState>();
+                    if let Err(e) = state.bridge.start(db_clone, handle.clone()).await {
+                        eprintln!("[bridge] 自动启动失败: {e}");
+                    }
+                }
+            });
+
+            Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             ping,
@@ -618,6 +683,10 @@ pub fn run() {
             feishu_recent_logs,
             wecom_test,
             wecom_recent_logs,
+            bridge_start,
+            bridge_stop,
+            bridge_status,
+            bridge_node_version,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
