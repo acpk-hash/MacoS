@@ -491,6 +491,7 @@ export default function StudioGen() {
   const [count, setCount] = useState(1)
   const [toast, setToast] = useState<string | null>(null)
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<(typeof media)[number] | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [focusToken, setFocusToken] = useState(0)
   const toastTimer = useRef<number | null>(null)
@@ -659,7 +660,7 @@ export default function StudioGen() {
                   row={row}
                   onOpen={() => openLightbox(row)}
                   onDownload={() => void downloadMedia(row, showToast)}
-                  onDelete={() => void deleteMedia(row.id)}
+                  onDelete={() => setConfirmDelete(row)}
                   onCopyPrompt={() => void copyPrompt(row)}
                   onRetry={() => handleRetry(row)}
                 />
@@ -715,8 +716,38 @@ export default function StudioGen() {
           onIndex={setLightboxIdx}
           onClose={() => setLightboxIdx(null)}
           onDownload={(row) => void downloadMedia(row, showToast)}
-          onDelete={(row) => void deleteMedia(row.id)}
+          onDelete={(row) => setConfirmDelete(row)}
         />
+      )}
+
+      {/* Delete confirm */}
+      {confirmDelete && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+          <div className="bg-gray-900 border border-gray-700 rounded-xl p-5 max-w-sm w-full mx-4 shadow-xl">
+            <p className="text-sm text-gray-200 mb-1 font-medium">
+              删除该{confirmDelete.kind === 'video' ? '视频' : '图片'}？
+            </p>
+            <p className="text-xs text-gray-400 mb-4 truncate">{confirmDelete.prompt}</p>
+            <p className="text-xs text-gray-500 mb-4">此操作会永久删除本地文件，无法撤销。</p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                className="text-xs px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={() => {
+                  void deleteMedia(confirmDelete.id)
+                  setConfirmDelete(null)
+                }}
+                className="text-xs px-3 py-1.5 rounded-lg bg-red-700 hover:bg-red-600 text-white border border-red-600 transition-colors"
+              >
+                删除
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Toast */}
