@@ -127,6 +127,28 @@ pub struct TimelineItem {
     pub state: Option<String>,
 }
 
+/// One session row for the workflow canvas, returned by `get_task_sessions`
+/// ordered by `started_at ASC`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CanvasSessionRow {
+    pub id: String,
+    pub engine: String,
+    pub thread_id: Option<String>,
+    pub started_at: i64,
+    pub ended_at: Option<i64>,
+}
+
+/// One raw persisted event row for the workflow canvas, returned by
+/// `get_session_events` ordered by `ts ASC`. `payload_json` is the serialized
+/// `AgentEvent` (parsed on the frontend for step reconstruction).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CanvasEventRow {
+    #[serde(rename = "type")]
+    pub event_type: String,
+    pub ts: i64,
+    pub payload_json: String,
+}
+
 // ── Db ────────────────────────────────────────────────────────────────────────
 
 pub struct Db {
@@ -737,6 +759,47 @@ impl Db {
         items.sort_by_key(|i| i.ts);
         Ok(items)
     }
+
+    // ── Canvas queries ──────────────────────────────────────────────────────────
+
+    /// Return all sessions for a task, ordered by `started_at ASC`.
+    /// Used by the workflow canvas to render one session row per session.
+    pub fn get_task_sessions(&self, task_id: &str) -> SqlResult<Vec<CanvasSessionRow>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, engine, thread_id, started_at, ended_at \
+             FROM sessions WHERE task_id = ?1 ORDER BY started_at ASC",
+        )?;
+        let rows = stmt.query_map(params![task_id], |row| {
+            Ok(CanvasSessionRow {
+                id: row.get(0)?,
+                engine: row.get(1)?,
+                thread_id: row.get(2)?,
+                started_at: row.get(3)?,
+                ended_at: row.get(4)?,
+            })
+        })?;
+        rows.collect()
+    }
+
+    /// Return all raw persisted events for a session, ordered by `ts ASC`.
+    /// The canvas parses each `payload_json` to reconstruct command/reply/file
+    /// steps (commands live only in the events table, not in the timeline).
+    pub fn get_session_events(&self, session_id: &str) -> SqlResult<Vec<CanvasEventRow>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT type, ts, payload_json \
+             FROM events WHERE session_id = ?1 ORDER BY ts ASC",
+        )?;
+        let rows = stmt.query_map(params![session_id], |row| {
+            Ok(CanvasEventRow {
+                event_type: row.get(0)?,
+                ts: row.get(1)?,
+                payload_json: row.get(2)?,
+            })
+        })?;
+        rows.collect()
+    }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1182,6 +1245,87 @@ mod tests {
 
         let tasks = db.list_tasks().unwrap();
         assert_eq!(tasks[0].file_count, 2, "2 distinct paths");
+    }
+
+    // ── canvas: get_task_sessions ─────────────────────────────────────────────
+
+    #[test]
+    fn get_task_sessions_ordered_by_started_at() {
+        let db = new_db();
+        seed_task(&db, "cts_t");
+        {
+            let conn = db.conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO sessions (id, task_id, engine, started_at) \
+                 VALUES ('s_b', 'cts_t', 'codex', 200)",
+                [],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO sessions (id, task_id, engine, thread_id, started_at, ended_at) \
+                 VALUES ('s_a', 'cts_t', 'claude', 'th-1', 100, 150)",
+                [],
+            )
+            .unwrap();
+        }
+        let rows = db.get_task_sessions("cts_t").unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].id, "s_a", "earlier started_at first");
+        assert_eq!(rows[0].engine, "claude");
+        assert_eq!(rows[0].thread_id.as_deref(), Some("th-1"));
+        assert_eq!(rows[0].ended_at, Some(150));
+        assert_eq!(rows[1].id, "s_b");
+        assert!(rows[1].ended_at.is_none(), "running session has null ended_at");
+        assert!(rows[1].thread_id.is_none());
+    }
+
+    #[test]
+    fn get_task_sessions_empty_for_unknown_task() {
+        let db = new_db();
+        assert!(db.get_task_sessions("nope").unwrap().is_empty());
+    }
+
+    // ── canvas: get_session_events ────────────────────────────────────────────
+
+    #[test]
+    fn get_session_events_ordered_by_ts() {
+        let db = new_db();
+        seed_task(&db, "ge_t");
+        seed_session(&db, "ge_s", "ge_t");
+        {
+            let conn = db.conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO events (session_id, type, payload_json, ts) \
+                 VALUES ('ge_s', 'command_run', '{\"type\":\"command_run\",\"cmd\":\"ls\",\"exit_code\":0,\"output_tail\":\"a\"}', 300)",
+                [],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO events (session_id, type, payload_json, ts) \
+                 VALUES ('ge_s', 'assistant_message', '{\"type\":\"assistant_message\",\"text\":\"hi\"}', 100)",
+                [],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO events (session_id, type, payload_json, ts) \
+                 VALUES ('ge_s', 'file_edit', '{\"type\":\"file_edit\",\"path\":\"a.rs\"}', 200)",
+                [],
+            )
+            .unwrap();
+        }
+        let rows = db.get_session_events("ge_s").unwrap();
+        assert_eq!(rows.len(), 3);
+        assert_eq!(rows[0].event_type, "assistant_message", "sorted by ts ASC");
+        assert_eq!(rows[1].event_type, "file_edit");
+        assert_eq!(rows[2].event_type, "command_run");
+        assert!(rows[0].payload_json.contains("hi"));
+        assert_eq!(rows[2].ts, 300);
+    }
+
+    #[test]
+    fn get_session_events_empty_for_unknown_session() {
+        let db = new_db();
+        assert!(db.get_session_events("nope").unwrap().is_empty());
     }
 }
 

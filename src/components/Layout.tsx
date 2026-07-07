@@ -13,6 +13,9 @@ const studioItems = [
   { to: '/studio/gen', label: '生成', shortLabel: '成' },
 ]
 
+// New "Agent" group (workflow execution canvas).
+const agentItems = [{ to: '/canvas', label: '画布', shortLabel: '画' }]
+
 const linkClass = ({ isActive }: { isActive: boolean }) =>
   [
     'flex items-center justify-center h-10 rounded-lg text-xs font-medium transition-colors',
@@ -38,6 +41,18 @@ export default function Layout() {
             工作台
           </span>
           {studioItems.map((item) => (
+            <NavLink key={item.to} to={item.to} title={item.label} className={linkClass}>
+              {item.label}
+            </NavLink>
+          ))}
+        </nav>
+
+        {/* Agent group */}
+        <nav className="flex flex-col gap-1 w-full px-2">
+          <span className="text-[9px] text-gray-600 text-center mb-0.5 select-none">
+            Agent
+          </span>
+          {agentItems.map((item) => (
             <NavLink key={item.to} to={item.to} title={item.label} className={linkClass}>
               {item.label}
             </NavLink>

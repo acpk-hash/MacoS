@@ -19,7 +19,7 @@ use agent::{
     events::{AgentEvent, AgentEventEnvelope},
     new_session_map, SessionMap,
 };
-use db::{Db, TaskRow, TimelineItem};
+use db::{CanvasEventRow, CanvasSessionRow, Db, TaskRow, TimelineItem};
 use mcp::{McpServer, add_mcp_server, list_mcp_servers, remove_mcp_server, codex_config_path};
 
 // ── Shared state ──────────────────────────────────────────────────────────────
@@ -332,6 +332,31 @@ async fn get_session_timeline(
     state
         .db
         .get_session_timeline(&session_id)
+        .map_err(|e| e.to_string())
+}
+
+/// Return all sessions of a task (started_at ASC) for the workflow canvas.
+#[tauri::command]
+async fn get_task_sessions(
+    task_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<CanvasSessionRow>, String> {
+    state
+        .db
+        .get_task_sessions(&task_id)
+        .map_err(|e| e.to_string())
+}
+
+/// Return all raw persisted events of a session (ts ASC) for the canvas.
+/// Unlike `get_session_timeline`, this includes command_run events.
+#[tauri::command]
+async fn get_session_events(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<CanvasEventRow>, String> {
+    state
+        .db
+        .get_session_events(&session_id)
         .map_err(|e| e.to_string())
 }
 
@@ -689,6 +714,8 @@ pub fn run() {
             pick_directory,
             list_tasks,
             get_session_timeline,
+            get_task_sessions,
+            get_session_events,
             task_create,
             task_delete,
             task_update_title,
