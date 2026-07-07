@@ -7,14 +7,18 @@ const navItems = [
   { to: '/settings', label: '设置', shortLabel: '设' },
 ]
 
-// New "工作台" group (direct-API studio).
+// "工作台" group (direct-API studio).
 const studioItems = [
   { to: '/studio/chat', label: '对话', shortLabel: '话' },
   { to: '/studio/gen', label: '生成', shortLabel: '成' },
 ]
 
-// New "Agent" group (workflow execution canvas).
-const agentItems = [{ to: '/canvas', label: '画布', shortLabel: '画' }]
+// "Agent" group. 工作台 (local pi workbench) is the prominent third feature;
+// 画布 (canvas) stays as-is for now (F4c simplifies it separately).
+const agentItems = [
+  { to: '/workbench', label: '工作台', shortLabel: '台' },
+  { to: '/canvas', label: '画布', shortLabel: '画' },
+]
 
 const linkClass = ({ isActive }: { isActive: boolean }) =>
   [
