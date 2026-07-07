@@ -4,6 +4,7 @@ pub mod db;
 pub mod engine_config;
 pub mod feishu;
 pub mod mcp;
+pub mod pi_engine;
 pub mod providers;
 pub mod relay;
 pub mod studio;
@@ -36,6 +37,7 @@ pub(crate) struct AppState {
     bridge: bridge::BridgeManager,
     studio: studio::StudioState,
     sync: sync::SyncManager,
+    pi: pi_engine::PiEngine,
 }
 
 /// Mark the sync snapshot dirty (task/session rows changed). No-op if sync is
@@ -828,6 +830,86 @@ async fn open_external_url(url: String) -> Result<(), String> {
     spawn.map(|_| ()).map_err(|e| e.to_string())
 }
 
+// ── Workbench (local pi engine, F4a) ──────────────────────────────────────────
+
+/// Open a workbench session: launch a pi RPC engine in `dir` using the F1
+/// provider `provider_id` (defaults to the configured default) + `model`.
+/// Emits events on the `workbench-event` channel. Returns the new session id.
+#[tauri::command]
+async fn workbench_open(
+    dir: String,
+    provider_id: Option<String>,
+    model: String,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<pi_engine::WorkbenchOpenResult, String> {
+    state
+        .pi
+        .open(state.db.clone(), app, dir, provider_id, model)
+        .await
+}
+
+/// Send a fresh prompt (starts a new turn).
+#[tauri::command]
+async fn workbench_prompt(text: String, state: State<'_, AppState>) -> Result<(), String> {
+    state.pi.prompt(&state.db, text).await
+}
+
+/// Steer the running turn with an additional instruction.
+#[tauri::command]
+async fn workbench_steer(text: String, state: State<'_, AppState>) -> Result<(), String> {
+    state.pi.steer(text).await
+}
+
+/// Abort the current turn (progress-bar stop button).
+#[tauri::command]
+async fn workbench_abort(state: State<'_, AppState>) -> Result<(), String> {
+    state.pi.abort().await
+}
+
+/// Switch the workbench model/provider (restarts the engine on the same cwd).
+#[tauri::command]
+async fn workbench_set_model(
+    provider_id: Option<String>,
+    model: String,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<pi_engine::WorkbenchOpenResult, String> {
+    state
+        .pi
+        .set_model(state.db.clone(), app, provider_id, model)
+        .await
+}
+
+/// List models available to the running pi engine.
+#[tauri::command]
+async fn workbench_models(
+    state: State<'_, AppState>,
+) -> Result<Vec<pi_engine::WorkbenchModel>, String> {
+    state.pi.models().await
+}
+
+/// Fetch the latest token usage (also persisted).
+#[tauri::command]
+async fn workbench_stats(
+    state: State<'_, AppState>,
+) -> Result<pi_engine::WorkbenchStats, String> {
+    state.pi.stats(&state.db).await
+}
+
+/// Export the session transcript to HTML; returns the file path.
+#[tauri::command]
+async fn workbench_export_html(state: State<'_, AppState>) -> Result<String, String> {
+    state.pi.export_html(&state.db).await
+}
+
+/// Close the workbench session (stops the pi engine).
+#[tauri::command]
+async fn workbench_close(state: State<'_, AppState>) -> Result<(), String> {
+    state.pi.close().await;
+    Ok(())
+}
+
 // ── App entry point ───────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -844,6 +926,7 @@ pub fn run() {
             bridge: bridge::BridgeManager::new(),
             studio: studio::StudioState::new(),
             sync: sync::SyncManager::new(),
+            pi: pi_engine::PiEngine::new(),
         })
         .setup(|app| {
             // Seed a default provider from the legacy Codex relay config the
@@ -953,6 +1036,15 @@ pub fn run() {
             providers::provider_delete,
             providers::provider_test,
             providers::providers_models,
+            workbench_open,
+            workbench_prompt,
+            workbench_steer,
+            workbench_abort,
+            workbench_set_model,
+            workbench_models,
+            workbench_stats,
+            workbench_export_html,
+            workbench_close,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

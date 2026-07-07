@@ -101,6 +101,46 @@ CREATE TABLE IF NOT EXISTS providers (
 );
 "#;
 
+/// V6: local workbench (pi engine) persistence — F4a.
+///
+/// `workbench_sessions` records one pi RPC session (cwd + provider/model + the
+/// exported HTML path once produced). `workbench_entries` stores the ordered
+/// turn stream (user prompts, assistant messages, tool calls) for later replay
+/// / F5 沉淀. `workbench_stats` holds the latest token usage snapshot per
+/// session (upserted after every turn). No credentials are ever stored here.
+const SCHEMA_V6: &str = r#"
+CREATE TABLE IF NOT EXISTS workbench_sessions (
+    id          TEXT PRIMARY KEY,
+    cwd         TEXT NOT NULL,
+    provider_id TEXT NOT NULL DEFAULT '',
+    model       TEXT NOT NULL DEFAULT '',
+    pi_session  TEXT,
+    export_path TEXT,
+    created_at  INTEGER NOT NULL,
+    ended_at    INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS workbench_entries (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    kind       TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    ts         INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS workbench_stats (
+    session_id  TEXT PRIMARY KEY,
+    input       INTEGER NOT NULL DEFAULT 0,
+    output      INTEGER NOT NULL DEFAULT 0,
+    cache_read  INTEGER NOT NULL DEFAULT 0,
+    cache_write INTEGER NOT NULL DEFAULT 0,
+    total       INTEGER NOT NULL DEFAULT 0,
+    updated_at  INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_workbench_entries_session ON workbench_entries(session_id, ts);
+"#;
+
 // ── Public row types ──────────────────────────────────────────────────────────
 
 /// Returned by `list_tasks` — one row per task, ordered by updated_at DESC.
@@ -180,6 +220,15 @@ pub struct CanvasEventRow {
     pub payload_json: String,
 }
 
+/// One persisted workbench entry (F4a) returned by `workbench_entries`,
+/// ordered by `ts ASC`. `payload_json` is the serialized `WorkbenchEvent`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkbenchEntryRow {
+    pub kind: String,
+    pub payload_json: String,
+    pub ts: i64,
+}
+
 /// One configured OpenAI-compatible provider (metadata only — no API key).
 /// The key lives in the OS credential store; `has_key` mirrors its presence.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -245,6 +294,10 @@ impl Db {
         if version < 5 {
             conn.execute_batch(SCHEMA_V5)?;
             conn.execute_batch("PRAGMA user_version = 5")?;
+        }
+        if version < 6 {
+            conn.execute_batch(SCHEMA_V6)?;
+            conn.execute_batch("PRAGMA user_version = 6")?;
         }
         Ok(())
     }
@@ -933,6 +986,110 @@ impl Db {
                 event_type: row.get(0)?,
                 ts: row.get(1)?,
                 payload_json: row.get(2)?,
+            })
+        })?;
+        rows.collect()
+    }
+
+    // ── Workbench (pi engine, F4a) ──────────────────────────────────────────────
+
+    /// Create a workbench session row. Credentials are never stored.
+    pub fn workbench_session_create(
+        &self,
+        id: &str,
+        cwd: &str,
+        provider_id: &str,
+        model: &str,
+    ) -> SqlResult<()> {
+        let now = now_ms();
+        self.conn.lock().unwrap().execute(
+            "INSERT INTO workbench_sessions (id, cwd, provider_id, model, created_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![id, cwd, provider_id, model, now],
+        )?;
+        Ok(())
+    }
+
+    /// Record the pi-side session id (from get_session_stats) for a workbench session.
+    pub fn workbench_session_set_pi_session(&self, id: &str, pi_session: &str) -> SqlResult<()> {
+        self.conn.lock().unwrap().execute(
+            "UPDATE workbench_sessions SET pi_session = ?1 WHERE id = ?2",
+            params![pi_session, id],
+        )?;
+        Ok(())
+    }
+
+    /// Record the export_html output path for a workbench session.
+    pub fn workbench_session_set_export(&self, id: &str, export_path: &str) -> SqlResult<()> {
+        self.conn.lock().unwrap().execute(
+            "UPDATE workbench_sessions SET export_path = ?1 WHERE id = ?2",
+            params![export_path, id],
+        )?;
+        Ok(())
+    }
+
+    /// Mark a workbench session ended.
+    pub fn workbench_session_end(&self, id: &str) -> SqlResult<()> {
+        let now = now_ms();
+        self.conn.lock().unwrap().execute(
+            "UPDATE workbench_sessions SET ended_at = ?1 WHERE id = ?2",
+            params![now, id],
+        )?;
+        Ok(())
+    }
+
+    /// Append one workbench entry (user prompt / assistant message / tool call).
+    pub fn workbench_entry_insert(
+        &self,
+        session_id: &str,
+        kind: &str,
+        payload_json: &str,
+    ) -> SqlResult<()> {
+        let now = now_ms();
+        self.conn.lock().unwrap().execute(
+            "INSERT INTO workbench_entries (session_id, kind, payload_json, ts) \
+             VALUES (?1, ?2, ?3, ?4)",
+            params![session_id, kind, payload_json, now],
+        )?;
+        Ok(())
+    }
+
+    /// Upsert the latest token usage snapshot for a workbench session.
+    pub fn workbench_stats_upsert(
+        &self,
+        session_id: &str,
+        input: i64,
+        output: i64,
+        cache_read: i64,
+        cache_write: i64,
+        total: i64,
+    ) -> SqlResult<()> {
+        let now = now_ms();
+        self.conn.lock().unwrap().execute(
+            "INSERT INTO workbench_stats \
+             (session_id, input, output, cache_read, cache_write, total, updated_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) \
+             ON CONFLICT(session_id) DO UPDATE SET \
+               input = excluded.input, output = excluded.output, \
+               cache_read = excluded.cache_read, cache_write = excluded.cache_write, \
+               total = excluded.total, updated_at = excluded.updated_at",
+            params![session_id, input, output, cache_read, cache_write, total, now],
+        )?;
+        Ok(())
+    }
+
+    /// Return the ordered entry stream for a workbench session.
+    pub fn workbench_entries(&self, session_id: &str) -> SqlResult<Vec<WorkbenchEntryRow>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT kind, payload_json, ts FROM workbench_entries \
+             WHERE session_id = ?1 ORDER BY ts ASC, id ASC",
+        )?;
+        let rows = stmt.query_map(params![session_id], |row| {
+            Ok(WorkbenchEntryRow {
+                kind: row.get(0)?,
+                payload_json: row.get(1)?,
+                ts: row.get(2)?,
             })
         })?;
         rows.collect()
