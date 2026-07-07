@@ -9,6 +9,8 @@ import {
   type ChatMessageRow,
   type ChatSessionRow,
 } from '../stores/studioStore'
+import { parseAttachments } from '../lib/attachments'
+import Composer from '../components/Composer'
 
 // ── Environment guard ─────────────────────────────────────────────────────────
 
@@ -16,70 +18,11 @@ const isTauri =
   typeof window !== 'undefined' &&
   !!(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__
 
-// ── Attachment constraints ────────────────────────────────────────────────────
-
-const MAX_ATTACH_BYTES = 10 * 1024 * 1024 // 10MB per attachment (after compress)
-const MAX_TEXT_BYTES = 200 * 1024 // 200KB for text files
-const MAX_IMAGE_EDGE = 2048 // longest edge, in px
-
 const EXAMPLE_PROMPTS = [
   '用通俗的语言解释一下量子纠缠',
   '帮我写一封简洁专业的请假邮件',
   '给我三个适合周末做的家常菜，并附上做法',
 ]
-
-// ── Attachment helpers ────────────────────────────────────────────────────────
-
-function readAsDataURL(file: File | Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as string)
-    reader.onerror = () => reject(reader.error)
-    reader.readAsDataURL(file)
-  })
-}
-
-function loadImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    img.onload = () => resolve(img)
-    img.onerror = () => reject(new Error('图片解码失败'))
-    img.src = src
-  })
-}
-
-/** Approximate decoded byte size of a data URL. */
-function dataUrlBytes(dataUrl: string): number {
-  const comma = dataUrl.indexOf(',')
-  const b64 = comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl
-  return Math.floor((b64.length * 3) / 4)
-}
-
-/** Compress an image to <= MAX_IMAGE_EDGE on its longest side, as a data URL. */
-async function compressImage(file: File | Blob): Promise<string> {
-  const original = await readAsDataURL(file)
-  let img: HTMLImageElement
-  try {
-    img = await loadImage(original)
-  } catch {
-    return original
-  }
-  let { width, height } = img
-  const scale = Math.min(1, MAX_IMAGE_EDGE / Math.max(width, height))
-  if (scale >= 1) {
-    // No resize needed; keep original unless it needs re-encode for size.
-    return original
-  }
-  width = Math.round(width * scale)
-  height = Math.round(height * scale)
-  const canvas = document.createElement('canvas')
-  canvas.width = width
-  canvas.height = height
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return original
-  ctx.drawImage(img, 0, 0, width, height)
-  return canvas.toDataURL('image/jpeg', 0.9)
-}
 
 // ── Markdown rendering ────────────────────────────────────────────────────────
 
@@ -241,15 +184,6 @@ function BlinkCursor() {
   return (
     <span className="inline-block w-[7px] h-[15px] ml-0.5 -mb-0.5 bg-gray-300 animate-pulse rounded-[1px] align-middle" />
   )
-}
-
-function parseAttachments(json: string | null): Attachment[] {
-  if (!json) return []
-  try {
-    return JSON.parse(json) as Attachment[]
-  } catch {
-    return []
-  }
 }
 
 function AttachmentPreview({ atts }: { atts: Attachment[] }) {
@@ -539,263 +473,6 @@ function SessionSidebar({
   )
 }
 
-// ── Composer ──────────────────────────────────────────────────────────────────
-
-const MAX_TEXTAREA_H = 200 // ~8 lines
-
-function Composer({
-  draft,
-  setDraft,
-  streaming,
-  disabled,
-  onSend,
-  onStop,
-  showToast,
-}: {
-  draft: string
-  setDraft: (v: string) => void
-  streaming: boolean
-  disabled: boolean
-  onSend: (content: string, attachments: Attachment[]) => void
-  onStop: () => void
-  showToast: (msg: string) => void
-}) {
-  const [attachments, setAttachments] = useState<Attachment[]>([])
-  const [dragOver, setDragOver] = useState(false)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const imageInputRef = useRef<HTMLInputElement>(null)
-  const textInputRef = useRef<HTMLInputElement>(null)
-  const [plusOpen, setPlusOpen] = useState(false)
-
-  // Auto-grow the textarea.
-  useEffect(() => {
-    const el = textareaRef.current
-    if (!el) return
-    el.style.height = 'auto'
-    el.style.height = Math.min(el.scrollHeight, MAX_TEXTAREA_H) + 'px'
-  }, [draft])
-
-  const addImageFile = async (file: File) => {
-    try {
-      const dataUrl = await compressImage(file)
-      if (dataUrlBytes(dataUrl) > MAX_ATTACH_BYTES) {
-        showToast('图片超过 10MB，已跳过')
-        return
-      }
-      setAttachments((prev) => [
-        ...prev,
-        { kind: 'image', name: file.name || '图片', data_url: dataUrl },
-      ])
-    } catch {
-      showToast('图片处理失败')
-    }
-  }
-
-  const addTextFile = async (file: File) => {
-    if (file.size > MAX_TEXT_BYTES) {
-      showToast('文本文件超过 200KB，已跳过')
-      return
-    }
-    try {
-      const text = await file.text()
-      setAttachments((prev) => [
-        ...prev,
-        { kind: 'text', name: file.name || '文本文件', text },
-      ])
-    } catch {
-      showToast('文本文件读取失败')
-    }
-  }
-
-  const removeAttachment = (idx: number) => {
-    setAttachments((prev) => prev.filter((_, i) => i !== idx))
-  }
-
-  const handleSend = () => {
-    const content = draft.trim()
-    if ((!content && attachments.length === 0) || streaming || disabled) return
-    onSend(content, attachments)
-    setDraft('')
-    setAttachments([])
-  }
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-      e.preventDefault()
-      handleSend()
-    }
-  }
-
-  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    const items = e.clipboardData?.items
-    if (!items) return
-    for (const item of items) {
-      if (item.kind === 'file' && item.type.startsWith('image/')) {
-        const file = item.getAsFile()
-        if (file) {
-          e.preventDefault()
-          void addImageFile(file)
-        }
-      }
-    }
-  }
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault()
-    setDragOver(false)
-    const files = Array.from(e.dataTransfer?.files ?? [])
-    for (const file of files) {
-      if (file.type.startsWith('image/')) void addImageFile(file)
-      else if (file.type.startsWith('text/') || /\.(txt|md|json|csv|log)$/i.test(file.name))
-        void addTextFile(file)
-      else showToast(`不支持的文件类型：${file.name}`)
-    }
-  }
-
-  return (
-    <div className="px-4 pb-4 pt-1 flex-shrink-0">
-      <div
-        onDragOver={(e) => {
-          e.preventDefault()
-          setDragOver(true)
-        }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={handleDrop}
-        className={[
-          'max-w-3xl mx-auto rounded-2xl border bg-gray-800/70 transition-colors',
-          dragOver ? 'border-blue-500 bg-blue-950/20' : 'border-gray-700',
-        ].join(' ')}
-      >
-        {/* Attachment chips */}
-        {attachments.length > 0 && (
-          <div className="flex flex-wrap gap-2 px-3 pt-3">
-            {attachments.map((a, i) => (
-              <div
-                key={i}
-                className="relative group flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gray-900 border border-gray-700 text-xs text-gray-300"
-              >
-                {a.kind === 'image' && a.data_url ? (
-                  <img
-                    src={a.data_url}
-                    alt={a.name ?? ''}
-                    className="w-8 h-8 rounded object-cover"
-                  />
-                ) : (
-                  <span aria-hidden="true">📄</span>
-                )}
-                <span className="max-w-[140px] truncate">{a.name}</span>
-                <button
-                  onClick={() => removeAttachment(i)}
-                  className="ml-1 text-gray-500 hover:text-red-400 transition-colors"
-                  title="移除"
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <div className="flex items-end gap-2 p-2">
-          {/* + menu */}
-          <div className="relative flex-shrink-0">
-            <button
-              onClick={() => setPlusOpen((v) => !v)}
-              className="w-9 h-9 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-700 hover:text-gray-200 transition-colors text-xl leading-none"
-              title="添加附件"
-            >
-              +
-            </button>
-            {plusOpen && (
-              <div className="absolute bottom-11 left-0 z-20 w-36 py-1 rounded-lg bg-gray-800 border border-gray-700 shadow-xl">
-                <button
-                  onClick={() => {
-                    setPlusOpen(false)
-                    imageInputRef.current?.click()
-                  }}
-                  className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700 transition-colors"
-                >
-                  上传图片
-                </button>
-                <button
-                  onClick={() => {
-                    setPlusOpen(false)
-                    textInputRef.current?.click()
-                  }}
-                  className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700 transition-colors"
-                >
-                  上传文本文件
-                </button>
-              </div>
-            )}
-          </div>
-
-          <textarea
-            ref={textareaRef}
-            rows={1}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onPaste={handlePaste}
-            placeholder={
-              disabled ? '正在加载模型…' : '给 AI 发送消息，Enter 发送 / Shift+Enter 换行'
-            }
-            className="flex-1 bg-transparent resize-none px-2 py-2 text-[15px] text-gray-100 placeholder-gray-500 focus:outline-none max-h-[200px]"
-          />
-
-          {streaming ? (
-            <button
-              onClick={onStop}
-              className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-gray-200 hover:bg-white text-gray-900 transition-colors"
-              title="停止生成"
-            >
-              <span className="w-3 h-3 bg-gray-900 rounded-[2px]" />
-            </button>
-          ) : (
-            <button
-              onClick={handleSend}
-              disabled={disabled || (!draft.trim() && attachments.length === 0)}
-              className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-30 disabled:cursor-not-allowed text-white transition-colors"
-              title="发送"
-            >
-              ↑
-            </button>
-          )}
-        </div>
-      </div>
-      <p className="max-w-3xl mx-auto text-center text-[10px] text-gray-600 mt-2">
-        AI 也可能会出错，请核对重要信息。
-      </p>
-
-      {/* Hidden file inputs */}
-      <input
-        ref={imageInputRef}
-        type="file"
-        accept="image/*"
-        multiple
-        className="hidden"
-        onChange={(e) => {
-          const files = Array.from(e.target.files ?? [])
-          files.forEach((f) => void addImageFile(f))
-          e.target.value = ''
-        }}
-      />
-      <input
-        ref={textInputRef}
-        type="file"
-        accept=".txt,.md,.json,.csv,.log,text/*"
-        multiple
-        className="hidden"
-        onChange={(e) => {
-          const files = Array.from(e.target.files ?? [])
-          files.forEach((f) => void addTextFile(f))
-          e.target.value = ''
-        }}
-      />
-    </div>
-  )
-}
-
 // ── Empty state ───────────────────────────────────────────────────────────────
 
 function EmptyState({ onPick }: { onPick: (text: string) => void }) {
@@ -912,6 +589,10 @@ export default function StudioChat() {
   const activeSession = sessions.find((s) => s.id === activeSessionId)
   const hasMessages = messages.length > 0
 
+  const composerPlaceholder = !currentModel
+    ? '正在加载模型…'
+    : '给 AI 发送消息，Enter 发送 / Shift+Enter 换行'
+
   return (
     <div className="flex h-full">
       <SessionSidebar
@@ -973,11 +654,12 @@ export default function StudioChat() {
             <Composer
               draft={draft}
               setDraft={setDraft}
-              streaming={isStreaming}
+              busy={isStreaming}
               disabled={!currentModel}
               onSend={handleSend}
               onStop={() => void stop()}
               showToast={showToast}
+              placeholder={composerPlaceholder}
             />
           </div>
         ) : (
@@ -1016,11 +698,12 @@ export default function StudioChat() {
             <Composer
               draft={draft}
               setDraft={setDraft}
-              streaming={isStreaming}
+              busy={isStreaming}
               disabled={!currentModel}
               onSend={handleSend}
               onStop={() => void stop()}
               showToast={showToast}
+              placeholder={composerPlaceholder}
             />
           </>
         )}

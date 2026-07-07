@@ -8,7 +8,10 @@ const navItems = [
 ]
 
 // New "工作台" group (direct-API studio).
-const studioItems = [{ to: '/studio/chat', label: '对话', shortLabel: '话' }]
+const studioItems = [
+  { to: '/studio/chat', label: '对话', shortLabel: '话' },
+  { to: '/studio/gen', label: '生成', shortLabel: '成' },
+]
 
 const linkClass = ({ isActive }: { isActive: boolean }) =>
   [

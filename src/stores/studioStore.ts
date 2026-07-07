@@ -22,6 +22,27 @@ export interface ChatMessageRow {
   created_at: number
 }
 
+/** A generated media record (image or video). Mirrors GenMediaRow in Rust. */
+export interface GenMediaRow {
+  id: string
+  /** "image" | "video" */
+  kind: string
+  prompt: string
+  model: string
+  params_json: string | null
+  local_path: string | null
+  source_url: string | null
+  /** pending | running | done | failed */
+  status: string
+  error: string | null
+  created_at: number
+}
+
+/** Runtime capability probe result (mirrors Rust Capabilities). */
+export interface Capabilities {
+  video: boolean
+}
+
 /** A composer attachment sent to `chat_send`. */
 export interface Attachment {
   /** "image" | "text" */
@@ -42,6 +63,12 @@ interface StudioEvent {
   text?: string
   status?: string
   message?: string
+  // media events
+  id?: string
+  kind?: string
+  local_path?: string | null
+  source_url?: string | null
+  error?: string
 }
 
 // ── Tauri environment guard ───────────────────────────────────────────────────
@@ -78,6 +105,13 @@ interface StudioStore {
   /** Non-fatal error banner text (e.g. models load failure). */
   loadError: string | null
 
+  // ── Media (generation studio) branch ──────────────────────────────────────
+  /** Generated media for the currently loaded kind (newest first). */
+  media: GenMediaRow[]
+  mediaLoaded: boolean
+  /** Runtime capabilities (video availability). Null until probed. */
+  capabilities: Capabilities | null
+
   loadModels: () => Promise<void>
   loadSessions: () => Promise<void>
   selectSession: (id: string) => Promise<void>
@@ -89,6 +123,16 @@ interface StudioStore {
   regenerate: () => Promise<void>
   stop: () => Promise<void>
 
+  loadCapabilities: () => Promise<void>
+  loadMedia: (kind: 'image' | 'video') => Promise<void>
+  generateImage: (
+    prompt: string,
+    model: string,
+    size: string,
+    n: number,
+  ) => Promise<void>
+  deleteMedia: (id: string) => Promise<void>
+
   // Internal event appliers (invoked by the global studio-event listener).
   _applyDelta: (sessionId: string, messageId: string, text: string) => void
   _applyDone: (
@@ -98,6 +142,13 @@ interface StudioStore {
     text: string,
   ) => void
   _applyError: (sessionId: string, messageId: string, message: string) => void
+  _applyMediaRunning: (id: string) => void
+  _applyMediaDone: (
+    id: string,
+    localPath: string | null,
+    sourceUrl: string | null,
+  ) => void
+  _applyMediaFailed: (id: string, error: string) => void
 }
 
 // ── Streaming delta coalescing (rAF-batched for render perf) ──────────────────
@@ -143,6 +194,10 @@ function uuid(): string {
   return 'pending-' + Math.random().toString(36).slice(2)
 }
 
+/** Params captured before an image_generate call so `media_running` events
+ *  (which only carry an id) can render an informative placeholder card. */
+let pendingGen: { prompt: string; model: string; size: string } | null = null
+
 // ── Store ─────────────────────────────────────────────────────────────────────
 
 export const useStudioStore = create<StudioStore>((set, get) => ({
@@ -155,6 +210,9 @@ export const useStudioStore = create<StudioStore>((set, get) => ({
   sessionModel: {},
   streaming: {},
   loadError: null,
+  media: [],
+  mediaLoaded: false,
+  capabilities: null,
 
   loadModels: async () => {
     if (!isTauri) return
@@ -345,6 +403,55 @@ export const useStudioStore = create<StudioStore>((set, get) => ({
     }
   },
 
+  // ── Media (generation) ─────────────────────────────────────────────────────
+
+  loadCapabilities: async () => {
+    if (!isTauri) return
+    try {
+      const caps = await tauriInvoke<Capabilities>('studio_capabilities')
+      set({ capabilities: caps })
+    } catch (e) {
+      // Treat probe failure as "no video" (endpoint absent / offline).
+      console.warn('[studioStore] loadCapabilities failed:', e)
+      set({ capabilities: { video: false } })
+    }
+  },
+
+  loadMedia: async (kind) => {
+    if (!isTauri) return
+    try {
+      const media = await tauriInvoke<GenMediaRow[]>('media_list', { kind })
+      set({ media, mediaLoaded: true })
+    } catch (e) {
+      console.warn('[studioStore] loadMedia failed:', e)
+      set({ mediaLoaded: true })
+    }
+  },
+
+  generateImage: async (prompt, model, size, n) => {
+    if (!isTauri) return
+    if (!prompt.trim() || !model) return
+    pendingGen = { prompt, model, size }
+    try {
+      await tauriInvoke<string[]>('image_generate', { prompt, model, size, n })
+    } catch (e) {
+      set({ loadError: `图像生成失败：${String(e)}` })
+    } finally {
+      pendingGen = null
+      // Reconcile optimistic rows with DB truth.
+      await get().loadMedia('image')
+    }
+  },
+
+  deleteMedia: async (id) => {
+    try {
+      await tauriInvoke<void>('media_delete', { id })
+    } catch (e) {
+      console.warn('[studioStore] deleteMedia failed:', e)
+    }
+    set((s) => ({ media: s.media.filter((m) => m.id !== id) }))
+  },
+
   _applyDelta: (sessionId, messageId, text) => {
     if (sessionId !== get().activeSessionId) return
     set((s) => {
@@ -435,6 +542,44 @@ export const useStudioStore = create<StudioStore>((set, get) => ({
       return { messages: msgs, streaming }
     })
   },
+
+  _applyMediaRunning: (id) => {
+    set((s) => {
+      if (s.media.some((m) => m.id === id)) return {}
+      const p = pendingGen
+      const row: GenMediaRow = {
+        id,
+        kind: 'image',
+        prompt: p?.prompt ?? '',
+        model: p?.model ?? '',
+        params_json: p ? JSON.stringify({ size: p.size }) : null,
+        local_path: null,
+        source_url: null,
+        status: 'running',
+        error: null,
+        created_at: Date.now(),
+      }
+      return { media: [row, ...s.media] }
+    })
+  },
+
+  _applyMediaDone: (id, localPath, sourceUrl) => {
+    set((s) => ({
+      media: s.media.map((m) =>
+        m.id === id
+          ? { ...m, status: 'done', local_path: localPath, source_url: sourceUrl }
+          : m,
+      ),
+    }))
+  },
+
+  _applyMediaFailed: (id, error) => {
+    set((s) => ({
+      media: s.media.map((m) =>
+        m.id === id ? { ...m, status: 'failed', error } : m,
+      ),
+    }))
+  },
 }))
 
 // ── Global studio-event listener (registered once at startup) ─────────────────
@@ -447,10 +592,11 @@ export async function initStudioEventListener(): Promise<void> {
     const { listen } = await import('@tauri-apps/api/event')
     _unlisten = await listen<StudioEvent>('studio-event', (evt) => {
       const p = evt.payload
+      const store = useStudioStore.getState()
       switch (p.type) {
         case 'delta':
           if (p.session_id && p.message_id) {
-            if (p.session_id === useStudioStore.getState().activeSessionId) {
+            if (p.session_id === store.activeSessionId) {
               bufferDelta(p.message_id, p.text ?? '')
             }
           }
@@ -458,18 +604,30 @@ export async function initStudioEventListener(): Promise<void> {
         case 'done':
           flushNow()
           if (p.session_id && p.message_id) {
-            useStudioStore
-              .getState()
-              ._applyDone(p.session_id, p.message_id, p.status ?? 'complete', p.text ?? '')
+            store._applyDone(
+              p.session_id,
+              p.message_id,
+              p.status ?? 'complete',
+              p.text ?? '',
+            )
           }
           break
         case 'error':
           flushNow()
           if (p.session_id && p.message_id) {
-            useStudioStore
-              .getState()
-              ._applyError(p.session_id, p.message_id, p.message ?? '出错')
+            store._applyError(p.session_id, p.message_id, p.message ?? '出错')
           }
+          break
+        case 'media_running':
+          if (p.id) store._applyMediaRunning(p.id)
+          break
+        case 'media_done':
+          if (p.id) {
+            store._applyMediaDone(p.id, p.local_path ?? null, p.source_url ?? null)
+          }
+          break
+        case 'media_failed':
+          if (p.id) store._applyMediaFailed(p.id, p.error ?? '生成失败')
           break
         default:
           break
