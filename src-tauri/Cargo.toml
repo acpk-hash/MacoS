@@ -21,10 +21,13 @@ thiserror = "1"
 similar = "2"
 rusqlite = { version = "0.32", features = ["bundled"] }
 toml_edit = "0.22"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream", "multipart"] }
 futures-util = "0.3"
 tokio-util = "0.7"
 base64 = "0.22"
+# Secure secret storage: API keys live in the OS credential store (Windows
+# Credential Manager), never in SQLite/logs. windows-native avoids extra deps.
+keyring = { version = "3", features = ["windows-native"] }
 # Sync client (A3): pinned-TLS WebSocket to the sync server.
 # rustls pinned to the `ring` provider to match reqwest's provider in the lockfile
 # and avoid pulling the aws-lc-rs C/asm toolchain on Windows.

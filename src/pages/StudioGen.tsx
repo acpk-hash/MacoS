@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { save } from '@tauri-apps/plugin-dialog'
-import { useStudioStore, type GenMediaRow } from '../stores/studioStore'
+import {
+  useStudioStore,
+  type GenMediaRow,
+  type AggModel,
+} from '../stores/studioStore'
 import Composer from '../components/Composer'
+import ImageAnnotator from '../components/ImageAnnotator'
+import ModelPicker from '../components/ModelPicker'
 
 // ── Environment guard ─────────────────────────────────────────────────────────
 
@@ -22,9 +28,10 @@ const EXAMPLE_IMAGE_PROMPTS = [
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/** Image models are relay ids that contain "image" (e.g. gpt-image-2). */
-function imageModelsOf(models: string[]): string[] {
-  return models.filter((m) => m.toLowerCase().includes('image'))
+/** Image models are relay ids that contain "image" (e.g. gpt-image-2). Filters
+ *  the aggregated multi-provider list, preserving provider ownership. */
+function imageModelsOf(models: AggModel[]): AggModel[] {
+  return models.filter((m) => m.modelId.toLowerCase().includes('image'))
 }
 
 /** Extract the `size` recorded in a media row's params_json. */
@@ -35,6 +42,17 @@ function sizeOf(row: GenMediaRow): string | null {
     return p.size ?? null
   } catch {
     return null
+  }
+}
+
+/** True when this media row was produced by the annotate -> edit flow. */
+function isEditedRow(row: GenMediaRow): boolean {
+  if (!row.params_json) return false
+  try {
+    const p = JSON.parse(row.params_json) as { source_media_id?: string }
+    return !!p.source_media_id
+  } catch {
+    return false
   }
 }
 
@@ -118,17 +136,19 @@ function ModeSwitch({
 function ParamsBar({
   disabled,
   imageModels,
+  providerId,
   model,
-  onModel,
+  onSelect,
   size,
   onSize,
   count,
   onCount,
 }: {
   disabled: boolean
-  imageModels: string[]
+  imageModels: AggModel[]
+  providerId: string
   model: string
-  onModel: (v: string) => void
+  onSelect: (providerId: string, modelId: string) => void
   size: string
   onSize: (v: string) => void
   count: number
@@ -139,23 +159,15 @@ function ParamsBar({
   return (
     <div className="flex flex-wrap items-center gap-2">
       <label className="text-[11px] text-gray-500">模型</label>
-      <select
-        value={model}
+      <ModelPicker
+        models={imageModels}
+        value={{ providerId, modelId: model }}
+        onChange={(v) => onSelect(v.providerId, v.modelId)}
         disabled={disabled}
-        onChange={(e) => onModel(e.target.value)}
-        className={selCls + ' max-w-[160px]'}
         title="图像模型"
-      >
-        {imageModels.length === 0 && <option value="">无可用图像模型</option>}
-        {imageModels.length > 0 && !imageModels.includes(model) && model && (
-          <option value={model}>{model}</option>
-        )}
-        {imageModels.map((m) => (
-          <option key={m} value={m}>
-            {m}
-          </option>
-        ))}
-      </select>
+        emptyLabel="无可用图像模型"
+        className={selCls + ' max-w-[180px]'}
+      />
 
       <label className="text-[11px] text-gray-500 ml-1">尺寸</label>
       <select
@@ -199,6 +211,7 @@ function MediaCard({
   onDelete,
   onCopyPrompt,
   onRetry,
+  onAnnotate,
 }: {
   row: GenMediaRow
   onOpen: () => void
@@ -206,6 +219,7 @@ function MediaCard({
   onDelete: () => void
   onCopyPrompt: () => void
   onRetry: () => void
+  onAnnotate: () => void
 }) {
   if (row.status === 'running' || row.status === 'pending') {
     return (
@@ -261,6 +275,11 @@ function MediaCard({
 
       {/* Hover actions */}
       <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        {row.kind === 'image' && (
+          <IconBtn title="标注修改" onClick={onAnnotate}>
+            ✎
+          </IconBtn>
+        )}
         <IconBtn title="下载" onClick={onDownload}>
           ↓
         </IconBtn>
@@ -321,6 +340,7 @@ function Lightbox({
   onClose,
   onDownload,
   onDelete,
+  onAnnotate,
 }: {
   items: GenMediaRow[]
   index: number
@@ -328,6 +348,7 @@ function Lightbox({
   onClose: () => void
   onDownload: (row: GenMediaRow) => void
   onDelete: (row: GenMediaRow) => void
+  onAnnotate: (row: GenMediaRow) => void
 }) {
   const row = items[index]
 
@@ -359,6 +380,14 @@ function Lightbox({
           {index + 1} / {items.length}
         </span>
         <div className="flex items-center gap-2">
+          {row.kind === 'image' && (
+            <button
+              onClick={() => onAnnotate(row)}
+              className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs transition-colors"
+            >
+              标注修改
+            </button>
+          )}
           <button
             onClick={() => onDownload(row)}
             className="px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs border border-gray-700 transition-colors"
@@ -424,6 +453,7 @@ function Lightbox({
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-500">
           <span>模型：{row.model || '—'}</span>
           {size && <span>尺寸：{size}</span>}
+          {isEditedRow(row) && <span className="text-blue-400">由标注修改而来</span>}
           <span>时间：{formatTime(row.created_at)}</span>
         </div>
       </div>
@@ -473,7 +503,7 @@ function VideoLockedState() {
 
 export default function StudioGen() {
   const {
-    models,
+    aggModels,
     media,
     mediaLoaded,
     capabilities,
@@ -481,23 +511,33 @@ export default function StudioGen() {
     loadCapabilities,
     loadMedia,
     generateImage,
+    editImage,
     deleteMedia,
   } = useStudioStore()
 
   const [mode, setMode] = useState<Mode>('image')
   const [draft, setDraft] = useState('')
   const [imageModel, setImageModel] = useState('')
+  const [imageProviderId, setImageProviderId] = useState('')
   const [size, setSize] = useState<string>('1024x1024')
   const [count, setCount] = useState(1)
   const [toast, setToast] = useState<string | null>(null)
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<(typeof media)[number] | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [annotateRow, setAnnotateRow] = useState<GenMediaRow | null>(null)
+  const [annotateBusy, setAnnotateBusy] = useState(false)
   const [focusToken, setFocusToken] = useState(0)
   const toastTimer = useRef<number | null>(null)
 
-  const imageModels = useMemo(() => imageModelsOf(models), [models])
+  const imageModels = useMemo(() => imageModelsOf(aggModels), [aggModels])
   const videoEnabled = !!capabilities?.video
+
+  /** Select an image model together with its owning provider. */
+  const selectImageModel = (providerId: string, modelId: string) => {
+    setImageProviderId(providerId)
+    setImageModel(modelId)
+  }
 
   const showToast = (msg: string) => {
     setToast(msg)
@@ -516,8 +556,8 @@ export default function StudioGen() {
   // Keep the selected image model valid as the model list resolves.
   useEffect(() => {
     if (imageModels.length === 0) return
-    if (!imageModel || !imageModels.includes(imageModel)) {
-      setImageModel(imageModels[0])
+    if (!imageModel || !imageModels.some((m) => m.modelId === imageModel)) {
+      selectImageModel(imageModels[0].providerId, imageModels[0].modelId)
     }
   }, [imageModels, imageModel])
 
@@ -548,7 +588,7 @@ export default function StudioGen() {
     }
     setSubmitting(true)
     try {
-      await generateImage(content, imageModel, size, count)
+      await generateImage(content, imageModel, size, count, imageProviderId || null)
     } finally {
       setSubmitting(false)
     }
@@ -559,8 +599,37 @@ export default function StudioGen() {
     setDraft(row.prompt)
     const s = sizeOf(row)
     if (s) setSize(s)
-    if (row.model && imageModels.includes(row.model)) setImageModel(row.model)
+    const match = row.model
+      ? imageModels.find((m) => m.modelId === row.model)
+      : undefined
+    if (match) selectImageModel(match.providerId, match.modelId)
     setFocusToken((t) => t + 1)
+  }
+
+  const handleAnnotateSubmit = async (args: {
+    prompt: string
+    maskDataUrl: string | null
+    annotatedDataUrl: string
+  }) => {
+    const src = annotateRow
+    if (!src) return
+    setAnnotateBusy(true)
+    try {
+      await editImage({
+        sourceMediaId: src.id,
+        model: imageModel || src.model,
+        prompt: args.prompt,
+        size: sizeOf(src) ?? size,
+        maskDataUrl: args.maskDataUrl,
+        annotatedDataUrl: args.annotatedDataUrl,
+      })
+      setAnnotateRow(null)
+      showToast('已提交修改，生成中…')
+    } catch (e) {
+      showToast('修改失败：' + String(e))
+    } finally {
+      setAnnotateBusy(false)
+    }
   }
 
   const copyPrompt = async (row: GenMediaRow) => {
@@ -603,16 +672,18 @@ export default function StudioGen() {
       )}
       {imageModels.map((m) => (
         <button
-          key={m}
+          key={`${m.providerId}|${m.modelId}`}
           onClick={() => {
-            setImageModel(m)
+            selectImageModel(m.providerId, m.modelId)
             setMode('image')
             close()
           }}
           className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700 transition-colors"
         >
-          <span className="truncate">{m}</span>
-          {imageModel === m && <span className="text-blue-400 ml-1">✓</span>}
+          <span className="truncate">{m.modelId}</span>
+          {imageModel === m.modelId && imageProviderId === m.providerId && (
+            <span className="text-blue-400 ml-1">✓</span>
+          )}
         </button>
       ))}
     </div>
@@ -663,6 +734,7 @@ export default function StudioGen() {
                   onDelete={() => setConfirmDelete(row)}
                   onCopyPrompt={() => void copyPrompt(row)}
                   onRetry={() => handleRetry(row)}
+                  onAnnotate={() => setAnnotateRow(row)}
                 />
               ))}
             </div>
@@ -698,8 +770,9 @@ export default function StudioGen() {
           <ParamsBar
             disabled={mode === 'video'}
             imageModels={imageModels}
+            providerId={imageProviderId}
             model={imageModel}
-            onModel={setImageModel}
+            onSelect={selectImageModel}
             size={size}
             onSize={setSize}
             count={count}
@@ -717,6 +790,20 @@ export default function StudioGen() {
           onClose={() => setLightboxIdx(null)}
           onDownload={(row) => void downloadMedia(row, showToast)}
           onDelete={(row) => setConfirmDelete(row)}
+          onAnnotate={(row) => setAnnotateRow(row)}
+        />
+      )}
+
+      {/* Image annotator (annotate -> second-pass edit) */}
+      {annotateRow && (
+        <ImageAnnotator
+          row={annotateRow}
+          model={imageModel || annotateRow.model}
+          busy={annotateBusy}
+          onClose={() => {
+            if (!annotateBusy) setAnnotateRow(null)
+          }}
+          onSubmit={(a) => void handleAnnotateSubmit(a)}
         />
       )}
 

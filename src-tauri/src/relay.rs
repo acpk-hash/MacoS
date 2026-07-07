@@ -28,9 +28,26 @@ use tokio_util::sync::CancellationToken;
 pub struct RelayCreds {
     pub base_url: String,
     api_key: String,
+    /// `"chat"` (/v1/chat/completions) or `"responses"` (/v1/responses).
+    pub wire_api: String,
 }
 
 impl RelayCreds {
+    /// Build credentials directly (used by the multi-provider layer, where the
+    /// key comes from the OS credential store rather than `~/.codex`).
+    pub(crate) fn new(base_url: String, api_key: String, wire_api: String) -> Self {
+        let wire_api = if wire_api == "responses" {
+            "responses".to_string()
+        } else {
+            "chat".to_string()
+        };
+        Self {
+            base_url: base_url.trim().to_string(),
+            api_key,
+            wire_api,
+        }
+    }
+
     /// Load credentials from the real Codex config + auth files.
     pub fn load() -> Result<Self, String> {
         let config_path = crate::mcp::codex_config_path();
@@ -39,6 +56,10 @@ impl RelayCreds {
     }
 
     /// Load credentials from explicit paths (used by tests).
+    ///
+    /// The legacy Codex relay is OpenAI-compatible and serves
+    /// `/v1/chat/completions`, so we pin `wire_api = "chat"` here for the proven
+    /// studio chat path regardless of the Codex config's own `wire_api` value.
     pub fn load_from(config_path: &Path, auth_path: &Path) -> Result<Self, String> {
         let info = crate::engine_config::engine_config_get(config_path, auth_path)?;
         let base_url = info.base_url.trim().to_string();
@@ -49,7 +70,11 @@ impl RelayCreds {
         if api_key.is_empty() {
             return Err("未找到 API key（请在设置中填写 API key）".to_string());
         }
-        Ok(Self { base_url, api_key })
+        Ok(Self {
+            base_url,
+            api_key,
+            wire_api: "chat".to_string(),
+        })
     }
 }
 
@@ -58,6 +83,7 @@ impl std::fmt::Debug for RelayCreds {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RelayCreds")
             .field("base_url", &self.base_url)
+            .field("wire_api", &self.wire_api)
             .field("api_key", &"<redacted>")
             .finish()
     }
@@ -144,12 +170,18 @@ pub async fn chat_stream<F>(
 where
     F: FnMut(&str),
 {
-    let url = api_url(&creds.base_url, "chat/completions");
-    let body = json!({
-        "model": model,
-        "messages": messages,
-        "stream": true,
-    });
+    let responses_api = creds.wire_api == "responses";
+    let (url, body) = if responses_api {
+        (
+            api_url(&creds.base_url, "responses"),
+            json!({ "model": model, "input": messages, "stream": true }),
+        )
+    } else {
+        (
+            api_url(&creds.base_url, "chat/completions"),
+            json!({ "model": model, "messages": messages, "stream": true }),
+        )
+    };
     let resp = stream_client()?
         .post(&url)
         .bearer_auth(&creds.api_key)
@@ -183,10 +215,15 @@ where
                     Some(Err(e)) => return Err(format!("chat 流读取失败: {e}")),
                     Some(Ok(bytes)) => {
                         buf.extend_from_slice(&bytes);
-                        let done = process_sse_buffer(&mut buf, &mut |d| {
+                        let cb = &mut |d: &str| {
                             full.push_str(d);
                             on_delta(d);
-                        });
+                        };
+                        let done = if responses_api {
+                            process_sse_buffer_responses(&mut buf, cb)
+                        } else {
+                            process_sse_buffer(&mut buf, cb)
+                        };
                         if done { break 'outer; }
                     }
                 }
@@ -234,7 +271,75 @@ pub async fn generate_image(
             truncate(&text, 500)
         ));
     }
-    let v: Value = serde_json::from_str(&text).map_err(|e| format!("图像响应解析失败: {e}"))?;
+    save_images_from_response(&client, &text).await
+}
+
+/// `POST /v1/images/edits` (multipart). Sends the source image bytes + a text
+/// prompt (and an optional black/white brush `mask`) and downloads the returned
+/// image(s) exactly like [`generate_image`] (dual url / b64_json handling).
+///
+/// The relay accepts the same `{ data: [{ url | b64_json }] }` shape as the
+/// generations endpoint, so the download path is shared via
+/// [`save_images_from_response`].
+pub async fn edit_image(
+    creds: &RelayCreds,
+    model: &str,
+    prompt: &str,
+    size: &str,
+    image_bytes: Vec<u8>,
+    mask_bytes: Option<Vec<u8>>,
+) -> Result<Vec<GeneratedImage>, String> {
+    let url = api_url(&creds.base_url, "images/edits");
+
+    let image_part = reqwest::multipart::Part::bytes(image_bytes)
+        .file_name("source.png")
+        .mime_str("image/png")
+        .map_err(|e| format!("构建图像分片失败: {e}"))?;
+    let mut form = reqwest::multipart::Form::new()
+        .text("model", model.to_string())
+        .text("prompt", prompt.to_string())
+        .part("image", image_part);
+    // `auto` size is a UI convenience; the edits endpoint expects a concrete size.
+    if !size.is_empty() && size != "auto" {
+        form = form.text("size", size.to_string());
+    }
+    if let Some(mask) = mask_bytes {
+        let mask_part = reqwest::multipart::Part::bytes(mask)
+            .file_name("mask.png")
+            .mime_str("image/png")
+            .map_err(|e| format!("构建蒙版分片失败: {e}"))?;
+        form = form.part("mask", mask_part);
+    }
+
+    let client = json_client(300)?;
+    let resp = client
+        .post(&url)
+        .bearer_auth(&creds.api_key)
+        .multipart(form)
+        .send()
+        .await
+        .map_err(|e| format!("图像编辑请求失败: {e}"))?;
+    let status = resp.status();
+    let text = resp.text().await.map_err(|e| e.to_string())?;
+    if !status.is_success() {
+        return Err(format!(
+            "图像编辑 HTTP {}: {}",
+            status.as_u16(),
+            truncate(&text, 500)
+        ));
+    }
+    save_images_from_response(&client, &text).await
+}
+
+/// Parse an OpenAI images response body and persist every returned image to the
+/// local media directory. Each `data[i]` may carry a `url` (downloaded with
+/// `client`) or a `b64_json` blob (decoded inline). Shared by the generations
+/// and edits endpoints.
+async fn save_images_from_response(
+    client: &reqwest::Client,
+    body: &str,
+) -> Result<Vec<GeneratedImage>, String> {
+    let v: Value = serde_json::from_str(body).map_err(|e| format!("图像响应解析失败: {e}"))?;
     let data = v
         .get("data")
         .and_then(|d| d.as_array())
@@ -373,6 +478,43 @@ fn process_sse_buffer<F: FnMut(&str)>(buf: &mut Vec<u8>, on_delta: &mut F) -> bo
     }
 }
 
+/// Drain complete lines from an SSE byte buffer for the OpenAI **Responses**
+/// streaming format. Extracts text from `response.output_text.delta` events and
+/// returns `true` on `[DONE]` or a `response.completed`/`response.done` event.
+fn process_sse_buffer_responses<F: FnMut(&str)>(buf: &mut Vec<u8>, on_delta: &mut F) -> bool {
+    loop {
+        let Some(nl) = buf.iter().position(|&b| b == b'\n') else {
+            return false;
+        };
+        let line_bytes: Vec<u8> = buf.drain(..=nl).collect();
+        let line_cow = String::from_utf8_lossy(&line_bytes);
+        let line = line_cow.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let Some(data) = line.strip_prefix("data:") else {
+            continue;
+        };
+        let data = data.trim();
+        if data == "[DONE]" {
+            return true;
+        }
+        if let Ok(v) = serde_json::from_str::<Value>(data) {
+            match v.get("type").and_then(|t| t.as_str()).unwrap_or("") {
+                "response.output_text.delta" => {
+                    if let Some(d) = v.get("delta").and_then(|c| c.as_str()) {
+                        if !d.is_empty() {
+                            on_delta(d);
+                        }
+                    }
+                }
+                "response.completed" | "response.done" => return true,
+                _ => {}
+            }
+        }
+    }
+}
+
 /// Truncate to at most `max` characters, appending an ellipsis when clipped.
 fn truncate(s: &str, max: usize) -> String {
     if s.chars().count() <= max {
@@ -497,6 +639,7 @@ mod tests {
         let creds = RelayCreds {
             base_url: "https://x.com".to_string(),
             api_key: "sk-supersecret-1234".to_string(),
+            wire_api: "chat".to_string(),
         };
         let dbg = format!("{creds:?}");
         assert!(dbg.contains("https://x.com"));
@@ -505,6 +648,33 @@ mod tests {
             !dbg.contains("supersecret"),
             "key must never appear in Debug"
         );
+    }
+
+    #[test]
+    fn new_normalizes_wire_api() {
+        let c = RelayCreds::new("https://x.com/".into(), "k".into(), "responses".into());
+        assert_eq!(c.wire_api, "responses");
+        assert_eq!(c.base_url, "https://x.com/", "base_url trimmed only");
+        let c2 = RelayCreds::new("u".into(), "k".into(), "garbage".into());
+        assert_eq!(c2.wire_api, "chat", "unknown wire_api falls back to chat");
+    }
+
+    #[test]
+    fn responses_sse_extracts_output_text_delta() {
+        let mut buf = Vec::new();
+        buf.extend_from_slice(
+            b"data: {\"type\":\"response.output_text.delta\",\"delta\":\"Hel\"}\n",
+        );
+        buf.extend_from_slice(
+            b"data: {\"type\":\"response.output_text.delta\",\"delta\":\"lo\"}\n",
+        );
+        let mut acc = String::new();
+        let done = process_sse_buffer_responses(&mut buf, &mut |d| acc.push_str(d));
+        assert_eq!(acc, "Hello");
+        assert!(!done);
+        buf.extend_from_slice(b"data: {\"type\":\"response.completed\"}\n");
+        let done2 = process_sse_buffer_responses(&mut buf, &mut |d| acc.push_str(d));
+        assert!(done2, "response.completed ends the stream");
     }
 
     #[test]

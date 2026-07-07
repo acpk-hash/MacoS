@@ -83,6 +83,24 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 "#;
 
+/// V5: adds `providers` table for user-configured OpenAI-compatible services.
+///
+/// Security: this table holds ONLY metadata. API keys are stored in the OS
+/// credential store (keyring, service `agentboard`, account = provider id) and
+/// never touch SQLite. `has_key` is a convenience boolean mirroring whether a
+/// key exists in the credential store; it is not the key itself.
+const SCHEMA_V5: &str = r#"
+CREATE TABLE IF NOT EXISTS providers (
+    id         TEXT PRIMARY KEY,
+    label      TEXT NOT NULL,
+    base_url   TEXT NOT NULL,
+    wire_api   TEXT NOT NULL DEFAULT 'chat',
+    enabled    INTEGER NOT NULL DEFAULT 1,
+    has_key    INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL
+);
+"#;
+
 // ── Public row types ──────────────────────────────────────────────────────────
 
 /// Returned by `list_tasks` — one row per task, ordered by updated_at DESC.
@@ -162,6 +180,19 @@ pub struct CanvasEventRow {
     pub payload_json: String,
 }
 
+/// One configured OpenAI-compatible provider (metadata only — no API key).
+/// The key lives in the OS credential store; `has_key` mirrors its presence.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProviderRow {
+    pub id: String,
+    pub label: String,
+    pub base_url: String,
+    pub wire_api: String,
+    pub enabled: bool,
+    pub has_key: bool,
+    pub created_at: i64,
+}
+
 // ── Db ────────────────────────────────────────────────────────────────────────
 
 pub struct Db {
@@ -210,6 +241,10 @@ impl Db {
         if version < 4 {
             conn.execute_batch(studio::SCHEMA_V4)?;
             conn.execute_batch("PRAGMA user_version = 4")?;
+        }
+        if version < 5 {
+            conn.execute_batch(SCHEMA_V5)?;
+            conn.execute_batch("PRAGMA user_version = 5")?;
         }
         Ok(())
     }
@@ -631,6 +666,74 @@ impl Db {
         Ok(map)
     }
 
+    // ── Providers (multi-service model config) ─────────────────────────────────
+
+    /// Insert or update a provider's metadata. On update, `created_at` and
+    /// `has_key` are preserved (key presence is managed separately).
+    pub fn provider_upsert(
+        &self,
+        id: &str,
+        label: &str,
+        base_url: &str,
+        wire_api: &str,
+        enabled: bool,
+    ) -> SqlResult<()> {
+        let now = now_ms();
+        self.conn.lock().unwrap().execute(
+            "INSERT INTO providers (id, label, base_url, wire_api, enabled, has_key, created_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6) \
+             ON CONFLICT(id) DO UPDATE SET \
+               label = excluded.label, base_url = excluded.base_url, \
+               wire_api = excluded.wire_api, enabled = excluded.enabled",
+            params![id, label, base_url, wire_api, enabled, now],
+        )?;
+        Ok(())
+    }
+
+    /// List all providers ordered by `created_at ASC`.
+    pub fn providers_list(&self) -> SqlResult<Vec<ProviderRow>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, label, base_url, wire_api, enabled, has_key, created_at \
+             FROM providers ORDER BY created_at ASC",
+        )?;
+        let rows = stmt.query_map([], map_provider)?;
+        rows.collect()
+    }
+
+    /// Fetch a single provider by id.
+    pub fn provider_get(&self, id: &str) -> SqlResult<Option<ProviderRow>> {
+        let conn = self.conn.lock().unwrap();
+        match conn.query_row(
+            "SELECT id, label, base_url, wire_api, enabled, has_key, created_at \
+             FROM providers WHERE id = ?1",
+            params![id],
+            map_provider,
+        ) {
+            Ok(v) => Ok(Some(v)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Delete a provider row (the caller removes its credential-store entry).
+    pub fn provider_delete(&self, id: &str) -> SqlResult<()> {
+        self.conn
+            .lock()
+            .unwrap()
+            .execute("DELETE FROM providers WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    /// Mark whether a provider currently has a key in the credential store.
+    pub fn provider_set_has_key(&self, id: &str, has_key: bool) -> SqlResult<()> {
+        self.conn.lock().unwrap().execute(
+            "UPDATE providers SET has_key = ?1 WHERE id = ?2",
+            params![has_key, id],
+        )?;
+        Ok(())
+    }
+
     // ── Feishu stats helpers ──────────────────────────────────────────────────
 
     /// Return (title, workdir) for the task associated with `session_id`.
@@ -858,6 +961,18 @@ fn now_ms() -> i64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0)
+}
+
+fn map_provider(r: &rusqlite::Row<'_>) -> rusqlite::Result<ProviderRow> {
+    Ok(ProviderRow {
+        id: r.get(0)?,
+        label: r.get(1)?,
+        base_url: r.get(2)?,
+        wire_api: r.get(3)?,
+        enabled: r.get(4)?,
+        has_key: r.get(5)?,
+        created_at: r.get(6)?,
+    })
 }
 
 // ── Unit tests ────────────────────────────────────────────────────────────────
@@ -1246,6 +1361,58 @@ mod tests {
         assert_eq!(all.get("a").map(|s| s.as_str()), Some("1"));
         assert_eq!(all.get("b").map(|s| s.as_str()), Some("2"));
         assert_eq!(all.len(), 2);
+    }
+
+    // ── providers CRUD (V5) ───────────────────────────────────────────────────
+
+    #[test]
+    fn provider_upsert_insert_and_list() {
+        let db = new_db();
+        db.provider_upsert("p1", "OpenAI", "https://a.com", "chat", true)
+            .unwrap();
+        db.provider_upsert("p2", "Relay", "https://b.com", "responses", false)
+            .unwrap();
+        let list = db.providers_list().unwrap();
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0].id, "p1", "ordered by created_at ASC");
+        assert_eq!(list[0].wire_api, "chat");
+        assert!(list[0].enabled);
+        assert!(!list[0].has_key, "no key set yet");
+        assert_eq!(list[1].wire_api, "responses");
+        assert!(!list[1].enabled);
+    }
+
+    #[test]
+    fn provider_upsert_updates_preserves_created_at_and_has_key() {
+        let db = new_db();
+        db.provider_upsert("p1", "Old", "https://a.com", "chat", true)
+            .unwrap();
+        let created = db.provider_get("p1").unwrap().unwrap().created_at;
+        db.provider_set_has_key("p1", true).unwrap();
+
+        db.provider_upsert("p1", "New", "https://b.com", "responses", false)
+            .unwrap();
+        let row = db.provider_get("p1").unwrap().unwrap();
+        assert_eq!(row.label, "New");
+        assert_eq!(row.base_url, "https://b.com");
+        assert_eq!(row.wire_api, "responses");
+        assert!(!row.enabled);
+        assert_eq!(row.created_at, created, "created_at preserved on update");
+        assert!(row.has_key, "has_key preserved across metadata update");
+    }
+
+    #[test]
+    fn provider_set_has_key_and_delete() {
+        let db = new_db();
+        db.provider_upsert("p1", "L", "u", "chat", true).unwrap();
+        db.provider_set_has_key("p1", true).unwrap();
+        assert!(db.provider_get("p1").unwrap().unwrap().has_key);
+        db.provider_set_has_key("p1", false).unwrap();
+        assert!(!db.provider_get("p1").unwrap().unwrap().has_key);
+
+        db.provider_delete("p1").unwrap();
+        assert!(db.provider_get("p1").unwrap().is_none());
+        assert!(db.providers_list().unwrap().is_empty());
     }
 
     #[test]

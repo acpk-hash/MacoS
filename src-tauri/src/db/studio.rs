@@ -320,6 +320,21 @@ impl Db {
         }
     }
 
+    /// Fetch a single generated-media row by id (used for edit provenance).
+    pub fn gen_media_get(&self, id: &str) -> SqlResult<Option<GenMediaRow>> {
+        let conn = self.conn.lock().unwrap();
+        match conn.query_row(
+            "SELECT id, kind, prompt, model, params_json, local_path, source_url, status, error, created_at \
+             FROM gen_media WHERE id = ?1",
+            params![id],
+            map_gen_media,
+        ) {
+            Ok(v) => Ok(Some(v)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
     /// Return the local file path stored for a media row.
     pub fn gen_media_get_local_path(&self, id: &str) -> SqlResult<Option<String>> {
         let conn = self.conn.lock().unwrap();

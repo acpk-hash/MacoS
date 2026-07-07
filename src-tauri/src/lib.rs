@@ -4,6 +4,7 @@ pub mod db;
 pub mod engine_config;
 pub mod feishu;
 pub mod mcp;
+pub mod providers;
 pub mod relay;
 pub mod studio;
 pub mod sync;
@@ -818,6 +819,13 @@ pub fn run() {
             sync: sync::SyncManager::new(),
         })
         .setup(|app| {
+            // Seed a default provider from the legacy Codex relay config the
+            // first time (migrates the auth.json key into the credential store).
+            {
+                let st = app.state::<AppState>();
+                providers::ensure_seeded(&st.db);
+            }
+
             // Start the sync client task (loads persisted account/switch state;
             // connects only if enabled && logged in).
             {
@@ -906,9 +914,16 @@ pub fn run() {
             studio::chat_send,
             studio::chat_stop,
             studio::image_generate,
+            studio::image_edit,
             studio::media_list,
             studio::media_delete,
             studio::media_export,
+            providers::providers_list,
+            providers::provider_upsert,
+            providers::provider_set_key,
+            providers::provider_delete,
+            providers::provider_test,
+            providers::providers_models,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

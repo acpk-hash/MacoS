@@ -12,6 +12,7 @@
 
 use crate::db::{ChatMessageRow, ChatSessionRow, GenMediaRow};
 use crate::relay::{self, RelayCreds};
+use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -30,6 +31,9 @@ pub struct StudioState {
     models_cache: Mutex<Option<(Instant, Vec<String>)>>,
     video_cache: Mutex<Option<bool>>,
     cancels: Mutex<HashMap<String, CancellationToken>>,
+    /// Aggregated multi-provider model list cache (see `providers::providers_models`).
+    pub(crate) providers_models_cache:
+        Mutex<Option<(Instant, Vec<crate::providers::AggModel>)>>,
 }
 
 impl StudioState {
@@ -38,6 +42,7 @@ impl StudioState {
             models_cache: Mutex::new(None),
             video_cache: Mutex::new(None),
             cancels: Mutex::new(HashMap::new()),
+            providers_models_cache: Mutex::new(None),
         }
     }
 }
@@ -182,6 +187,7 @@ pub(crate) async fn chat_send(
     user_content: String,
     attachments: Vec<Attachment>,
     model: String,
+    provider_id: Option<String>,
     state: State<'_, crate::AppState>,
     app: AppHandle,
 ) -> Result<String, String> {
@@ -248,8 +254,9 @@ pub(crate) async fn chat_send(
         .unwrap()
         .insert(session_id.clone(), cancel.clone());
 
-    // Load credentials (failure here still needs to clear the placeholder).
-    let creds = match RelayCreds::load() {
+    // Load credentials for the selected provider (falling back to the default
+    // provider, then the legacy ~/.codex config). Failure still clears the placeholder.
+    let creds = match crate::providers::resolve_creds(db.as_ref(), provider_id.as_deref()) {
         Ok(c) => c,
         Err(e) => {
             state.studio.cancels.lock().unwrap().remove(&session_id);
@@ -335,6 +342,7 @@ pub(crate) async fn image_generate(
     model: String,
     size: String,
     n: u32,
+    provider_id: Option<String>,
     state: State<'_, crate::AppState>,
     app: AppHandle,
 ) -> Result<Vec<String>, String> {
@@ -352,7 +360,7 @@ pub(crate) async fn image_generate(
         ids.push(id);
     }
 
-    let creds = match RelayCreds::load() {
+    let creds = match crate::providers::resolve_creds(db.as_ref(), provider_id.as_deref()) {
         Ok(c) => c,
         Err(e) => {
             fail_all(&db, &app, &ids, &e);
@@ -388,6 +396,133 @@ pub(crate) async fn image_generate(
             Err(e)
         }
     }
+}
+
+/// Second-pass edit of an existing generated image. Reads the source image off
+/// disk, sends it (plus an optional brush `mask`) to the relay's edits endpoint
+/// together with the user's edit `prompt`, and stores the result as a NEW
+/// `gen_media` row whose `params_json` records `source_media_id` for provenance.
+///
+/// If the edits endpoint turns out to be unavailable (HTTP 404/405/501), it
+/// falls back to a plain `images/generations` call with the edit instruction
+/// folded into the prompt. The annotated composite cannot be attached in that
+/// mode — it is the documented downgrade path. `annotated_data_url` is accepted
+/// for forward-compatibility and recorded in `params_json`.
+#[tauri::command]
+pub(crate) async fn image_edit(
+    source_media_id: String,
+    model: String,
+    prompt: String,
+    mask_data_url: Option<String>,
+    annotated_data_url: Option<String>,
+    state: State<'_, crate::AppState>,
+    app: AppHandle,
+) -> Result<String, String> {
+    let db = state.db.clone();
+
+    let source = db
+        .gen_media_get(&source_media_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "找不到原图记录".to_string())?;
+    let src_path = source
+        .local_path
+        .clone()
+        .ok_or_else(|| "原图文件缺失".to_string())?;
+    let image_bytes = std::fs::read(&src_path).map_err(|e| format!("读取原图失败: {e}"))?;
+
+    // Size follows the source image (fallback to a square default).
+    let size = source
+        .params_json
+        .as_deref()
+        .and_then(|p| serde_json::from_str::<Value>(p).ok())
+        .and_then(|v| v.get("size").and_then(|s| s.as_str()).map(String::from))
+        .unwrap_or_else(|| "1024x1024".to_string());
+
+    let has_mask = mask_data_url.is_some();
+    let has_annotation = annotated_data_url.is_some();
+    let mask_bytes = match mask_data_url.as_deref() {
+        Some(u) => Some(decode_data_url(u)?),
+        None => None,
+    };
+
+    let params = json!({
+        "size": size,
+        "source_media_id": source_media_id,
+        "edit": true,
+        "mask": has_mask,
+        "annotated": has_annotation,
+    })
+    .to_string();
+
+    let id = uuid::Uuid::new_v4().to_string();
+    db.gen_media_insert(&id, "image", &prompt, &model, Some(&params), "running")
+        .map_err(|e| e.to_string())?;
+    emit(&app, json!({ "type": "media_running", "id": id }));
+
+    let creds = match RelayCreds::load() {
+        Ok(c) => c,
+        Err(e) => {
+            let _ = db.gen_media_mark_failed(&id, &e);
+            emit(&app, json!({ "type": "media_failed", "id": id, "error": e }));
+            return Err(e);
+        }
+    };
+
+    // Primary path: multipart edits endpoint.
+    let mut result = relay::edit_image(&creds, &model, &prompt, &size, image_bytes, mask_bytes).await;
+
+    // Downgrade path: if edits is not available, regenerate from a fused prompt.
+    if let Err(e) = &result {
+        if edits_unavailable(e) {
+            let fused = format!(
+                "{prompt}\n\n（请参考原图进行上述修改；原图描述：{}）",
+                source.prompt
+            );
+            result = relay::generate_image(&creds, &model, &fused, &size, 1).await;
+        }
+    }
+
+    match result {
+        Ok(images) => {
+            if let Some(img) = images.into_iter().next() {
+                let _ = db.gen_media_mark_done(&id, &img.local_path, img.source_url.as_deref());
+                emit(
+                    &app,
+                    json!({
+                        "type": "media_done", "id": id, "kind": "image",
+                        "local_path": img.local_path, "source_url": img.source_url,
+                    }),
+                );
+                Ok(id)
+            } else {
+                let msg = "编辑未返回图像";
+                let _ = db.gen_media_mark_failed(&id, msg);
+                emit(&app, json!({ "type": "media_failed", "id": id, "error": msg }));
+                Err(msg.to_string())
+            }
+        }
+        Err(e) => {
+            let _ = db.gen_media_mark_failed(&id, &e);
+            emit(&app, json!({ "type": "media_failed", "id": id, "error": e }));
+            Err(e)
+        }
+    }
+}
+
+/// Decode a `data:<mime>;base64,<payload>` URL into raw bytes.
+fn decode_data_url(data_url: &str) -> Result<Vec<u8>, String> {
+    let comma = data_url.find(',').ok_or_else(|| "非法 data URL".to_string())?;
+    let payload = &data_url[comma + 1..];
+    base64::engine::general_purpose::STANDARD
+        .decode(payload.trim())
+        .map_err(|e| format!("标注数据解码失败: {e}"))
+}
+
+/// Heuristic: does this relay error string indicate the edits endpoint is absent
+/// (as opposed to a transient/content error)? Used to decide whether to fall
+/// back to the generations endpoint.
+fn edits_unavailable(err: &str) -> bool {
+    err.contains("HTTP 404") || err.contains("HTTP 405") || err.contains("HTTP 501")
 }
 
 // -- Media library -----------------------------------------------------------
@@ -617,6 +752,26 @@ mod tests {
         assert!(text.contains("summarize"));
         assert!(text.contains("notes.txt"));
         assert!(text.contains("file body"));
+    }
+
+    #[test]
+    fn decode_data_url_roundtrips_base64_payload() {
+        // "hi" -> base64 "aGk="
+        let bytes = decode_data_url("data:image/png;base64,aGk=").unwrap();
+        assert_eq!(bytes, b"hi");
+    }
+
+    #[test]
+    fn decode_data_url_rejects_missing_comma() {
+        assert!(decode_data_url("data:image/png;base64").is_err());
+    }
+
+    #[test]
+    fn edits_unavailable_matches_only_endpoint_errors() {
+        assert!(edits_unavailable("图像编辑 HTTP 404: not found"));
+        assert!(edits_unavailable("图像编辑 HTTP 405: method"));
+        assert!(!edits_unavailable("图像编辑 HTTP 400: bad prompt"));
+        assert!(!edits_unavailable("图像编辑 HTTP 500: server"));
     }
 
     #[test]

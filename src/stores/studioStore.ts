@@ -43,18 +43,31 @@ export interface Capabilities {
   video: boolean
 }
 
-/** A composer attachment sent to `chat_send`. */
+/** One (provider, model) pair from the aggregated multi-provider model list.
+ *  Mirrors Rust providers::AggModel. */
+export interface AggModel {
+  providerId: string
+  providerLabel: string
+  modelId: string
+}
+
+/** Raw shape from the providers_models command (snake_case from serde). */
+interface RawAggModel {
+  provider_id: string
+  provider_label: string
+  model_id: string
+}
+
+/** A composer attachment sent to chat_send. */
 export interface Attachment {
   /** "image" | "text" */
   kind: 'image' | 'text'
   name?: string
-  /** For images: a `data:image/...;base64,...` URL. */
+  /** For images: a data URL. */
   data_url?: string
   /** For text files: the inlined content. */
   text?: string
 }
-
-// ── Raw studio-event payloads (mirror Rust serde output) ──────────────────────
 
 interface StudioEvent {
   type: string
@@ -63,15 +76,12 @@ interface StudioEvent {
   text?: string
   status?: string
   message?: string
-  // media events
   id?: string
   kind?: string
   local_path?: string | null
   source_url?: string | null
   error?: string
 }
-
-// ── Tauri environment guard ───────────────────────────────────────────────────
 
 const isTauri =
   typeof window !== 'undefined' &&
@@ -85,31 +95,24 @@ async function tauriInvoke<T>(
   return invoke<T>(command, args)
 }
 
-// ── Store interface ───────────────────────────────────────────────────────────
-
 interface StudioStore {
-  /** Session list, ordered by updated_at DESC (from backend). */
   sessions: ChatSessionRow[]
   activeSessionId: string | null
-  /** Messages of the active session (streaming text is applied in-place). */
   messages: ChatMessageRow[]
-  /** Relay model ids (cached backend-side for 5 min). */
+  /** Distinct model ids across all enabled providers (backwards-compat list). */
   models: string[]
+  /** Full aggregated (provider, model) list backing the grouped ModelPicker. */
+  aggModels: AggModel[]
   modelsLoaded: boolean
-  /** Currently selected model (session-level memory). */
   currentModel: string
-  /** Per-session model override, remembered when switching sessions. */
+  /** Provider id owning the current chat model selection. */
+  currentProviderId: string | null
   sessionModel: Record<string, string>
-  /** Sessions with an in-flight stream (keyed by session id). */
   streaming: Record<string, boolean>
-  /** Non-fatal error banner text (e.g. models load failure). */
   loadError: string | null
 
-  // ── Media (generation studio) branch ──────────────────────────────────────
-  /** Generated media for the currently loaded kind (newest first). */
   media: GenMediaRow[]
   mediaLoaded: boolean
-  /** Runtime capabilities (video availability). Null until probed. */
   capabilities: Capabilities | null
 
   loadModels: () => Promise<void>
@@ -119,6 +122,8 @@ interface StudioStore {
   renameSession: (id: string, title: string) => Promise<void>
   deleteSession: (id: string) => Promise<void>
   setModel: (model: string) => void
+  /** Select a model together with its owning provider (used by ModelPicker). */
+  setModelSel: (providerId: string, modelId: string) => void
   send: (content: string, attachments: Attachment[]) => Promise<void>
   regenerate: () => Promise<void>
   stop: () => Promise<void>
@@ -130,10 +135,18 @@ interface StudioStore {
     model: string,
     size: string,
     n: number,
+    providerId?: string | null,
   ) => Promise<void>
+  editImage: (args: {
+    sourceMediaId: string
+    model: string
+    prompt: string
+    size: string
+    maskDataUrl?: string | null
+    annotatedDataUrl?: string | null
+  }) => Promise<void>
   deleteMedia: (id: string) => Promise<void>
 
-  // Internal event appliers (invoked by the global studio-event listener).
   _applyDelta: (sessionId: string, messageId: string, text: string) => void
   _applyDone: (
     sessionId: string,
@@ -150,8 +163,6 @@ interface StudioStore {
   ) => void
   _applyMediaFailed: (id: string, error: string) => void
 }
-
-// ── Streaming delta coalescing (rAF-batched for render perf) ──────────────────
 
 const pendingDeltas = new Map<string, string>()
 let rafHandle: number | null = null
@@ -185,8 +196,6 @@ function flushNow() {
   flushDeltas()
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 function uuid(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
     return crypto.randomUUID()
@@ -194,19 +203,17 @@ function uuid(): string {
   return 'pending-' + Math.random().toString(36).slice(2)
 }
 
-/** Params captured before an image_generate call so `media_running` events
- *  (which only carry an id) can render an informative placeholder card. */
 let pendingGen: { prompt: string; model: string; size: string } | null = null
-
-// ── Store ─────────────────────────────────────────────────────────────────────
 
 export const useStudioStore = create<StudioStore>((set, get) => ({
   sessions: [],
   activeSessionId: null,
   messages: [],
   models: [],
+  aggModels: [],
   modelsLoaded: false,
   currentModel: '',
+  currentProviderId: null,
   sessionModel: {},
   streaming: {},
   loadError: null,
@@ -217,13 +224,26 @@ export const useStudioStore = create<StudioStore>((set, get) => ({
   loadModels: async () => {
     if (!isTauri) return
     try {
-      const models = await tauriInvoke<string[]>('studio_models')
-      set((s) => ({
-        models,
-        modelsLoaded: true,
-        loadError: null,
-        currentModel: s.currentModel || models[0] || '',
+      const raw = await tauriInvoke<RawAggModel[]>('providers_models')
+      const aggModels: AggModel[] = raw.map((m) => ({
+        providerId: m.provider_id,
+        providerLabel: m.provider_label,
+        modelId: m.model_id,
       }))
+      const models = Array.from(new Set(aggModels.map((m) => m.modelId)))
+      set((s) => {
+        const keep =
+          !!s.currentModel && aggModels.some((m) => m.modelId === s.currentModel)
+        const first = aggModels[0]
+        return {
+          aggModels,
+          models,
+          modelsLoaded: true,
+          loadError: null,
+          currentModel: keep ? s.currentModel : first?.modelId ?? '',
+          currentProviderId: keep ? s.currentProviderId : first?.providerId ?? null,
+        }
+      })
     } catch (e) {
       set({ modelsLoaded: true, loadError: `模型列表加载失败：${String(e)}` })
     }
@@ -246,17 +266,19 @@ export const useStudioStore = create<StudioStore>((set, get) => ({
       const messages = await tauriInvoke<ChatMessageRow[]>('chat_messages_list', {
         sessionId: id,
       })
-      // Guard against a race where the user switched again mid-load.
       if (get().activeSessionId !== id) return
       const session = get().sessions.find((x) => x.id === id)
       const remembered = get().sessionModel[id] ?? session?.model
-      set((s) => ({
-        messages,
-        currentModel:
-          remembered && s.models.includes(remembered)
-            ? remembered
-            : s.currentModel,
-      }))
+      set((s) => {
+        const match = remembered
+          ? s.aggModels.find((m) => m.modelId === remembered)
+          : undefined
+        return {
+          messages,
+          currentModel: match ? match.modelId : s.currentModel,
+          currentProviderId: match ? match.providerId : s.currentProviderId,
+        }
+      })
     } catch (e) {
       console.warn('[studioStore] selectSession failed:', e)
     }
@@ -307,6 +329,16 @@ export const useStudioStore = create<StudioStore>((set, get) => ({
     }))
   },
 
+  setModelSel: (providerId, modelId) => {
+    set((s) => ({
+      currentModel: modelId,
+      currentProviderId: providerId,
+      sessionModel: s.activeSessionId
+        ? { ...s.sessionModel, [s.activeSessionId]: modelId }
+        : s.sessionModel,
+    }))
+  },
+
   send: async (content, attachments) => {
     if (!isTauri) return
     const model = get().currentModel
@@ -314,8 +346,8 @@ export const useStudioStore = create<StudioStore>((set, get) => ({
       set({ loadError: '尚未选择模型' })
       return
     }
+    const providerId = get().currentProviderId
 
-    // Ensure an active session exists (create lazily so the sidebar updates).
     let sessionId = get().activeSessionId
     if (!sessionId) {
       try {
@@ -368,12 +400,11 @@ export const useStudioStore = create<StudioStore>((set, get) => ({
         userContent: content,
         attachments,
         model,
+        providerId: providerId ?? null,
       })
     } catch (e) {
-      // A hard failure before any event was emitted: surface it on the bubble.
       get()._applyError(sid, placeholder.id, String(e))
     }
-    // Refresh titles / ordering (auto-title happens on the backend).
     get().loadSessions()
   },
 
@@ -403,15 +434,12 @@ export const useStudioStore = create<StudioStore>((set, get) => ({
     }
   },
 
-  // ── Media (generation) ─────────────────────────────────────────────────────
-
   loadCapabilities: async () => {
     if (!isTauri) return
     try {
       const caps = await tauriInvoke<Capabilities>('studio_capabilities')
       set({ capabilities: caps })
     } catch (e) {
-      // Treat probe failure as "no video" (endpoint absent / offline).
       console.warn('[studioStore] loadCapabilities failed:', e)
       set({ capabilities: { video: false } })
     }
@@ -428,17 +456,49 @@ export const useStudioStore = create<StudioStore>((set, get) => ({
     }
   },
 
-  generateImage: async (prompt, model, size, n) => {
+  generateImage: async (prompt, model, size, n, providerId) => {
     if (!isTauri) return
     if (!prompt.trim() || !model) return
     pendingGen = { prompt, model, size }
     try {
-      await tauriInvoke<string[]>('image_generate', { prompt, model, size, n })
+      await tauriInvoke<string[]>('image_generate', {
+        prompt,
+        model,
+        size,
+        n,
+        providerId: providerId ?? get().currentProviderId ?? null,
+      })
     } catch (e) {
       set({ loadError: `图像生成失败：${String(e)}` })
     } finally {
       pendingGen = null
-      // Reconcile optimistic rows with DB truth.
+      await get().loadMedia('image')
+    }
+  },
+
+  editImage: async ({
+    sourceMediaId,
+    model,
+    prompt,
+    size,
+    maskDataUrl,
+    annotatedDataUrl,
+  }) => {
+    if (!isTauri) return
+    if (!prompt.trim() || !model) return
+    pendingGen = { prompt, model, size }
+    try {
+      await tauriInvoke<string>('image_edit', {
+        sourceMediaId,
+        model,
+        prompt,
+        maskDataUrl: maskDataUrl ?? null,
+        annotatedDataUrl: annotatedDataUrl ?? null,
+      })
+    } catch (e) {
+      set({ loadError: `图像修改失败：${String(e)}` })
+    } finally {
+      pendingGen = null
       await get().loadMedia('image')
     }
   },
@@ -464,8 +524,6 @@ export const useStudioStore = create<StudioStore>((set, get) => ({
           status: 'streaming',
         }
       } else {
-        // Adopt the trailing streaming placeholder (its temp id predates the
-        // real message id returned by the backend).
         const last = msgs[msgs.length - 1]
         if (last && last.role === 'assistant' && last.status === 'streaming') {
           msgs[msgs.length - 1] = {
@@ -503,7 +561,6 @@ export const useStudioStore = create<StudioStore>((set, get) => ({
         }
         return m
       })
-      // If the placeholder was never adopted, finalize the trailing one.
       if (!matched) {
         for (let i = msgs.length - 1; i >= 0; i--) {
           if (msgs[i].role === 'assistant' && msgs[i].status === 'streaming') {
@@ -514,7 +571,6 @@ export const useStudioStore = create<StudioStore>((set, get) => ({
       }
       return { messages: msgs, streaming }
     })
-    // Reorder the sidebar (updated_at bumped backend-side).
     get().loadSessions()
   },
 
@@ -581,8 +637,6 @@ export const useStudioStore = create<StudioStore>((set, get) => ({
     }))
   },
 }))
-
-// ── Global studio-event listener (registered once at startup) ─────────────────
 
 let _unlisten: (() => void) | null = null
 

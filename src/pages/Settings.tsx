@@ -1,4 +1,9 @@
 import { useEffect, useState, useCallback } from 'react'
+import {
+  useProviderStore,
+  type ProviderInfo,
+  type ProviderTestResult,
+} from '../stores/providerStore'
 
 // ── Tauri invoke helper ───────────────────────────────────────────────────────
 
@@ -59,6 +64,336 @@ const REASONING_EFFORT_OPTIONS = ['low', 'medium', 'high', 'xhigh']
 // ── Model Service Sub-section ─────────────────────────────────────────────────
 
 const WIRE_API_OPTIONS = ['responses', 'chat']
+
+// ── Providers Section (multi-service model config) ────────────────────────────
+
+/** New wire_api options for user providers (chat is the safe default). */
+const PROVIDER_WIRE_API_OPTIONS = ['chat', 'responses']
+
+function ProvidersSection() {
+  const { providers, loadProviders, upsert, setKey, remove, test } =
+    useProviderStore()
+  const [showForm, setShowForm] = useState(false)
+  const [editId, setEditId] = useState<string | null>(null)
+  const [form, setForm] = useState({
+    label: '',
+    base_url: '',
+    wire_api: 'chat',
+    key: '',
+  })
+  const [busy, setBusy] = useState(false)
+  const [formError, setFormError] = useState('')
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+  const [tests, setTests] = useState<
+    Record<string, ProviderTestResult | 'loading'>
+  >({})
+
+  useEffect(() => {
+    loadProviders()
+  }, [loadProviders])
+
+  const resetForm = () => {
+    setForm({ label: '', base_url: '', wire_api: 'chat', key: '' })
+    setEditId(null)
+    setShowForm(false)
+    setFormError('')
+  }
+
+  const startAdd = () => {
+    resetForm()
+    setShowForm(true)
+  }
+
+  const startEdit = (p: ProviderInfo) => {
+    setEditId(p.id)
+    setForm({ label: p.label, base_url: p.base_url, wire_api: p.wire_api, key: '' })
+    setFormError('')
+    setShowForm(true)
+  }
+
+  const submit = async () => {
+    if (!form.label.trim()) {
+      setFormError('请填写服务商名称')
+      return
+    }
+    if (!form.base_url.trim()) {
+      setFormError('请填写 Base URL')
+      return
+    }
+    setBusy(true)
+    setFormError('')
+    try {
+      const id = await upsert({
+        id: editId ?? undefined,
+        label: form.label.trim(),
+        base_url: form.base_url.trim(),
+        wire_api: form.wire_api,
+        enabled: true,
+      })
+      // Only write the key when the user typed one (empty = leave unchanged).
+      if (id && form.key.trim()) {
+        await setKey(id, form.key.trim())
+      }
+      resetForm()
+    } catch (e) {
+      setFormError(String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const toggleEnabled = async (p: ProviderInfo) => {
+    try {
+      await upsert({
+        id: p.id,
+        label: p.label,
+        base_url: p.base_url,
+        wire_api: p.wire_api,
+        enabled: !p.enabled,
+      })
+    } catch (e) {
+      console.error('toggle provider failed:', e)
+    }
+  }
+
+  const runTest = async (id: string) => {
+    setTests((t) => ({ ...t, [id]: 'loading' }))
+    try {
+      const res = await test(id)
+      setTests((t) => ({ ...t, [id]: res }))
+    } catch (e) {
+      setTests((t) => ({
+        ...t,
+        [id]: { success: false, message: String(e), elapsed_ms: 0 },
+      }))
+    }
+  }
+
+  const handleDelete = async (id: string) => {
+    try {
+      await remove(id)
+    } catch (e) {
+      console.error('delete provider failed:', e)
+    }
+    setConfirmDelete(null)
+  }
+
+  const inputCls =
+    'w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors'
+
+  return (
+    <div className="bg-gray-900 border border-gray-700 rounded-xl p-4 space-y-4">
+      <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+        模型服务商
+      </h3>
+      <p className="text-xs text-gray-500 -mt-2 leading-relaxed">
+        配置多个 OpenAI 兼容服务商，聊天/生成页的模型下拉将聚合所有已启用服务商的模型。
+        <span className="text-gray-400">
+          API Key 仅保存在本机凭据管理器，不会上传。
+        </span>
+      </p>
+
+      {/* Provider cards */}
+      <div className="space-y-2">
+        {providers.length === 0 && (
+          <p className="text-xs text-gray-500 italic">暂无服务商，点击下方添加</p>
+        )}
+        {providers.map((p) => {
+          const t = tests[p.id]
+          return (
+            <div
+              key={p.id}
+              className="bg-gray-800/60 border border-gray-700 rounded-lg px-3 py-2.5 space-y-2"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-semibold text-gray-200 truncate">
+                      {p.label}
+                    </p>
+                    {p.is_default && (
+                      <span className="text-[10px] text-blue-300 bg-blue-900/40 px-1.5 py-0.5 rounded">
+                        默认
+                      </span>
+                    )}
+                    <span className="text-[10px] text-gray-500 bg-gray-700/60 px-1.5 py-0.5 rounded">
+                      {p.wire_api}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500 truncate">{p.base_url}</p>
+                  <p className="text-xs mt-0.5">
+                    {p.has_key ? (
+                      <span className="text-green-500">
+                        Key 已设置（{p.key_mask}）
+                      </span>
+                    ) : (
+                      <span className="text-yellow-500">Key 未设置</span>
+                    )}
+                  </p>
+                </div>
+                <button
+                  onClick={() => toggleEnabled(p)}
+                  className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ${
+                    p.enabled ? 'bg-blue-500' : 'bg-gray-600'
+                  }`}
+                  title={p.enabled ? '已启用' : '已禁用'}
+                  aria-label="Toggle provider enabled"
+                >
+                  <span
+                    className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                      p.enabled ? 'translate-x-4' : 'translate-x-0.5'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              <div className="flex items-center gap-3 text-xs">
+                <button
+                  onClick={() => runTest(p.id)}
+                  disabled={t === 'loading'}
+                  className="text-blue-400 hover:text-blue-300 disabled:text-gray-600 transition-colors"
+                >
+                  {t === 'loading' ? '测试中…' : '测试'}
+                </button>
+                <button
+                  onClick={() => startEdit(p)}
+                  className="text-gray-400 hover:text-gray-200 transition-colors"
+                >
+                  编辑
+                </button>
+                {confirmDelete === p.id ? (
+                  <span className="flex items-center gap-2">
+                    <span className="text-red-400">确认?</span>
+                    <button
+                      onClick={() => handleDelete(p.id)}
+                      className="text-red-400 hover:text-red-300"
+                    >
+                      删除
+                    </button>
+                    <button
+                      onClick={() => setConfirmDelete(null)}
+                      className="text-gray-500 hover:text-gray-400"
+                    >
+                      取消
+                    </button>
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => setConfirmDelete(p.id)}
+                    className="text-gray-600 hover:text-red-400 transition-colors"
+                  >
+                    删除
+                  </button>
+                )}
+              </div>
+
+              {t && t !== 'loading' && (
+                <p
+                  className={`text-xs rounded px-2 py-1 break-words ${
+                    t.success
+                      ? 'bg-green-900/30 text-green-300'
+                      : 'bg-red-900/30 text-red-300'
+                  }`}
+                >
+                  {t.message}
+                </p>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Add / edit form */}
+      {showForm ? (
+        <div className="bg-gray-800/60 border border-gray-700 rounded-lg p-3 space-y-2.5">
+          <h4 className="text-xs font-semibold text-gray-300">
+            {editId ? '编辑服务商' : '添加服务商'}
+          </h4>
+          {formError && <p className="text-xs text-red-400">{formError}</p>}
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">名称</label>
+            <input
+              type="text"
+              value={form.label}
+              onChange={(e) => setForm((f) => ({ ...f, label: e.target.value }))}
+              placeholder="例如 OpenAI / 我的中继"
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Base URL</label>
+            <input
+              type="text"
+              value={form.base_url}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, base_url: e.target.value }))
+              }
+              placeholder="https://api.openai.com"
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Wire API</label>
+            <select
+              value={form.wire_api}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, wire_api: e.target.value }))
+              }
+              className={inputCls}
+            >
+              {PROVIDER_WIRE_API_OPTIONS.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">
+              API Key
+              {editId && (
+                <span className="text-gray-600 ml-1">（留空=不修改）</span>
+              )}
+            </label>
+            <input
+              type="password"
+              value={form.key}
+              onChange={(e) => setForm((f) => ({ ...f, key: e.target.value }))}
+              placeholder="sk-…"
+              autoComplete="new-password"
+              className={inputCls}
+            />
+            <p className="text-xs text-gray-600 mt-0.5">
+              仅保存在本机凭据管理器，不入数据库、不上传。
+            </p>
+          </div>
+          <div className="flex gap-2 justify-end pt-1">
+            <button
+              onClick={resetForm}
+              className="px-3 py-1.5 text-xs text-gray-400 hover:text-gray-300 transition-colors"
+            >
+              取消
+            </button>
+            <button
+              onClick={submit}
+              disabled={busy}
+              className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 text-white rounded transition-colors"
+            >
+              {busy ? '保存中…' : '保存'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          onClick={startAdd}
+          className="w-full py-2 border border-dashed border-gray-700 hover:border-gray-500 rounded-lg text-xs text-gray-500 hover:text-gray-400 transition-colors"
+        >
+          + 添加服务商
+        </button>
+      )}
+    </div>
+  )
+}
 
 function ModelServiceSection() {
   const [cfg, setCfg] = useState<EngineConfigInfo | null>(null)
@@ -644,7 +979,10 @@ function EngineSection() {
         )}
       </div>
 
-      {/* Model service config (config.toml + auth.json) */}
+      {/* Multi-provider model services (SQLite metadata + credential-store keys) */}
+      <ProvidersSection />
+
+      {/* Legacy engine config (config.toml + auth.json) — powers the Codex agent path */}
       <ModelServiceSection />
     </div>
   )

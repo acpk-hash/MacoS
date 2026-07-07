@@ -11,6 +11,7 @@ import {
 } from '../stores/studioStore'
 import { parseAttachments } from '../lib/attachments'
 import Composer from '../components/Composer'
+import ModelPicker from '../components/ModelPicker'
 
 // ── Environment guard ─────────────────────────────────────────────────────────
 
@@ -502,8 +503,9 @@ export default function StudioChat() {
     sessions,
     activeSessionId,
     messages,
-    models,
+    aggModels,
     currentModel,
+    currentProviderId,
     streaming,
     loadError,
     loadModels,
@@ -512,7 +514,7 @@ export default function StudioChat() {
     newSession,
     renameSession,
     deleteSession,
-    setModel,
+    setModelSel,
     send,
     regenerate,
     stop,
@@ -628,23 +630,14 @@ export default function StudioChat() {
 
           <div className="flex-1" />
 
-          {/* Model selector */}
-          <select
-            value={currentModel}
-            onChange={(e) => setModel(e.target.value)}
-            className="flex-shrink-0 bg-gray-800 border border-gray-700 rounded-lg px-2.5 py-1.5 text-xs text-gray-200 focus:outline-none focus:border-blue-500 transition-colors max-w-[180px]"
+          {/* Model selector (grouped by provider) */}
+          <ModelPicker
+            models={aggModels}
+            value={{ providerId: currentProviderId ?? '', modelId: currentModel }}
+            onChange={(v) => setModelSel(v.providerId, v.modelId)}
+            className="flex-shrink-0 bg-gray-800 border border-gray-700 rounded-lg px-2.5 py-1.5 text-xs text-gray-200 focus:outline-none focus:border-blue-500 transition-colors max-w-[220px]"
             title="选择模型"
-          >
-            {models.length === 0 && <option value="">加载中…</option>}
-            {!models.includes(currentModel) && currentModel && (
-              <option value={currentModel}>{currentModel}</option>
-            )}
-            {models.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
+          />
         </div>
 
         {/* Messages / empty state */}
