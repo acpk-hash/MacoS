@@ -279,7 +279,7 @@ footer {
       </svg>
     </div>
     <span class="logo-text">AgentBoard</span>
-    <span class="logo-ver">v0.3.0 Beta</span>
+    <span class="logo-ver">v0.4.0 Beta</span>
   </div>
 </header>
 
@@ -315,40 +315,50 @@ footer {
     <p>Agent 干活的每一步——回复、命令、文件修改——都变成画布上的节点与时间轴，执行过程一眼看穿。</p>
   </div>
   <div class="card">
+    <div class="card-icon">⚙️</div>
+    <h3>内置 Agent 引擎</h3>
+    <p>自研引擎随安装包开箱即用，无需再装任何命令行工具；回复逐字流式输出，比子进程模式更快更稳。</p>
+  </div>
+  <div class="card">
+    <div class="card-icon">📱</div>
+    <h3>手机实时同步</h3>
+    <p>注册一个账号，手机 App 实时看到电脑上每个任务的进度；躺在沙发上派发新任务、一键验收，通道全程加密。</p>
+  </div>
+  <div class="card">
     <div class="card-icon">🔒</div>
-    <h3>数据不出本机</h3>
-    <p>所有任务历史、文件快照均存储在本地。无云端同步，无账号，无订阅。自己的数据自己掌控。</p>
+    <h3>数据可控</h3>
+    <p>任务历史、文件快照全在本机；手机同步只传状态与摘要，聊天原文与 API 密钥永不上传，同步默认关闭。</p>
   </div>
 </section>
 
 <div class="download-section">
   <div class="download-inner">
     <h2>下载安装包</h2>
-    <p class="sub">当前版本 v0.3.0 · Beta · 免费使用</p>
+    <p class="sub">桌面 v0.4.0 · 安卓 v1.0.0 · Beta · 免费使用</p>
     <div class="download-grid">
       <div class="dl-card">
         <div class="platform">Windows</div>
         <div class="dl-title">AgentBoard for Windows</div>
         <div class="dl-meta">
-          v0.3.0 · x64 · .exe 安装包<br>
-          SHA256 校验值见同目录 <a href="/downloads/AgentBoard_0.3.0_x64-setup.exe.sha256">.sha256 文件</a>
+          v0.4.0 · x64 · .exe 安装包（内置 Agent 引擎）<br>
+          SHA256 校验值见同目录 <a href="/downloads/AgentBoard_0.4.0_x64-setup.exe.sha256">.sha256 文件</a>
         </div>
-        <a class="btn btn-primary" href="/downloads/AgentBoard_0.3.0_x64-setup.exe">
+        <a class="btn btn-primary" href="/downloads/AgentBoard_0.4.0_x64-setup.exe">
           <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M7.5 2v8m0 0L4.5 7m3 3 3-3M2 12h11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           下载 Windows 版
         </a>
       </div>
       <div class="dl-card">
         <div class="platform">Android</div>
-        <div class="dl-title">AgentBoard for Android <span class="coming-soon-tag">即将上线</span></div>
+        <div class="dl-title">AgentBoard for Android</div>
         <div class="dl-meta">
-          Android 版正在开发中<br>
-          预计支持 Android 10+
+          v1.0.0 · Android 7.0+ · 签名 APK<br>
+          与桌面端登录同一账号即可实时同步 · <a href="/downloads/AgentBoard_1.0.0.apk.sha256">SHA256</a>
         </div>
-        <button class="btn btn-disabled" disabled>
+        <a class="btn btn-primary" href="/downloads/AgentBoard_1.0.0.apk">
           <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M7.5 2v8m0 0L4.5 7m3 3 3-3M2 12h11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          即将上线
-        </button>
+          下载 Android 版
+        </a>
       </div>
     </div>
   </div>
@@ -368,7 +378,7 @@ footer {
   <span>© 2025 AgentBoard · 本地优先 · 开源即将上线</span>
   <div class="footer-links">
     <a href="/downloads/">安装包目录</a>
-    <a href="/THIRD-PARTY-NOTICES">第三方声明</a>
+    <a href="/THIRD-PARTY-NOTICES.txt">第三方声明</a>
   </div>
 </footer>
 
