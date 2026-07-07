@@ -25,6 +25,12 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 futures-util = "0.3"
 tokio-util = "0.7"
 base64 = "0.22"
+# Sync client (A3): pinned-TLS WebSocket to the sync server.
+# rustls pinned to the `ring` provider to match reqwest's provider in the lockfile
+# and avoid pulling the aws-lc-rs C/asm toolchain on Windows.
+tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+rustls-pemfile = "2"
 
 [dev-dependencies]
 tempfile = "3"

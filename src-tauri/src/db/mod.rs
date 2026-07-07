@@ -138,6 +138,19 @@ pub struct CanvasSessionRow {
     pub ended_at: Option<i64>,
 }
 
+/// A flat session row for the sync snapshot (`sessions` kind). Includes
+/// `task_id` (unlike `CanvasSessionRow`) so the mobile client can associate a
+/// session with its task. Never carries chat text or secrets.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncSessionRow {
+    pub id: String,
+    pub task_id: String,
+    pub engine: String,
+    pub thread_id: Option<String>,
+    pub started_at: i64,
+    pub ended_at: Option<i64>,
+}
+
 /// One raw persisted event row for the workflow canvas, returned by
 /// `get_session_events` ordered by `ts ASC`. `payload_json` is the serialized
 /// `AgentEvent` (parsed on the frontend for step reconstruction).
@@ -448,6 +461,27 @@ impl Db {
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(e),
         }
+    }
+
+    /// Return all sessions (flat, newest-started first, max 500) for the sync
+    /// `sessions` snapshot. No message/event bodies are included.
+    pub fn list_sessions(&self) -> SqlResult<Vec<SyncSessionRow>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, task_id, engine, thread_id, started_at, ended_at \
+             FROM sessions ORDER BY started_at DESC LIMIT 500",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(SyncSessionRow {
+                id: row.get(0)?,
+                task_id: row.get(1)?,
+                engine: row.get(2)?,
+                thread_id: row.get(3)?,
+                started_at: row.get(4)?,
+                ended_at: row.get(5)?,
+            })
+        })?;
+        rows.collect()
     }
 
     // ── Messages ──────────────────────────────────────────────────────────────

@@ -1682,9 +1682,280 @@ function WecomSection() {
   )
 }
 
+// ── Mobile Sync Section (A3) ──────────────────────────────────────────────────
+
+interface SyncDeviceInfo {
+  id: string
+  kind: string
+  name: string
+}
+
+interface SyncStatusInfo {
+  enabled: boolean
+  logged_in: boolean
+  /** disabled | disconnected | connecting | connected | reconnecting */
+  state: string
+  username: string | null
+  device_count: number
+  devices: SyncDeviceInfo[]
+  last_error: string | null
+}
+
+function SyncSection() {
+  const [status, setStatus] = useState<SyncStatusInfo | null>(null)
+  const [form, setForm] = useState({ username: '', password: '' })
+  const [submitting, setSubmitting] = useState(false)
+  const [toggling, setToggling] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  const loadStatus = useCallback(async () => {
+    try {
+      const info = await tauriInvoke<SyncStatusInfo>('sync_status')
+      setStatus(info)
+    } catch (e) {
+      console.error('sync_status failed:', e)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadStatus()
+    const timer = setInterval(loadStatus, 3000)
+    return () => clearInterval(timer)
+  }, [loadStatus])
+
+  const doAuth = async (register: boolean) => {
+    if (!form.username.trim() || !form.password) {
+      setActionError('请输入用户名和密码')
+      return
+    }
+    setSubmitting(true)
+    setActionError(null)
+    try {
+      await tauriInvoke(register ? 'sync_register' : 'sync_login', {
+        username: form.username.trim(),
+        password: form.password,
+      })
+      setForm({ username: '', password: '' })
+      await loadStatus()
+    } catch (e) {
+      setActionError(String(e))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const doLogout = async () => {
+    setSubmitting(true)
+    setActionError(null)
+    try {
+      await tauriInvoke('sync_logout')
+      await loadStatus()
+    } catch (e) {
+      setActionError(String(e))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const toggleEnabled = async () => {
+    if (!status) return
+    setToggling(true)
+    try {
+      await tauriInvoke('sync_set_enabled', { enabled: !status.enabled })
+      await loadStatus()
+    } catch (e) {
+      console.error('sync_set_enabled failed:', e)
+    } finally {
+      setToggling(false)
+    }
+  }
+
+  const state = status?.state ?? 'disabled'
+  const dotClass =
+    state === 'connected'
+      ? 'bg-green-400'
+      : state === 'connecting' || state === 'reconnecting'
+        ? 'bg-yellow-400'
+        : 'bg-gray-600'
+  const stateLabel =
+    state === 'connected'
+      ? '已连接'
+      : state === 'connecting'
+        ? '连接中…'
+        : state === 'reconnecting'
+          ? '重连中…'
+          : state === 'disconnected'
+            ? '未连接'
+            : '未启用'
+
+  const kindLabel = (k: string) =>
+    k === 'desktop' ? '桌面端' : k === 'mobile' ? '手机' : k || '设备'
+
+  return (
+    <div className="space-y-5">
+      {/* Data-scope notice */}
+      <div className="bg-blue-950/30 border border-blue-900/40 rounded-lg p-3">
+        <p className="text-xs text-blue-200/90 leading-relaxed">
+          同步任务与进度摘要到你的手机；聊天原文、API 密钥永不上传。
+        </p>
+      </div>
+
+      {status?.logged_in ? (
+        // ── Logged in ────────────────────────────────────────────────────────
+        <div className="space-y-4">
+          {/* Account + connection */}
+          <div className="bg-gray-900 border border-gray-700 rounded-lg p-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="min-w-0">
+                <p className="text-xs text-gray-500">账号</p>
+                <p className="text-sm font-medium text-gray-200 truncate">
+                  {status.username ?? '—'}
+                </p>
+              </div>
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium bg-gray-800 text-gray-300">
+                <span className={`w-1.5 h-1.5 rounded-full ${dotClass}`} />
+                {stateLabel}
+              </span>
+            </div>
+
+            {/* Sync switch */}
+            <div className="flex items-center justify-between pt-1 border-t border-gray-800">
+              <div>
+                <p className="text-sm font-medium text-gray-200">启用同步</p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  关闭后停止推送并断开长连接
+                </p>
+              </div>
+              <button
+                onClick={toggleEnabled}
+                disabled={toggling}
+                className={`relative w-11 h-6 rounded-full transition-colors focus:outline-none ${
+                  status.enabled ? 'bg-blue-500' : 'bg-gray-600'
+                }`}
+                aria-label="Toggle mobile sync"
+              >
+                <span
+                  className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                    status.enabled ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {status.last_error && state !== 'connected' && (
+              <p className="text-xs text-red-400 break-words">{status.last_error}</p>
+            )}
+          </div>
+
+          {/* Device list */}
+          <div>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+              已登录设备（{status.device_count}）
+            </p>
+            {status.devices.length === 0 ? (
+              <p className="text-xs text-gray-600 italic">
+                暂无其他设备。在手机上安装 AgentBoard App 并登录同一账号即可实时查看。
+              </p>
+            ) : (
+              <div className="space-y-1.5">
+                {status.devices.map((d) => (
+                  <div
+                    key={d.id}
+                    className="flex items-center justify-between bg-gray-900 rounded-lg px-3 py-2"
+                  >
+                    <span className="text-sm text-gray-200 truncate">{d.name || '未命名设备'}</span>
+                    <span className="text-xs text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded flex-shrink-0">
+                      {kindLabel(d.kind)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Guidance */}
+          <div className="bg-gray-900 rounded-lg p-3">
+            <p className="text-xs text-gray-400 leading-relaxed">
+              在手机上安装 AgentBoard App 并登录同一账号，即可实时查看任务进度并远程派发。
+            </p>
+          </div>
+
+          {/* Logout */}
+          <button
+            onClick={doLogout}
+            disabled={submitting}
+            className="px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800
+                       text-gray-200 text-sm rounded-lg transition-colors"
+          >
+            {submitting ? '处理中…' : '退出登录'}
+          </button>
+          {actionError && <p className="text-xs text-red-400">{actionError}</p>}
+        </div>
+      ) : (
+        // ── Logged out ───────────────────────────────────────────────────────
+        <div className="space-y-4">
+          <p className="text-xs text-gray-500 leading-relaxed">
+            使用官方同步服务器登录后，桌面端会把任务与进度实时推送到你的手机。
+            服务器地址固定为官方服务器，后续版本再开放自建。
+          </p>
+
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">用户名</label>
+              <input
+                type="text"
+                value={form.username}
+                onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
+                placeholder="3-32 位（字母/数字/_.-）"
+                autoComplete="username"
+                className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm
+                           text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500
+                           transition-colors"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">密码</label>
+              <input
+                type="password"
+                value={form.password}
+                onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+                placeholder="至少 8 位"
+                autoComplete="current-password"
+                className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm
+                           text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500
+                           transition-colors"
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              onClick={() => doAuth(true)}
+              disabled={submitting}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700
+                         text-white text-sm rounded-lg transition-colors"
+            >
+              {submitting ? '处理中…' : '注册并登录'}
+            </button>
+            <button
+              onClick={() => doAuth(false)}
+              disabled={submitting}
+              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800
+                         text-gray-200 text-sm rounded-lg transition-colors"
+            >
+              {submitting ? '处理中…' : '登录'}
+            </button>
+          </div>
+          {actionError && <p className="text-xs text-red-400 break-words">{actionError}</p>}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Settings page ─────────────────────────────────────────────────────────────
 
-type SectionId = 'engine' | 'mcp' | 'feishu' | 'wecom' | 'skills' | 'market'
+type SectionId = 'engine' | 'mcp' | 'sync' | 'feishu' | 'wecom' | 'skills' | 'market'
 
 interface Section {
   id: SectionId
@@ -1702,6 +1973,11 @@ const SECTIONS: Section[] = [
     id: 'mcp',
     title: 'MCP 工具',
     description: '管理 Model Context Protocol 工具连接，扩展 Agent 能力。',
+  },
+  {
+    id: 'sync',
+    title: '手机同步',
+    description: '登录账号后将任务与进度实时推送到手机，并可远程派发任务。聊天原文与密钥永不上传。',
   },
   {
     id: 'feishu',
@@ -1785,6 +2061,7 @@ export default function Settings() {
           <div>
             {activeSection === 'engine' && <EngineSection />}
             {activeSection === 'mcp' && <McpSection />}
+            {activeSection === 'sync' && <SyncSection />}
             {activeSection === 'feishu' && <FeishuSection />}
             {activeSection === 'wecom' && <WecomSection />}
             {activeSection === 'skills' && <SkillsSection />}

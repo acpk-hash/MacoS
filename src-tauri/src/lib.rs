@@ -6,6 +6,7 @@ pub mod feishu;
 pub mod mcp;
 pub mod relay;
 pub mod studio;
+pub mod sync;
 pub mod wecom;
 
 use std::sync::Arc;
@@ -33,6 +34,13 @@ pub(crate) struct AppState {
     db: Arc<Db>,
     bridge: bridge::BridgeManager,
     studio: studio::StudioState,
+    sync: sync::SyncManager,
+}
+
+/// Mark the sync snapshot dirty (task/session rows changed). No-op if sync is
+/// not logged in / disabled; never does network IO on the caller's thread.
+pub(crate) fn notify_sync_snapshot(app: &AppHandle) {
+    app.state::<AppState>().sync.notify_snapshot();
 }
 
 // ── Tauri commands ────────────────────────────────────────────────────────────
@@ -83,6 +91,9 @@ async fn agent_start(
     }
     db.insert_message(&session_id, "user", &prompt)
         .map_err(|e| e.to_string())?;
+
+    // Task/session rows changed → push a fresh snapshot to mobile.
+    state.sync.notify_snapshot();
 
     let resource_bin = resource_engine_bin(&app);
     let emit_fn = make_emit_fn_with_db(app, db.clone());
@@ -185,6 +196,7 @@ async fn agent_followup(
         .map_err(|e| e.to_string())?;
     // Mark task as running again.
     let _ = db.update_task_status(&session_id, "running");
+    state.sync.notify_snapshot();
 
     let resource_bin = resource_engine_bin(&app);
     let emit_fn = make_emit_fn_with_db(app, db.clone());
@@ -436,6 +448,7 @@ async fn task_create(
         .db
         .insert_task_todo(&id, &title, &workdir)
         .map_err(|e| e.to_string())?;
+    state.sync.notify_snapshot();
     Ok(id)
 }
 
@@ -446,7 +459,9 @@ async fn task_delete(
     task_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    state.db.delete_task(&task_id).map_err(|e| e.to_string())
+    state.db.delete_task(&task_id).map_err(|e| e.to_string())?;
+    state.sync.notify_snapshot();
+    Ok(())
 }
 
 /// Update the title of a todo task.
@@ -459,7 +474,9 @@ async fn task_update_title(
     state
         .db
         .update_task_title(&task_id, &title)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    state.sync.notify_snapshot();
+    Ok(())
 }
 
 /// Manually transition a task's status following the validated state machine.
@@ -474,7 +491,9 @@ async fn task_set_status(
     status: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    state.db.set_task_status_validated(&task_id, &status)
+    state.db.set_task_status_validated(&task_id, &status)?;
+    state.sync.notify_snapshot();
+    Ok(())
 }
 
 /// Open a system directory-picker dialog and return the selected path.
@@ -796,8 +815,16 @@ pub fn run() {
             db,
             bridge: bridge::BridgeManager::new(),
             studio: studio::StudioState::new(),
+            sync: sync::SyncManager::new(),
         })
         .setup(|app| {
+            // Start the sync client task (loads persisted account/switch state;
+            // connects only if enabled && logged in).
+            {
+                let st = app.state::<AppState>();
+                st.sync.spawn(st.db.clone(), app.handle().clone());
+            }
+
             // Auto-start bridge if feishu_enabled && bridge_autostart both "true".
             let handle = app.handle().clone();
             let db_clone = app.state::<AppState>().db.clone();
@@ -864,6 +891,11 @@ pub fn run() {
             bridge_stop,
             bridge_status,
             bridge_node_version,
+            sync::sync_status,
+            sync::sync_register,
+            sync::sync_login,
+            sync::sync_logout,
+            sync::sync_set_enabled,
             studio::studio_models,
             studio::studio_capabilities,
             studio::chat_sessions_list,
@@ -1006,6 +1038,25 @@ pub(crate) fn make_emit_fn_with_db(
                 }
             }
             _ => {}
+        }
+
+        // ── Mobile sync relay (cheap, non-blocking: just channel sends) ────────
+        {
+            let st = app.state::<AppState>();
+            // Relay key agent events as summarized event_append frames.
+            let task_id = db.get_task_id_for_session(sid).ok().flatten();
+            if let Some(ea) = sync::event_to_append(&envelope.event, sid, task_id.as_deref()) {
+                st.sync.notify_event(ea);
+            }
+            // Task/session rows change on these status transitions → push snapshot.
+            if matches!(
+                &envelope.event,
+                AgentEvent::SessionStarted { .. }
+                    | AgentEvent::TurnCompleted { .. }
+                    | AgentEvent::Error { .. }
+            ) {
+                st.sync.notify_snapshot();
+            }
         }
 
         // Emit to frontend.

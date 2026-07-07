@@ -559,7 +559,8 @@ async fn handle_card_action(
 /// Core dispatch logic: create session, start agent.
 ///
 /// Mirrors `agent_start` in lib.rs (task_id already exists, status = todo).
-async fn do_dispatch(
+/// Reused by the mobile sync `dispatch_task` command (`sync::apply_command`).
+pub(crate) async fn do_dispatch(
     task_id: &str,
     db: &Arc<Db>,
     sessions: &SessionMap,
@@ -610,15 +611,19 @@ async fn do_dispatch(
 
     // Notify frontend board to refresh.
     let _ = app.emit("bridge-task-created", task_id);
+    // Push updated task/session state to mobile.
+    crate::notify_sync_snapshot(app);
 
     Ok(())
 }
 
 /// Core accept logic: transition awaiting_review → done.
-async fn do_accept(task_id: &str, db: &Arc<Db>, app: &AppHandle) -> Result<(), String> {
+/// Reused by the mobile sync `accept_task` command (`sync::apply_command`).
+pub(crate) async fn do_accept(task_id: &str, db: &Arc<Db>, app: &AppHandle) -> Result<(), String> {
     db.set_task_status_validated(task_id, "done")?;
     // Notify frontend board to refresh.
     let _ = app.emit("bridge-task-created", task_id);
+    crate::notify_sync_snapshot(app);
     Ok(())
 }
 
