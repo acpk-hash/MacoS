@@ -16,5 +16,21 @@ export default defineConfig({
     target: 'chrome105',
     minify: 'esbuild',
     sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Syntax highlighting + markdown rendering pipeline — large and only
+          // needed on chat/markdown views.
+          markdown: [
+            'highlight.js',
+            'react-markdown',
+            'rehype-highlight',
+            'remark-gfm',
+          ],
+          // Canvas graph library — only used by the Canvas page.
+          flow: ['@xyflow/react'],
+        },
+      },
+    },
   },
 })

@@ -198,7 +198,7 @@ function CanvasInner() {
       <header className="px-4 py-3 border-b border-gray-800 flex-shrink-0">
         <h1 className="text-sm font-semibold">工作流执行画布</h1>
         <p className="text-[11px] text-gray-500">
-          实时观察 agent 的会话、命令、文件与回复
+          实时观察 Agent 的会话、命令、文件与回复
         </p>
       </header>
 
@@ -239,7 +239,7 @@ function CanvasInner() {
             <div className="h-full flex flex-col items-center justify-center text-center px-6">
               <div className="text-5xl mb-4 opacity-40">🗺️</div>
               <p className="text-gray-400 text-sm">
-                派发一个任务，在这里看 agent 怎么干活
+                派发一个任务，在这里看 Agent 怎么干活
               </p>
             </div>
           ) : (

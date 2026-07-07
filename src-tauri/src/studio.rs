@@ -419,6 +419,34 @@ pub(crate) async fn media_delete(
     state.db.gen_media_delete(&id).map_err(|e| e.to_string())
 }
 
+/// Copy a media file from `src` to `dest`, validating the source exists first.
+/// Factored out of `media_export` so the copy logic is unit-testable without a
+/// live `AppState`/DB.
+fn copy_media_to(src: &str, dest: &str) -> Result<(), String> {
+    if !std::path::Path::new(src).exists() {
+        return Err(format!("源文件不存在：{src}"));
+    }
+    std::fs::copy(src, dest).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Export a generated media file to a user-chosen destination path (a real
+/// "save as"). Validates the id exists and still has a local file, then copies
+/// the bytes to `dest_path`.
+#[tauri::command]
+pub(crate) async fn media_export(
+    id: String,
+    dest_path: String,
+    state: State<'_, crate::AppState>,
+) -> Result<(), String> {
+    let src = state
+        .db
+        .gen_media_get_local_path(&id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "找不到该媒体，或文件已被删除".to_string())?;
+    copy_media_to(&src, &dest_path)
+}
+
 // -- Helpers -----------------------------------------------------------------
 
 /// Emit a `studio-event` (errors are non-fatal and swallowed).
@@ -520,6 +548,27 @@ fn build_user_content(text: &str, attachments: &[Attachment]) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn copy_media_to_copies_existing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("src.png");
+        std::fs::write(&src, b"pngbytes").unwrap();
+        let dest = dir.path().join("out.png");
+        copy_media_to(src.to_str().unwrap(), dest.to_str().unwrap()).unwrap();
+        assert_eq!(std::fs::read(&dest).unwrap(), b"pngbytes");
+    }
+
+    #[test]
+    fn copy_media_to_errors_on_missing_source() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("nope.png");
+        let dest = dir.path().join("out.png");
+        let err = copy_media_to(missing.to_str().unwrap(), dest.to_str().unwrap())
+            .unwrap_err();
+        assert!(err.contains("源文件不存在"));
+        assert!(!dest.exists());
+    }
 
     #[test]
     fn title_from_truncates_first_line() {

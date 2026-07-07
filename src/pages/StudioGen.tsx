@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { convertFileSrc } from '@tauri-apps/api/core'
+import { convertFileSrc, invoke } from '@tauri-apps/api/core'
+import { save } from '@tauri-apps/plugin-dialog'
 import { useStudioStore, type GenMediaRow } from '../stores/studioStore'
 import Composer from '../components/Composer'
 
@@ -50,27 +51,22 @@ function formatTime(ms: number): string {
   }
 }
 
-/** Download a done media file: fetch via the asset protocol, then save as a
- *  blob through the WebView download flow (no extra backend command needed). */
+/** Save a done media file to a user-chosen location via a real "save as"
+ *  dialog, then copy the bytes there through the `media_export` backend
+ *  command. Cancelling the dialog is a no-op. */
 async function downloadMedia(
   row: GenMediaRow,
   onError: (msg: string) => void,
 ): Promise<void> {
   if (!row.local_path) return
   try {
-    const src = convertFileSrc(row.local_path)
-    const resp = await fetch(src)
-    if (!resp.ok) throw new Error('HTTP ' + resp.status)
-    const blob = await resp.blob()
     const ext = row.local_path.split('.').pop() || 'png'
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'agentboard-' + row.id.slice(0, 8) + '.' + ext
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    setTimeout(() => URL.revokeObjectURL(url), 1000)
+    const dest = await save({
+      defaultPath: 'agentboard-' + row.id.slice(0, 8) + '.' + ext,
+      filters: [{ name: '图片', extensions: [ext] }],
+    })
+    if (!dest) return // user cancelled
+    await invoke('media_export', { id: row.id, destPath: dest })
   } catch (e) {
     onError('下载失败：' + String(e))
   }

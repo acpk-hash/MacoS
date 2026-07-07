@@ -749,6 +749,7 @@ pub fn run() {
             studio::image_generate,
             studio::media_list,
             studio::media_delete,
+            studio::media_export,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
