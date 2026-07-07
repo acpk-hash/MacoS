@@ -172,6 +172,10 @@ impl Db {
             conn.execute_batch(SCHEMA_V3)?;
             conn.execute_batch("PRAGMA user_version = 3")?;
         }
+        if version < 4 {
+            conn.execute_batch(studio::SCHEMA_V4)?;
+            conn.execute_batch("PRAGMA user_version = 4")?;
+        }
         Ok(())
     }
 
@@ -1180,3 +1184,6 @@ mod tests {
         assert_eq!(tasks[0].file_count, 2, "2 distinct paths");
     }
 }
+
+mod studio;
+pub use studio::{ChatMessageRow, ChatSessionRow, GenMediaRow};

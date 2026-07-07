@@ -4,6 +4,8 @@ pub mod db;
 pub mod engine_config;
 pub mod feishu;
 pub mod mcp;
+pub mod relay;
+pub mod studio;
 pub mod wecom;
 
 use std::sync::Arc;
@@ -22,12 +24,13 @@ use mcp::{McpServer, add_mcp_server, list_mcp_servers, remove_mcp_server, codex_
 
 // ── Shared state ──────────────────────────────────────────────────────────────
 
-struct AppState {
+pub(crate) struct AppState {
     sessions: SessionMap,
     trackers: TrackerMap,
     adapter: Arc<CodexAdapter>,
     db: Arc<Db>,
     bridge: bridge::BridgeManager,
+    studio: studio::StudioState,
 }
 
 // ── Tauri commands ────────────────────────────────────────────────────────────
@@ -643,6 +646,7 @@ pub fn run() {
             adapter: Arc::new(CodexAdapter::default()),
             db,
             bridge: bridge::BridgeManager::new(),
+            studio: studio::StudioState::new(),
         })
         .setup(|app| {
             // Auto-start bridge if feishu_enabled && bridge_autostart both "true".
@@ -706,6 +710,18 @@ pub fn run() {
             bridge_stop,
             bridge_status,
             bridge_node_version,
+            studio::studio_models,
+            studio::studio_capabilities,
+            studio::chat_sessions_list,
+            studio::chat_sessions_create,
+            studio::chat_sessions_rename,
+            studio::chat_sessions_delete,
+            studio::chat_messages_list,
+            studio::chat_send,
+            studio::chat_stop,
+            studio::image_generate,
+            studio::media_list,
+            studio::media_delete,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
