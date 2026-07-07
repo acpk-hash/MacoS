@@ -245,7 +245,7 @@ pub struct ProviderRow {
 // ── Db ────────────────────────────────────────────────────────────────────────
 
 pub struct Db {
-    conn: Mutex<Connection>,
+    pub(crate) conn: Mutex<Connection>,
 }
 
 impl Db {
@@ -1093,6 +1093,17 @@ impl Db {
             })
         })?;
         rows.collect()
+    }
+
+    /// Delete a workbench session and all its entries + stats (F5 沉淀 cleanup).
+    /// Read-only sediment aggregation never creates these rows; this only
+    /// removes an already-recorded session on explicit user request.
+    pub fn delete_workbench_session(&self, id: &str) -> SqlResult<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM workbench_entries WHERE session_id = ?1", params![id])?;
+        conn.execute("DELETE FROM workbench_stats   WHERE session_id = ?1", params![id])?;
+        conn.execute("DELETE FROM workbench_sessions WHERE id = ?1",         params![id])?;
+        Ok(())
     }
 }
 

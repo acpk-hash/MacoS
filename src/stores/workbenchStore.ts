@@ -157,6 +157,10 @@ interface WorkbenchStore {
   close: () => Promise<void>
   clearNotice: () => void
 
+  reuseRequest: { cwd: string; model: string; prompt: string } | null
+  requestReuse: (req: { cwd: string; model: string; prompt: string }) => void
+  consumeReuse: () => Promise<string | null>
+
   _onEvent: (sessionId: string, ev: WorkbenchEventRaw) => void
   _applyBufferedDeltas: (buf: Map<string, string>) => void
 }
@@ -253,6 +257,8 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
 
   error: null,
   notice: null,
+
+  reuseRequest: null,
 
   loadModels: async () => {
     if (!isTauri) return
@@ -438,6 +444,18 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
   },
 
   clearNotice: () => set({ notice: null, error: null }),
+
+  requestReuse: (req) => set({ reuseRequest: req }),
+
+  consumeReuse: async () => {
+    const req = get().reuseRequest
+    if (!req) return null
+    set({ reuseRequest: null })
+    const agg = get().aggModels.find((m) => m.modelId === req.model)
+    if (agg) set({ currentProviderId: agg.providerId, currentModel: agg.modelId })
+    await get().open(req.cwd)
+    return req.prompt
+  },
 
   _applyBufferedDeltas: (buf) => {
     set((s) => ({

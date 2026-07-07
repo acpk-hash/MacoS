@@ -7,6 +7,7 @@ import StudioChat from './pages/StudioChat'
 import StudioGen from './pages/StudioGen'
 import Canvas from './pages/Canvas'
 import Workbench from './pages/Workbench'
+import Sediment from './pages/Sediment'
 
 export default function App() {
   return (
@@ -19,6 +20,7 @@ export default function App() {
           <Route path="studio/chat" element={<StudioChat />} />
           <Route path="studio/gen" element={<StudioGen />} />
           <Route path="workbench" element={<Workbench />} />
+        <Route path="sediment" element={<Sediment />} />
           <Route path="canvas" element={<Canvas />} />
           <Route path="settings" element={<Settings />} />
         </Route>

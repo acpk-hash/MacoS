@@ -7,6 +7,7 @@ pub mod mcp;
 pub mod pi_engine;
 pub mod providers;
 pub mod relay;
+pub mod sediment;
 pub mod studio;
 pub mod sync;
 pub mod wecom;
@@ -910,6 +911,66 @@ async fn workbench_close(state: State<'_, AppState>) -> Result<(), String> {
     Ok(())
 }
 
+// ── Sediment (F5 沉淀库: read-only aggregation) ───────────────────────────────
+
+/// Merged run history (board tasks + workbench sessions), newest first.
+/// `kind` filters to `"board"` / `"workbench"`; `query` is a keyword substring
+/// match over title / cwd / model.
+#[tauri::command]
+async fn sediment_runs(
+    kind: Option<String>,
+    query: Option<String>,
+    limit: Option<i64>,
+    offset: Option<i64>,
+    state: State<'_, AppState>,
+) -> Result<Vec<sediment::RunSummary>, String> {
+    sediment::collect_runs(
+        &state.db,
+        kind.as_deref(),
+        query.as_deref(),
+        limit,
+        offset,
+    )
+}
+
+/// Full detail for one run (workbench entry stream, or board sessions+events).
+#[tauri::command]
+async fn sediment_run_detail(
+    kind: String,
+    id: String,
+    state: State<'_, AppState>,
+) -> Result<sediment::RunDetail, String> {
+    sediment::run_detail(&state.db, &kind, &id)
+}
+
+/// List locally available skills discovered under pi / codex skill directories.
+#[tauri::command]
+async fn sediment_skills() -> Result<Vec<sediment::SkillInfo>, String> {
+    Ok(sediment::collect_skills())
+}
+
+/// Parameters to re-open a run in the workbench (cwd / model / first prompt).
+#[tauri::command]
+async fn sediment_reuse(
+    kind: String,
+    id: String,
+    state: State<'_, AppState>,
+) -> Result<sediment::ReuseInfo, String> {
+    sediment::reuse_info(&state.db, &kind, &id)
+}
+
+/// Delete a recorded run (board task cascade, or workbench session cleanup).
+#[tauri::command]
+async fn sediment_delete(
+    kind: String,
+    id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    sediment::delete_run(&state.db, &kind, &id)?;
+    state.sync.notify_snapshot();
+    Ok(())
+}
+
 // ── App entry point ───────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1045,6 +1106,11 @@ pub fn run() {
             workbench_stats,
             workbench_export_html,
             workbench_close,
+            sediment_runs,
+            sediment_run_detail,
+            sediment_skills,
+            sediment_reuse,
+            sediment_delete,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

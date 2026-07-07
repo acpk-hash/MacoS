@@ -302,7 +302,7 @@ const ThinkingBlock = React.memo(function ThinkingBlock({
 
 // ── Entry dispatcher ───────────────────────────────────────────────────────────
 
-const EntryItem = React.memo(function EntryItem({ entry }: { entry: WorkbenchEntry }) {
+export const EntryItem = React.memo(function EntryItem({ entry }: { entry: WorkbenchEntry }) {
   const domId = `wb-entry-${entry.id}`
   switch (entry.kind) {
     case 'user':
@@ -566,6 +566,7 @@ export default function Workbench() {
     exportHtml,
     close,
     clearNotice,
+    consumeReuse,
   } = useWorkbenchStore()
 
   const [draft, setDraft] = useState('')
@@ -576,6 +577,17 @@ export default function Workbench() {
     if (!isTauri) return
     loadModels()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Consume a pending "复用" request handed off from the Sediment page: open the
+  // recorded cwd/model in a fresh session and prefill (but do NOT send) the
+  // first prompt. Waits for models to load so the model can be selected.
+  useEffect(() => {
+    if (!isTauri || !modelsLoaded) return
+    if (!useWorkbenchStore.getState().reuseRequest) return
+    void consumeReuse().then((prompt) => {
+      if (prompt != null) setDraft(prompt)
+    })
+  }, [modelsLoaded]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!autoScroll) return

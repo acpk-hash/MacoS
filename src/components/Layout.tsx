@@ -16,6 +16,11 @@ const agentItems = [
   { to: '/canvas', label: '画布', hint: '执行流', title: '画布 · 执行流(只读查看视图)' },
 ]
 
+// "沉淀" group (Hermes-style local asset library: 运行历史 / 技能库).
+const sedimentItems = [
+  { to: '/sediment', label: '沉淀', title: '沉淀 · 运行历史 / 技能库' },
+]
+
 // Bottom utility links.
 const navItems = [{ to: '/settings', label: '设置' }]
 
@@ -67,6 +72,16 @@ export default function Layout() {
             Agent
           </span>
           {agentItems.map((item) => (
+            <NavEntry key={item.to} item={item} />
+          ))}
+        </nav>
+
+        {/* 沉淀 group */}
+        <nav className="flex flex-col gap-1 w-full px-2">
+          <span className="text-[9px] text-gray-600 text-center mb-0.5 select-none">
+            沉淀
+          </span>
+          {sedimentItems.map((item) => (
             <NavEntry key={item.to} item={item} />
           ))}
         </nav>
