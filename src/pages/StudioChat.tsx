@@ -1,8 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
 import rehypeHighlight from 'rehype-highlight'
+import rehypeKatex from 'rehype-katex'
 import 'highlight.js/styles/github-dark.css'
+import 'katex/dist/katex.min.css'
 import {
   useStudioStore,
   type Attachment,
@@ -10,6 +13,13 @@ import {
   type ChatSessionRow,
 } from '../stores/studioStore'
 import { parseAttachments } from '../lib/attachments'
+import {
+  conversationToHtml,
+  conversationToMarkdown,
+  messageToHtml,
+  messageToMarkdown,
+  saveExport,
+} from '../lib/exportChat'
 import Composer from '../components/Composer'
 import ModelPicker from '../components/ModelPicker'
 
@@ -26,6 +36,25 @@ const EXAMPLE_PROMPTS = [
 ]
 
 // ── Markdown rendering ────────────────────────────────────────────────────────
+
+// Stable plugin references — defined at module scope so the renderer is never
+// rebuilt per streamed token. `throwOnError: false` makes half-typed formulas
+// during streaming render as plain text instead of crashing the pipeline.
+const REMARK_PLUGINS = [remarkGfm, remarkMath]
+const REHYPE_PLUGINS = [
+  rehypeHighlight,
+  [rehypeKatex, { throwOnError: false, errorColor: 'currentColor' }],
+] as never
+
+/** Open a URL in the system default browser (never inside the webview). */
+async function openExternal(href: string) {
+  try {
+    const { invoke } = await import('@tauri-apps/api/core')
+    await invoke('open_external_url', { url: href })
+  } catch (e) {
+    console.warn('[StudioChat] openExternal failed:', e)
+  }
+}
 
 /** Recursively extract raw text from a React node (for the copy button). */
 function nodeText(node: React.ReactNode): string {
@@ -122,11 +151,19 @@ const mdComponents: Components = {
   a: ({ href, children }) => (
     <a
       href={href}
-      target="_blank"
-      rel="noreferrer"
-      className="text-blue-400 hover:text-blue-300 underline underline-offset-2"
+      title={href ? `在浏览器中打开 ${href}` : undefined}
+      onClick={(e) => {
+        if (href) {
+          e.preventDefault()
+          void openExternal(href)
+        }
+      }}
+      className="text-blue-400 hover:text-blue-300 underline underline-offset-2 cursor-pointer"
     >
       {children}
+      <span aria-hidden="true" className="ml-0.5 text-[0.72em] opacity-70 align-super">
+        ↗
+      </span>
     </a>
   ),
   hr: () => <hr className="my-4 border-gray-800" />,
@@ -153,8 +190,8 @@ const MarkdownMessage = React.memo(function MarkdownMessage({
   return (
     <div className="text-[15px] text-gray-200 break-words">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeHighlight]}
+        remarkPlugins={REMARK_PLUGINS}
+        rehypePlugins={REHYPE_PLUGINS}
         components={mdComponents}
       >
         {text}
@@ -213,18 +250,90 @@ function AttachmentPreview({ atts }: { atts: Attachment[] }) {
   )
 }
 
+// ── Export dropdown ───────────────────────────────────────────────────────────
+
+function ExportMenu({
+  label,
+  title,
+  onMd,
+  onHtml,
+  buttonClass,
+  align = 'left',
+}: {
+  label: React.ReactNode
+  title?: string
+  onMd: () => void
+  onHtml: () => void
+  buttonClass?: string
+  align?: 'left' | 'right'
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [open])
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        title={title}
+        onClick={() => setOpen((v) => !v)}
+        className={buttonClass ?? 'text-xs hover:text-gray-300 transition-colors'}
+      >
+        {label}
+      </button>
+      {open && (
+        <div
+          className={[
+            'absolute z-30 mt-1 w-44 py-1 rounded-lg bg-gray-800 border border-gray-700 shadow-xl',
+            align === 'right' ? 'right-0' : 'left-0',
+          ].join(' ')}
+        >
+          <button
+            onClick={() => {
+              setOpen(false)
+              onMd()
+            }}
+            className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700 transition-colors"
+          >
+            导出为 Markdown (.md)
+          </button>
+          <button
+            onClick={() => {
+              setOpen(false)
+              onHtml()
+            }}
+            className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700 transition-colors"
+          >
+            导出为 HTML (.html)
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Message item (memoized) ───────────────────────────────────────────────────
 
 const MessageItem = React.memo(function MessageItem({
   msg,
   isLastAssistant,
   streaming,
+  sessionTitle,
   onRegenerate,
+  showToast,
 }: {
   msg: ChatMessageRow
   isLastAssistant: boolean
   streaming: boolean
+  sessionTitle: string
   onRegenerate: () => void
+  showToast: (msg: string) => void
 }) {
   const [copied, setCopied] = useState(false)
   const copyMessage = async () => {
@@ -234,6 +343,20 @@ const MessageItem = React.memo(function MessageItem({
       setTimeout(() => setCopied(false), 1500)
     } catch {
       /* clipboard unavailable */
+    }
+  }
+
+  const exportOne = async (fmt: 'md' | 'html') => {
+    try {
+      const base = `${sessionTitle}-单条`
+      const content =
+        fmt === 'md'
+          ? messageToMarkdown(msg)
+          : messageToHtml(msg, sessionTitle)
+      const ok = await saveExport(base, fmt, content)
+      if (ok) showToast('已导出该消息')
+    } catch (e) {
+      showToast(`导出失败：${String(e)}`)
     }
   }
 
@@ -279,6 +402,12 @@ const MessageItem = React.memo(function MessageItem({
           >
             {copied ? '已复制' : '复制'}
           </button>
+          <ExportMenu
+            label="导出"
+            title="导出本条消息"
+            onMd={() => void exportOne('md')}
+            onHtml={() => void exportOne('html')}
+          />
           {isLastAssistant && (
             <button
               onClick={onRegenerate}
@@ -568,6 +697,20 @@ export default function StudioChat() {
     void send(content, attachments)
   }
 
+  const exportConversation = async (fmt: 'md' | 'html') => {
+    const title = sessions.find((s) => s.id === activeSessionId)?.title || '新对话'
+    try {
+      const content =
+        fmt === 'md'
+          ? conversationToMarkdown(messages, title)
+          : conversationToHtml(messages, title)
+      const ok = await saveExport(title, fmt, content)
+      if (ok) showToast('已导出对话')
+    } catch (e) {
+      showToast(`导出失败：${String(e)}`)
+    }
+  }
+
   // Index of the last assistant message (for the regenerate affordance).
   let lastAssistantIdx = -1
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -628,6 +771,17 @@ export default function StudioChat() {
             {activeSession?.title || '新对话'}
           </span>
 
+          {hasMessages && (
+            <ExportMenu
+              label="导出对话"
+              title="导出整段对话"
+              align="left"
+              onMd={() => void exportConversation('md')}
+              onHtml={() => void exportConversation('html')}
+              buttonClass="flex-shrink-0 text-xs text-gray-400 hover:text-gray-200 border border-gray-700 rounded-lg px-2.5 py-1.5 transition-colors"
+            />
+          )}
+
           <div className="flex-1" />
 
           {/* Model selector (grouped by provider) */}
@@ -670,7 +824,9 @@ export default function StudioChat() {
                       msg={msg}
                       isLastAssistant={idx === lastAssistantIdx}
                       streaming={isStreaming}
+                      sessionTitle={activeSession?.title || '新对话'}
                       onRegenerate={() => void regenerate()}
+                      showToast={showToast}
                     />
                   ))}
                 </div>

@@ -801,6 +801,33 @@ fn ping() -> String {
     "pong".to_string()
 }
 
+/// Open a URL in the system's default browser (never inside the webview).
+///
+/// Only `http`/`https`/`mailto` URLs are allowed — model output may contain
+/// arbitrary strings, and this guard prevents launching local files or other
+/// protocol handlers. The URL is passed as a single argv element (no shell
+/// parsing), so special characters cannot be used for command injection.
+#[tauri::command]
+async fn open_external_url(url: String) -> Result<(), String> {
+    let allowed = url.starts_with("http://")
+        || url.starts_with("https://")
+        || url.starts_with("mailto:");
+    if !allowed {
+        return Err(format!("不允许打开该链接：{url}"));
+    }
+
+    #[cfg(windows)]
+    let spawn = tokio::process::Command::new("explorer").arg(&url).spawn();
+    #[cfg(target_os = "macos")]
+    let spawn = tokio::process::Command::new("open").arg(&url).spawn();
+    #[cfg(all(not(windows), not(target_os = "macos")))]
+    let spawn = tokio::process::Command::new("xdg-open").arg(&url).spawn();
+
+    // `explorer` returns a non-zero exit code even on success, so we only need
+    // the spawn to succeed; the launched child is detached.
+    spawn.map(|_| ()).map_err(|e| e.to_string())
+}
+
 // ── App entry point ───────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -865,6 +892,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             ping,
+            open_external_url,
             agent_start,
             agent_followup,
             agent_cancel,
@@ -918,6 +946,7 @@ pub fn run() {
             studio::media_list,
             studio::media_delete,
             studio::media_export,
+            studio::export_text_file,
             providers::providers_list,
             providers::provider_upsert,
             providers::provider_set_key,
