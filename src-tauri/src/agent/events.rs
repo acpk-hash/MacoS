@@ -12,6 +12,10 @@ pub enum AgentEvent {
     },
     /// Assistant prose message (whole, not streaming).
     AssistantMessage { text: String },
+    /// Streaming assistant token delta (embedded engine only).
+    /// The frontend does not consume this yet; it is additive and must not
+    /// break existing parsers (unknown `type` values are ignored downstream).
+    AssistantDelta { text: String },
     /// Chain-of-thought / reasoning text (not observed in codex yet, reserved).
     Reasoning { text: String },
     /// Any tool invocation (generic; file_change / command_execution get richer events).

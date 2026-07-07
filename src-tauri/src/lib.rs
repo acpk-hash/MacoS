@@ -83,26 +83,63 @@ async fn agent_start(
         .map_err(|e| e.to_string())?;
 
     let emit_fn = make_emit_fn_with_db(app, db.clone());
+    let sandbox = state.adapter.sandbox.clone();
 
-    // Read reasoning_effort from settings (default "low"); apply via -c flag.
+    if engine_mode(&db) == "embedded" {
+        let adapter = build_embedded_adapter(&db, sandbox);
+        adapter
+            .start_session(session_id.clone(), sessions, trackers, prompt, workdir, emit_fn)
+            .await
+            .map_err(|e| e.to_string())?;
+    } else {
+        let adapter = build_cli_adapter(&db, sandbox);
+        adapter
+            .start_session(session_id.clone(), sessions, trackers, prompt, workdir, emit_fn)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
+    Ok(session_id)
+}
+
+// ── Engine selection helpers ────────────────────────────────────────────────
+
+/// Return the configured agent engine: `"embedded"` or `"codex-cli"` (default).
+pub(crate) fn engine_mode(db: &Db) -> String {
+    db.settings_get("agent_engine")
+        .unwrap_or(None)
+        .unwrap_or_else(|| "codex-cli".to_string())
+}
+
+/// Build the CLI adapter with the `reasoning_effort` setting applied.
+fn build_cli_adapter(db: &Db, sandbox: String) -> Arc<CodexAdapter> {
     let reasoning_effort = db
         .settings_get("reasoning_effort")
         .unwrap_or(None)
         .unwrap_or_else(|| "low".to_string());
-    let adapter = std::sync::Arc::new(CodexAdapter {
+    Arc::new(CodexAdapter {
         extra_args: vec![
             "-c".to_string(),
             format!("model_reasoning_effort={}", reasoning_effort),
         ],
-        sandbox: state.adapter.sandbox.clone(),
-    });
+        sandbox,
+    })
+}
 
-    adapter
-        .start_session(session_id.clone(), sessions, trackers, prompt, workdir, emit_fn)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    Ok(session_id)
+/// Build the embedded adapter from settings (`engine_bin_path`, `codex_exe_path`,
+/// `model`). Empty strings are treated as unset.
+fn build_embedded_adapter(db: &Db, sandbox: String) -> agent::EmbeddedAdapter {
+    let get = |k: &str| {
+        db.settings_get(k)
+            .unwrap_or(None)
+            .filter(|s| !s.trim().is_empty())
+    };
+    agent::EmbeddedAdapter {
+        engine_bin_path: get("engine_bin_path"),
+        codex_exe_path: get("codex_exe_path"),
+        sandbox,
+        model: get("model"),
+    }
 }
 
 /// Send a follow-up prompt to a running / completed session.
@@ -128,19 +165,8 @@ async fn agent_followup(
     let _ = db.update_task_status(&session_id, "running");
 
     let emit_fn = make_emit_fn_with_db(app, db.clone());
-
-    // Read reasoning_effort and build adapter with it.
-    let reasoning_effort = db
-        .settings_get("reasoning_effort")
-        .unwrap_or(None)
-        .unwrap_or_else(|| "low".to_string());
-    let adapter = std::sync::Arc::new(CodexAdapter {
-        extra_args: vec![
-            "-c".to_string(),
-            format!("model_reasoning_effort={}", reasoning_effort),
-        ],
-        sandbox: state.adapter.sandbox.clone(),
-    });
+    let sandbox = state.adapter.sandbox.clone();
+    let embedded = engine_mode(&db) == "embedded";
 
     // Check whether the session handle is still alive in memory.
     let in_memory = {
@@ -149,10 +175,17 @@ async fn agent_followup(
     };
 
     if in_memory {
-        adapter
-            .send_followup(sessions, trackers, session_id, text, emit_fn)
-            .await
-            .map_err(|e| e.to_string())
+        if embedded {
+            build_embedded_adapter(&db, sandbox)
+                .send_followup(sessions, trackers, session_id, text, emit_fn)
+                .await
+                .map_err(|e| e.to_string())
+        } else {
+            build_cli_adapter(&db, sandbox)
+                .send_followup(sessions, trackers, session_id, text, emit_fn)
+                .await
+                .map_err(|e| e.to_string())
+        }
     } else {
         // Cold path: retrieve thread_id and workdir from DB.
         let thread_id = db
@@ -166,10 +199,17 @@ async fn agent_followup(
             .map_err(|e| e.to_string())?
             .unwrap_or_else(|| ".".to_string());
 
-        adapter
-            .resume_with_thread_id(sessions, trackers, session_id, thread_id, workdir, text, emit_fn)
-            .await
-            .map_err(|e| e.to_string())
+        if embedded {
+            build_embedded_adapter(&db, sandbox)
+                .resume_with_thread_id(sessions, trackers, session_id, thread_id, workdir, text, emit_fn)
+                .await
+                .map_err(|e| e.to_string())
+        } else {
+            build_cli_adapter(&db, sandbox)
+                .resume_with_thread_id(sessions, trackers, session_id, thread_id, workdir, text, emit_fn)
+                .await
+                .map_err(|e| e.to_string())
+        }
     }
 }
 
@@ -436,6 +476,24 @@ async fn settings_set(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     state.db.settings_set(&key, &value).map_err(|e| e.to_string())
+}
+
+/// Return the active agent engine: `"embedded"` or `"codex-cli"` (default).
+#[tauri::command]
+async fn engine_mode_get(state: State<'_, AppState>) -> Result<String, String> {
+    Ok(engine_mode(&state.db))
+}
+
+/// Set the active agent engine. Accepts `"codex-cli"` or `"embedded"`.
+#[tauri::command]
+async fn engine_mode_set(mode: String, state: State<'_, AppState>) -> Result<(), String> {
+    if mode != "codex-cli" && mode != "embedded" {
+        return Err(format!("未知引擎模式: {mode}（应为 codex-cli 或 embedded）"));
+    }
+    state
+        .db
+        .settings_set("agent_engine", &mode)
+        .map_err(|e| e.to_string())
 }
 
 // ── Engine API configuration ──────────────────────────────────────────────────
@@ -722,6 +780,8 @@ pub fn run() {
             task_set_status,
             settings_get_all,
             settings_set,
+            engine_mode_get,
+            engine_mode_set,
             detect_engines,
             engine_config_get,
             engine_config_set,
@@ -766,6 +826,14 @@ pub(crate) fn make_emit_fn_with_db(
 ) -> impl Fn(AgentEventEnvelope) + Send + Sync + 'static {
     move |envelope: AgentEventEnvelope| {
         let sid = &envelope.session_id;
+
+        // Streaming deltas are high-frequency and not consumed by the frontend
+        // yet; forward them live but do NOT persist (would flood the events
+        // table). All other events are persisted below.
+        if let AgentEvent::AssistantDelta { .. } = &envelope.event {
+            let _ = app.emit("agent-event", &envelope);
+            return;
+        }
 
         // Write raw event JSON to events table (best-effort; ignore errors).
         if let Ok(payload) = serde_json::to_string(&envelope.event) {
@@ -882,6 +950,7 @@ fn event_type_label(event: &AgentEvent) -> &'static str {
     match event {
         AgentEvent::SessionStarted { .. } => "session_started",
         AgentEvent::AssistantMessage { .. } => "assistant_message",
+        AgentEvent::AssistantDelta { .. } => "assistant_delta",
         AgentEvent::Reasoning { .. } => "reasoning",
         AgentEvent::ToolCall { .. } => "tool_call",
         AgentEvent::FileEdit { .. } => "file_edit",

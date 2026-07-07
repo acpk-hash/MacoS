@@ -1,0 +1,39 @@
+[package]
+name = "agentboard-engine"
+version = "0.1.0"
+edition = "2021"
+description = "AgentBoard self-hosted codex engine sidecar (NDJSON over stdio)"
+license = "Apache-2.0"
+
+# Own workspace so this crate is NOT absorbed into src-tauri or codex-rs.
+[workspace]
+
+[[bin]]
+name = "agentboard-engine"
+path = "src/main.rs"
+
+[dependencies]
+# Reproducible dependency method: git + tag (crates are NOT published on crates.io).
+# Cargo.lock is seeded from codex-rs's own lock -- see docs/v0.4-embed-api-map.md section 1.
+codex-core          = { git = "https://github.com/openai/codex", tag = "rust-v0.134.0" }
+codex-protocol      = { git = "https://github.com/openai/codex", tag = "rust-v0.134.0" }
+codex-login         = { git = "https://github.com/openai/codex", tag = "rust-v0.134.0" }
+codex-exec-server   = { git = "https://github.com/openai/codex", tag = "rust-v0.134.0" }
+codex-extension-api = { git = "https://github.com/openai/codex", tag = "rust-v0.134.0" }
+
+tokio      = { version = "1", features = ["macros", "rt-multi-thread", "io-std", "io-util", "sync"] }
+anyhow     = "1"
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Release profile: strip symbols for a modest size win. LTO is intentionally
+# left off -- the V8 static lib dominates binary size regardless, and enabling
+# LTO across the codex+V8 graph would balloon compile time for little gain.
+[profile.release]
+strip = true
+
+# REQUIRED: codex-core depends on openai's forked tungstenite. Git deps do NOT
+# inherit codex-rs's own [patch], so we replicate it here or resolution fails.
+[patch.crates-io]
+tokio-tungstenite = { git = "https://github.com/openai-oss-forks/tokio-tungstenite", rev = "132f5b39c862e3a970f731d709608b3e6276d5f6" }
+tungstenite = { git = "https://github.com/openai-oss-forks/tungstenite-rs", rev = "9200079d3b54a1ff51072e24d81fd354f085156f" }

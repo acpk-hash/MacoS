@@ -17,16 +17,23 @@ pub enum CodexError {
     Io(#[from] std::io::Error),
     #[error("session not found: {0}")]
     SessionNotFound(String),
+    /// Engine-adapter error (e.g. engine binary / codex.exe not found).
+    #[error("engine error: {0}")]
+    Engine(String),
 }
 
 // ── Session handle ────────────────────────────────────────────────────────────
 
 pub struct SessionHandle {
     pub thread_id: Option<String>,
-    child: Child,
+    pub(crate) child: Child,
     /// FileTracker for this session — survives until the session is explicitly
     /// removed so follow-up turns can reuse it.
     pub tracker: Option<Arc<FileTracker>>,
+    /// Embedded-engine only: channel to push follow-up user inputs into the
+    /// long-lived engine driver task (the engine process stays warm across
+    /// turns). `None` for the CLI adapter (which re-spawns per turn).
+    pub followup_tx: Option<tokio::sync::mpsc::UnboundedSender<String>>,
 }
 
 // ── Active session registry ───────────────────────────────────────────────────
@@ -255,6 +262,7 @@ async fn drive_process(
                 thread_id: None,
                 child,
                 tracker: tracker.clone(),
+                followup_tx: None,
             },
         );
     }
