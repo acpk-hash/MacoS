@@ -98,8 +98,13 @@ pub(crate) fn map_engine_event(ev: EngineEvent, session_id: &str) -> Option<Agen
 /// Adapter that spawns and drives the `agentboard-engine` sidecar.
 pub struct EmbeddedAdapter {
     /// Explicit engine binary path (from settings `engine_bin_path`). When
-    /// `None`, the dev-default location is used.
+    /// `None`, the resource / dev-default locations are used.
     pub engine_bin_path: Option<String>,
+    /// Bundled engine binary resolved from the Tauri resource dir (installed
+    /// app). Populated by the command layer from the AppHandle path resolver;
+    /// `None` in dev / tests. Tried after `engine_bin_path` and before the dev
+    /// default.
+    pub resource_bin: Option<PathBuf>,
     /// Explicit codex.exe path (passed to the engine as `--codex-exe`). When
     /// `None`, it is auto-detected at spawn time.
     pub codex_exe_path: Option<String>,
@@ -113,6 +118,7 @@ impl Default for EmbeddedAdapter {
     fn default() -> Self {
         Self {
             engine_bin_path: None,
+            resource_bin: None,
             codex_exe_path: None,
             sandbox: "workspace-write".to_string(),
             model: None,
@@ -135,9 +141,10 @@ fn default_engine_bin() -> PathBuf {
 }
 
 impl EmbeddedAdapter {
-    /// Resolve the engine binary: settings override → dev default. Errors
-    /// clearly (not silently) when neither exists.
-    fn resolve_engine_bin(&self) -> Result<PathBuf, CodexError> {
+    /// Resolve the engine binary: settings override → bundled resource path
+    /// (installed app) → dev default. Errors clearly (not silently) when none
+    /// exist.
+    pub(crate) fn resolve_engine_bin(&self) -> Result<PathBuf, CodexError> {
         if let Some(p) = &self.engine_bin_path {
             let pb = PathBuf::from(p);
             if pb.exists() {
@@ -147,19 +154,29 @@ impl EmbeddedAdapter {
                 "配置的 engine_bin_path 不存在: {p}"
             )));
         }
+        if let Some(res) = &self.resource_bin {
+            if res.exists() {
+                return Ok(res.clone());
+            }
+        }
         let dev = default_engine_bin();
         if dev.exists() {
             return Ok(dev);
         }
+        let res_hint = self
+            .resource_bin
+            .as_ref()
+            .map(|p| format!("安装资源路径 {}、", p.display()))
+            .unwrap_or_default();
         Err(CodexError::Engine(format!(
-            "找不到 agentboard-engine，可执行文件不存在（已尝试 {}）。请先构建 engine (cargo build --release) 或在设置中指定 engine_bin_path。",
+            "找不到 agentboard-engine，可执行文件不存在（已尝试 {res_hint}开发路径 {}）。请重新安装应用或在设置中指定 engine_bin_path。",
             dev.display()
         )))
     }
 
     /// Resolve codex.exe for the engine's exec-server: settings override →
     /// known install dir → `where/which codex`. Errors clearly when not found.
-    async fn resolve_codex_exe(&self) -> Result<String, CodexError> {
+    pub(crate) async fn resolve_codex_exe(&self) -> Result<String, CodexError> {
         if let Some(p) = &self.codex_exe_path {
             if PathBuf::from(p).exists() {
                 return Ok(p.clone());
@@ -620,6 +637,48 @@ mod tests {
         };
         let resolved = adapter.resolve_engine_bin().expect("should resolve existing file");
         assert_eq!(resolved, tmp.path());
+    }
+
+    #[test]
+    fn resolve_engine_bin_uses_resource_when_no_override() {
+        // No settings override → an existing resource_bin is used.
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let adapter = EmbeddedAdapter {
+            resource_bin: Some(tmp.path().to_path_buf()),
+            ..Default::default()
+        };
+        let resolved = adapter.resolve_engine_bin().expect("resource path should resolve");
+        assert_eq!(resolved, tmp.path());
+    }
+
+    #[test]
+    fn resolve_engine_bin_override_beats_resource() {
+        // Both set: the explicit settings override wins over the resource path.
+        let override_f = tempfile::NamedTempFile::new().unwrap();
+        let resource_f = tempfile::NamedTempFile::new().unwrap();
+        let adapter = EmbeddedAdapter {
+            engine_bin_path: Some(override_f.path().to_str().unwrap().to_string()),
+            resource_bin: Some(resource_f.path().to_path_buf()),
+            ..Default::default()
+        };
+        let resolved = adapter.resolve_engine_bin().unwrap();
+        assert_eq!(resolved, override_f.path());
+    }
+
+    #[test]
+    fn resolve_engine_bin_falls_back_when_resource_missing() {
+        // resource_bin points at a nonexistent file → fall through to the dev
+        // default. In dev CI the dev binary may or may not exist; assert the
+        // resolver never returns the missing resource path.
+        let adapter = EmbeddedAdapter {
+            resource_bin: Some(PathBuf::from("Z:/no/such/agentboard-engine.exe")),
+            ..Default::default()
+        };
+        match adapter.resolve_engine_bin() {
+            Ok(p) => assert_eq!(p, default_engine_bin(), "should fall back to dev default"),
+            Err(CodexError::Engine(_)) => { /* neither resource nor dev exists — acceptable */ }
+            other => panic!("unexpected: {other:?}"),
+        }
     }
 
     /// LIVE: spawns the real engine (release build) and runs one turn that

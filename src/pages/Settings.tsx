@@ -18,6 +18,17 @@ interface EngineStatus {
   version: string | null
 }
 
+type EngineMode = 'codex-cli' | 'embedded'
+
+/** Mirrors Rust's EmbeddedEngineStatus (embedded_engine_status command). */
+interface EmbeddedEngineStatus {
+  engine_bin_path: string | null
+  engine_bin_found: boolean
+  codex_exe_path: string | null
+  codex_found: boolean
+  codex_error: string | null
+}
+
 interface McpServer {
   name: string
   command: string
@@ -305,6 +316,9 @@ function EngineSection() {
   const [detecting, setDetecting] = useState(false)
   const [settings, setSettings] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState<Record<string, boolean>>({})
+  const [engineMode, setEngineMode] = useState<EngineMode>('codex-cli')
+  const [embeddedStatus, setEmbeddedStatus] = useState<EmbeddedEngineStatus | null>(null)
+  const [switchingMode, setSwitchingMode] = useState(false)
 
   const loadSettings = useCallback(async () => {
     try {
@@ -327,10 +341,45 @@ function EngineSection() {
     }
   }, [])
 
+  const loadEngineMode = useCallback(async () => {
+    try {
+      const mode = await tauriInvoke<EngineMode>('engine_mode_get')
+      setEngineMode(mode)
+    } catch (e) {
+      console.error('engine_mode_get failed:', e)
+    }
+  }, [])
+
+  const loadEmbeddedStatus = useCallback(async () => {
+    try {
+      const st = await tauriInvoke<EmbeddedEngineStatus>('embedded_engine_status')
+      setEmbeddedStatus(st)
+    } catch (e) {
+      console.error('embedded_engine_status failed:', e)
+    }
+  }, [])
+
+  const handleEngineModeChange = async (mode: EngineMode) => {
+    if (mode === engineMode) return
+    setSwitchingMode(true)
+    try {
+      await tauriInvoke('engine_mode_set', { mode })
+      setEngineMode(mode)
+      // Refresh embedded readiness whenever the mode changes.
+      await loadEmbeddedStatus()
+    } catch (e) {
+      console.error('engine_mode_set failed:', e)
+    } finally {
+      setSwitchingMode(false)
+    }
+  }
+
   useEffect(() => {
     loadSettings()
     detect()
-  }, [detect, loadSettings])
+    loadEngineMode()
+    loadEmbeddedStatus()
+  }, [detect, loadSettings, loadEngineMode, loadEmbeddedStatus])
 
   const saveSetting = async (key: string, value: string) => {
     setSaving((s) => ({ ...s, [key]: true }))
@@ -416,28 +465,99 @@ function EngineSection() {
         </div>
       </div>
 
-      {/* Default engine */}
+      {/* Agent engine mode (Codex CLI vs embedded engine) */}
       <div>
         <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-          默认引擎
+          Agent 引擎
         </label>
         <div className="space-y-1.5">
           <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="radio"
-              name="default_engine"
-              value="codex"
-              checked={true}
-              readOnly
+              name="agent_engine"
+              value="codex-cli"
+              checked={engineMode === 'codex-cli'}
+              onChange={() => handleEngineModeChange('codex-cli')}
+              disabled={switchingMode}
               className="accent-blue-500"
             />
-            <span className="text-sm text-gray-200">Codex</span>
+            <span className="text-sm text-gray-200">Codex CLI（需已安装 codex）</span>
           </label>
-          <label className="flex items-center gap-2 cursor-not-allowed opacity-40">
-            <input type="radio" name="default_engine" value="claude" disabled />
-            <span className="text-sm text-gray-400">Claude</span>
-            <span className="text-xs text-yellow-600">即将支持</span>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              name="agent_engine"
+              value="embedded"
+              checked={engineMode === 'embedded'}
+              onChange={() => handleEngineModeChange('embedded')}
+              disabled={switchingMode}
+              className="accent-blue-500"
+            />
+            <span className="text-sm text-gray-200">内置引擎（推荐）</span>
           </label>
+        </div>
+        <p className="text-xs text-gray-500 mt-1.5">
+          切换即生效于下次派发的会话；当前正在运行的会话不受影响。
+        </p>
+
+        {/* Embedded engine readiness */}
+        <div className="mt-3 bg-gray-900 border border-gray-700 rounded-lg p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-gray-400">内置引擎状态</span>
+            <button
+              onClick={loadEmbeddedStatus}
+              className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+            >
+              重新检测
+            </button>
+          </div>
+
+          {/* Engine exe */}
+          <div className="flex items-start gap-2">
+            <span
+              className={`mt-1 w-2 h-2 rounded-full flex-shrink-0 ${
+                embeddedStatus?.engine_bin_found ? 'bg-green-400' : 'bg-red-500'
+              }`}
+            />
+            <div className="min-w-0">
+              <p className="text-xs text-gray-300">引擎可执行文件</p>
+              {embeddedStatus == null ? (
+                <p className="text-xs text-gray-600">检测中…</p>
+              ) : embeddedStatus.engine_bin_found ? (
+                <p className="text-xs text-gray-500 font-mono break-all">
+                  {embeddedStatus.engine_bin_path}
+                </p>
+              ) : (
+                <p className="text-xs text-red-400">
+                  未找到 agentboard-engine，请重新安装应用或在设置中指定路径。
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* codex.exe probe */}
+          <div className="flex items-start gap-2">
+            <span
+              className={`mt-1 w-2 h-2 rounded-full flex-shrink-0 ${
+                embeddedStatus?.codex_found ? 'bg-green-400' : 'bg-yellow-500'
+              }`}
+            />
+            <div className="min-w-0">
+              <p className="text-xs text-gray-300">codex.exe 探测</p>
+              {embeddedStatus == null ? (
+                <p className="text-xs text-gray-600">检测中…</p>
+              ) : embeddedStatus.codex_found ? (
+                <p className="text-xs text-gray-500 font-mono break-all">
+                  {embeddedStatus.codex_exe_path}
+                </p>
+              ) : (
+                <p className="text-xs text-yellow-400">
+                  {embeddedStatus.codex_error ??
+                    '未找到 codex 可执行文件（内置引擎的 exec-server 需要它）。'}
+                </p>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 

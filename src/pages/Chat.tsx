@@ -52,6 +52,16 @@ function renderMarkdown(text: string): React.ReactNode {
   })
 }
 
+// ── Streaming cursor (embedded engine live typing) ────────────────────────────
+
+/** Blinking caret appended to the in-progress assistant bubble, matching the
+ *  StudioChat streaming style. */
+function BlinkCursor() {
+  return (
+    <span className="inline-block w-[7px] h-[15px] ml-0.5 -mb-0.5 bg-gray-300 animate-pulse rounded-[1px] align-middle" />
+  )
+}
+
 // ── Diff viewer ───────────────────────────────────────────────────────────────
 
 function DiffViewer({ diff }: { diff: string }) {
@@ -595,10 +605,10 @@ export default function Chat() {
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-scroll to bottom when new entries arrive.
+  // Auto-scroll to bottom when new entries arrive or the streaming buffer grows.
   useEffect(() => {
     timelineEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [activeSession?.entries.length])
+  }, [activeSession?.entries.length, activeSession?.streamingText])
 
   // ── Session selection ──────────────────────────────────────────────────────
 
@@ -701,6 +711,8 @@ export default function Chat() {
   const entries = activeSession?.entries ?? []
   const fileEdits = activeSession?.fileEdits ?? new Map()
   const hasFileEdits = fileEdits.size > 0
+  // Live streaming buffer (embedded engine only; empty for CLI mode).
+  const streamingText = activeSession?.streamingText ?? ''
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -769,7 +781,7 @@ export default function Chat() {
 
         {/* ── Timeline ──────────────────────────────────────────────────────── */}
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-          {entries.length === 0 ? (
+          {entries.length === 0 && !streamingText ? (
             <div className="flex items-center justify-center h-full">
               <p className="text-gray-600 text-sm select-none">
                 输入提示词开始新会话
@@ -787,6 +799,19 @@ export default function Chat() {
               />
             ))
           )}
+
+          {/* Live streaming bubble: the in-progress assistant turn rendered
+              token-by-token (embedded engine). Replaced by the final
+              assistant_message entry when the turn text lands. */}
+          {streamingText && (
+            <div className="flex justify-start">
+              <div className="max-w-lg px-4 py-2.5 rounded-2xl rounded-bl-sm bg-gray-800 text-gray-200 text-sm leading-relaxed break-words">
+                {renderMarkdown(streamingText)}
+                <BlinkCursor />
+              </div>
+            </div>
+          )}
+
           <div ref={timelineEndRef} />
         </div>
 

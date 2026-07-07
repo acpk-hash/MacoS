@@ -11,7 +11,9 @@ pub mod wecom;
 use std::sync::Arc;
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 
+use tauri::path::BaseDirectory;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use agent::{
@@ -82,11 +84,12 @@ async fn agent_start(
     db.insert_message(&session_id, "user", &prompt)
         .map_err(|e| e.to_string())?;
 
+    let resource_bin = resource_engine_bin(&app);
     let emit_fn = make_emit_fn_with_db(app, db.clone());
     let sandbox = state.adapter.sandbox.clone();
 
     if engine_mode(&db) == "embedded" {
-        let adapter = build_embedded_adapter(&db, sandbox);
+        let adapter = build_embedded_adapter(&db, sandbox, resource_bin);
         adapter
             .start_session(session_id.clone(), sessions, trackers, prompt, workdir, emit_fn)
             .await
@@ -127,8 +130,13 @@ fn build_cli_adapter(db: &Db, sandbox: String) -> Arc<CodexAdapter> {
 }
 
 /// Build the embedded adapter from settings (`engine_bin_path`, `codex_exe_path`,
-/// `model`). Empty strings are treated as unset.
-fn build_embedded_adapter(db: &Db, sandbox: String) -> agent::EmbeddedAdapter {
+/// `model`). Empty strings are treated as unset. `resource_bin` is the bundled
+/// engine binary resolved from the Tauri resource dir (installed app only).
+fn build_embedded_adapter(
+    db: &Db,
+    sandbox: String,
+    resource_bin: Option<PathBuf>,
+) -> agent::EmbeddedAdapter {
     let get = |k: &str| {
         db.settings_get(k)
             .unwrap_or(None)
@@ -136,10 +144,24 @@ fn build_embedded_adapter(db: &Db, sandbox: String) -> agent::EmbeddedAdapter {
     };
     agent::EmbeddedAdapter {
         engine_bin_path: get("engine_bin_path"),
+        resource_bin,
         codex_exe_path: get("codex_exe_path"),
         sandbox,
         model: get("model"),
     }
+}
+
+/// Resolve the bundled `agentboard-engine` binary from the Tauri resource dir.
+///
+/// In an installed app this points at `<install>/…/agentboard-engine.exe`
+/// (mapped via `bundle.resources` in tauri.conf.json). In dev the file does
+/// not exist there and the adapter falls back to the dev target path.
+fn resource_engine_bin(app: &AppHandle) -> Option<PathBuf> {
+    #[cfg(windows)]
+    let name = "agentboard-engine.exe";
+    #[cfg(not(windows))]
+    let name = "agentboard-engine";
+    app.path().resolve(name, BaseDirectory::Resource).ok()
 }
 
 /// Send a follow-up prompt to a running / completed session.
@@ -164,6 +186,7 @@ async fn agent_followup(
     // Mark task as running again.
     let _ = db.update_task_status(&session_id, "running");
 
+    let resource_bin = resource_engine_bin(&app);
     let emit_fn = make_emit_fn_with_db(app, db.clone());
     let sandbox = state.adapter.sandbox.clone();
     let embedded = engine_mode(&db) == "embedded";
@@ -176,7 +199,7 @@ async fn agent_followup(
 
     if in_memory {
         if embedded {
-            build_embedded_adapter(&db, sandbox)
+            build_embedded_adapter(&db, sandbox, resource_bin)
                 .send_followup(sessions, trackers, session_id, text, emit_fn)
                 .await
                 .map_err(|e| e.to_string())
@@ -200,7 +223,7 @@ async fn agent_followup(
             .unwrap_or_else(|| ".".to_string());
 
         if embedded {
-            build_embedded_adapter(&db, sandbox)
+            build_embedded_adapter(&db, sandbox, resource_bin)
                 .resume_with_thread_id(sessions, trackers, session_id, thread_id, workdir, text, emit_fn)
                 .await
                 .map_err(|e| e.to_string())
@@ -496,6 +519,49 @@ async fn engine_mode_set(mode: String, state: State<'_, AppState>) -> Result<(),
         .map_err(|e| e.to_string())
 }
 
+/// Status of the embedded engine's two prerequisites, for the Settings page.
+#[derive(Debug, Clone, serde::Serialize)]
+struct EmbeddedEngineStatus {
+    /// Resolved engine binary path (settings → resource → dev), or `None` if
+    /// none of the candidate locations contain the binary.
+    engine_bin_path: Option<String>,
+    engine_bin_found: bool,
+    /// Resolved codex.exe path (the engine's exec-server dependency), if found.
+    codex_exe_path: Option<String>,
+    codex_found: bool,
+    /// Human-readable reason when codex.exe could not be located.
+    codex_error: Option<String>,
+}
+
+/// Report whether the embedded engine binary is in place and whether a codex.exe
+/// can be located, using the exact same resolution the adapter uses at spawn.
+#[tauri::command]
+async fn embedded_engine_status(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<EmbeddedEngineStatus, String> {
+    let db = state.db.clone();
+    let sandbox = state.adapter.sandbox.clone();
+    let adapter = build_embedded_adapter(&db, sandbox, resource_engine_bin(&app));
+
+    let (engine_bin_path, engine_bin_found) = match adapter.resolve_engine_bin() {
+        Ok(p) => (Some(p.display().to_string()), true),
+        Err(_) => (None, false),
+    };
+    let (codex_exe_path, codex_found, codex_error) = match adapter.resolve_codex_exe().await {
+        Ok(p) => (Some(p), true, None),
+        Err(e) => (None, false, Some(e.to_string())),
+    };
+
+    Ok(EmbeddedEngineStatus {
+        engine_bin_path,
+        engine_bin_found,
+        codex_exe_path,
+        codex_found,
+        codex_error,
+    })
+}
+
 // ── Engine API configuration ──────────────────────────────────────────────────
 
 /// Read the engine configuration from config.toml + auth.json.
@@ -782,6 +848,7 @@ pub fn run() {
             settings_set,
             engine_mode_get,
             engine_mode_set,
+            embedded_engine_status,
             detect_engines,
             engine_config_get,
             engine_config_set,

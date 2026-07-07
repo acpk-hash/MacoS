@@ -56,6 +56,14 @@ export interface Session {
   entries: TimelineEntry[]
   /** Aggregated file-change info keyed by path (for the diff panel). */
   fileEdits: Map<string, FileEditInfo>
+  /**
+   * Live streaming buffer for the in-progress assistant turn (embedded engine
+   * only). Accumulates assistant_delta text and is cleared when the final
+   * assistant_message (or the turn) arrives. Empty string / undefined means
+   * nothing is streaming. The CLI adapter never emits deltas, so this stays
+   * empty there and the rendering is unchanged.
+   */
+  streamingText?: string
 }
 
 // ── History types (from DB via Tauri) ─────────────────────────────────────────
@@ -98,7 +106,7 @@ interface RawAgentEvent {
   // session_started
   session_id?: string
   thread_id?: string
-  // assistant_message / reasoning / error
+  // assistant_message / assistant_delta / reasoning / error
   text?: string
   message?: string
   // file_edit
@@ -167,6 +175,7 @@ export const useAgentStore = create<AgentStore>((set) => ({
           status: 'running',
           entries: [],
           fileEdits: new Map(),
+          streamingText: '',
         },
       },
       activeSessionId: sessionId,
@@ -187,6 +196,8 @@ export const useAgentStore = create<AgentStore>((set) => ({
           [sessionId]: {
             ...session,
             entries: [...session.entries, { kind: 'user_message' as const, text }],
+            // A fresh turn starts: drop any leftover streaming buffer.
+            streamingText: '',
           },
         },
       }
@@ -215,12 +226,14 @@ export const useAgentStore = create<AgentStore>((set) => ({
         status: 'running' as SessionStatus,
         entries: [] as TimelineEntry[],
         fileEdits: new Map<string, FileEditInfo>(),
+        streamingText: '',
       }
 
       let newEntries: TimelineEntry[] = [...existing.entries]
       let newStatus: SessionStatus = existing.status
       let newThreadId: string | undefined = existing.threadId
-      // Clone the fileEdits map so we don't mutate the old reference.
+      let newStreamingText: string = existing.streamingText ?? ''
+      // Clone the fileEdits map so we do not mutate the old reference.
       const newFileEdits = new Map(existing.fileEdits)
 
       switch (event.type) {
@@ -229,10 +242,21 @@ export const useAgentStore = create<AgentStore>((set) => ({
           newStatus = 'running'
           break
 
+        case 'assistant_delta':
+          // Embedded engine streaming token(s). Accumulate into the live buffer;
+          // rendered as a "typing" bubble until the final assistant_message.
+          if (event.text != null) {
+            newStreamingText += event.text
+            newStatus = 'running'
+          }
+          break
+
         case 'assistant_message':
           if (event.text != null) {
             newEntries.push({ kind: 'assistant_message', text: event.text })
           }
+          // Final text has landed — the streaming buffer is now superseded.
+          newStreamingText = ''
           break
 
         case 'file_edit':
@@ -290,6 +314,8 @@ export const useAgentStore = create<AgentStore>((set) => ({
 
         case 'turn_completed':
           newStatus = 'done'
+          // Turn ended; ensure no stale streaming bubble lingers.
+          newStreamingText = ''
           break
 
         case 'error':
@@ -297,6 +323,7 @@ export const useAgentStore = create<AgentStore>((set) => ({
             newEntries.push({ kind: 'error', message: event.message })
           }
           newStatus = 'error'
+          newStreamingText = ''
           break
 
         // tool_call and others: silently ignore for now
@@ -313,6 +340,7 @@ export const useAgentStore = create<AgentStore>((set) => ({
             threadId: newThreadId,
             entries: newEntries,
             fileEdits: newFileEdits,
+            streamingText: newStreamingText,
           },
         },
       }
@@ -410,6 +438,7 @@ export const useAgentStore = create<AgentStore>((set) => ({
           status: sessionStatus,
           entries,
           fileEdits,
+          streamingText: '',
         },
       },
       activeSessionId: sessionId,
