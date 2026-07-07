@@ -1,32 +1,44 @@
 import { NavLink, Outlet } from 'react-router-dom'
 
-// Existing entries — unchanged.
-const navItems = [
-  { to: '/chat', label: '聊天', shortLabel: '聊' },
-  { to: '/board', label: '看板', shortLabel: '板' },
-  { to: '/settings', label: '设置', shortLabel: '设' },
-]
-
-// "工作台" group (direct-API studio).
+// "工作台" group (direct-API studio) — unchanged.
 const studioItems = [
-  { to: '/studio/chat', label: '对话', shortLabel: '话' },
-  { to: '/studio/gen', label: '生成', shortLabel: '成' },
+  { to: '/studio/chat', label: '对话' },
+  { to: '/studio/gen', label: '生成' },
 ]
 
-// "Agent" group. 工作台 (local pi workbench) is the prominent third feature;
-// 画布 (canvas) stays as-is for now (F4c simplifies it separately).
+// "Agent" group. 工作台 (local pi workbench) is the prominent third feature,
+// followed by 任务看板 and Agent 会话. 画布 is demoted to the tail as a
+// read-only "执行流" view (F4c).
 const agentItems = [
-  { to: '/workbench', label: '工作台', shortLabel: '台' },
-  { to: '/canvas', label: '画布', shortLabel: '画' },
+  { to: '/workbench', label: '工作台', title: '工作台 · 本地工作平台' },
+  { to: '/board', label: '看板', title: '任务看板' },
+  { to: '/chat', label: '会话', title: 'Agent 会话' },
+  { to: '/canvas', label: '画布', hint: '执行流', title: '画布 · 执行流(只读查看视图)' },
 ]
+
+// Bottom utility links.
+const navItems = [{ to: '/settings', label: '设置' }]
 
 const linkClass = ({ isActive }: { isActive: boolean }) =>
   [
-    'flex items-center justify-center h-10 rounded-lg text-xs font-medium transition-colors',
+    'flex flex-col items-center justify-center h-10 rounded-lg text-xs font-medium transition-colors',
     isActive
       ? 'bg-blue-600 text-white'
       : 'text-gray-400 hover:bg-gray-800 hover:text-gray-100',
   ].join(' ')
+
+type NavItem = { to: string; label: string; hint?: string; title?: string }
+
+function NavEntry({ item }: { item: NavItem }) {
+  return (
+    <NavLink to={item.to} title={item.title ?? item.label} className={linkClass}>
+      <span className="leading-none">{item.label}</span>
+      {item.hint && (
+        <span className="text-[8px] text-gray-500 leading-none mt-0.5">{item.hint}</span>
+      )}
+    </NavLink>
+  )
+}
 
 export default function Layout() {
   return (
@@ -45,9 +57,7 @@ export default function Layout() {
             工作台
           </span>
           {studioItems.map((item) => (
-            <NavLink key={item.to} to={item.to} title={item.label} className={linkClass}>
-              {item.label}
-            </NavLink>
+            <NavEntry key={item.to} item={item} />
           ))}
         </nav>
 
@@ -57,21 +67,17 @@ export default function Layout() {
             Agent
           </span>
           {agentItems.map((item) => (
-            <NavLink key={item.to} to={item.to} title={item.label} className={linkClass}>
-              {item.label}
-            </NavLink>
+            <NavEntry key={item.to} item={item} />
           ))}
         </nav>
 
         {/* Divider */}
         <div className="w-8 border-t border-gray-800" />
 
-        {/* Existing nav links */}
+        {/* Utility links */}
         <nav className="flex flex-col gap-1 w-full px-2">
           {navItems.map((item) => (
-            <NavLink key={item.to} to={item.to} title={item.label} className={linkClass}>
-              {item.label}
-            </NavLink>
+            <NavEntry key={item.to} item={item} />
           ))}
         </nav>
       </aside>

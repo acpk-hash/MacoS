@@ -1,4 +1,6 @@
-// Shared types for the workflow execution canvas (v0.3 T4).
+// Shared types for the lightweight execution-flow view (v0.5 F4c).
+// The heavy React-Flow node graph was retired; the canvas is now a simple
+// vertical execution stream, so only the raw DB rows + a flat flow model remain.
 
 /** Mirrors Rust's CanvasSessionRow. */
 export interface CanvasSessionRow {
@@ -16,89 +18,42 @@ export interface CanvasEventRow {
   payload_json: string
 }
 
-/** Node lifecycle state, drives the visual language (glow / green / red). */
+/** Step / session lifecycle state, drives status coloring. */
 export type NodeStatus = 'running' | 'done' | 'failed'
 
-/** The three step kinds rendered as StepNode. */
+/** The three step kinds rendered in the flow. */
 export type StepKind = 'reply' | 'command' | 'file'
 
-// ── Node data payloads (kept to summaries; full detail lives in a ref map) ─────
-
-export interface TaskNodeData {
-  kind: 'task'
-  title: string
-  /** Raw task status string from the DB (running / awaiting_review / done …). */
-  status: string
-  [key: string]: unknown
+/** A single execution step (summary + full detail merged; expanded inline). */
+export interface FlowStep {
+  id: string
+  stepKind: StepKind
+  status: NodeStatus
+  ts: number
+  // reply
+  text?: string
+  // command
+  cmd?: string
+  exitCode?: number
+  outputTail?: string
+  // file
+  path?: string
+  diff?: string | null
+  added?: number
+  removed?: number
+  changeKind?: string
 }
 
-export interface SessionNodeData {
-  kind: 'session'
+/** One session with its ordered steps. */
+export interface FlowSession {
+  id: string
   engine: string
   threadId: string | null
   status: NodeStatus
   index: number
+  startedAt: number
+  endedAt: number | null
   stepCount: number
-  /** Short error summary when the session failed. */
   errorText?: string
-  [key: string]: unknown
-}
-
-export interface StepNodeData {
-  kind: 'step'
-  stepKind: StepKind
-  status: NodeStatus
-  /** reply: truncated text. */
-  text?: string
-  /** command: the command line. */
-  cmd?: string
-  exitCode?: number
-  /** file: path + line deltas. */
-  path?: string
-  added?: number
-  removed?: number
-  changeKind?: string
-  [key: string]: unknown
-}
-
-// ── Detail entries (lazy-loaded into the drawer on node click) ─────────────────
-
-export type DetailEntry =
-  | { type: 'task'; title: string; status: string; sessionCount: number }
-  | {
-      type: 'session'
-      engine: string
-      threadId: string | null
-      status: NodeStatus
-      startedAt: number
-      endedAt: number | null
-      stepCount: number
-      errorText?: string
-    }
-  | {
-      type: 'step'
-      stepKind: StepKind
-      status: NodeStatus
-      ts: number
-      // reply
-      text?: string
-      // command
-      cmd?: string
-      exitCode?: number
-      outputTail?: string
-      // file
-      path?: string
-      diff?: string | null
-      added?: number
-      removed?: number
-      changeKind?: string
-    }
-
-/** A colored segment in the bottom timeline bar (one per step, ts order). */
-export interface TimelineSeg {
-  nodeId: string
-  stepKind: StepKind
-  status: NodeStatus
-  ts: number
-  label: string
+  steps: FlowStep[]
 }

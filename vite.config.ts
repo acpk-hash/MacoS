@@ -27,8 +27,6 @@ export default defineConfig({
             'rehype-highlight',
             'remark-gfm',
           ],
-          // Canvas graph library — only used by the Canvas page.
-          flow: ['@xyflow/react'],
         },
       },
     },
