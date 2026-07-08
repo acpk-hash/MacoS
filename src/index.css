@@ -200,3 +200,35 @@ body {
   background: transparent;
   color: #94a3b8;
 }
+
+/* ── 任务清单打勾轻过渡（reduced-motion 由上方全局守卫兜底）───────────────── */
+@keyframes clPop {
+  0% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.15);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+.cl-pop {
+  animation: clPop 0.22s ease-out;
+}
+
+/* ── 清单跳转时目标卡片高亮一下 ──────────────────────────────────────────── */
+@keyframes clFlash {
+  0% {
+    background-color: rgba(37, 99, 235, 0.14);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+.cl-flash {
+  animation: clFlash 0.9s ease-out;
+  border-radius: 12px;
+}

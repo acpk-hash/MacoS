@@ -68,6 +68,29 @@ export interface TouchedFile {
   entryId: string
 }
 
+// ── Checklist (Claude Code 式逐条打勾) ───────────────────────────
+
+/** One step in the per-turn checklist, derived from tool_started→tool_result. */
+export interface ChecklistItem {
+  /** tool_call_id, ties started→result together. */
+  id: string
+  /** bash / edit / write / read / … */
+  tool: string
+  /** 展示标题，如「运行命令：npm test」「编辑 x.ts」。 */
+  title: string
+  status: 'running' | 'done' | 'failed'
+  /** id of the matching output entry (bash/edit/write/result), for 展开跳转。 */
+  entryId: string | null
+}
+
+/** A turn's worth of steps (one agent run). */
+export interface ChecklistTurn {
+  id: string
+  items: ChecklistItem[]
+  /** 该轮是否已结束（turn_completed）。 */
+  done: boolean
+}
+
 /** The decoded event carried on the `workbench-event` channel. */
 interface WorkbenchEventRaw {
   type: string
@@ -123,6 +146,58 @@ function baseName(p: string): string {
   return parts[parts.length - 1] || p
 }
 
+/** 从工具类型与参数派生一条清单项的中文标题。 */
+function checklistTitle(tool: string, cmd?: string, path?: string): string {
+  if (tool === 'bash') {
+    const c = (cmd ?? '').trim()
+    return c ? `运行命令：${c}` : '运行命令'
+  }
+  if (tool === 'edit') return `编辑 ${baseName(path ?? '')}`
+  if (tool === 'write') return `写入 ${baseName(path ?? '')}`
+  if (tool === 'read') return `读取 ${baseName(path ?? '')}`
+  if (path) return `${tool} ${baseName(path)}`
+  return `执行 ${tool || '工具'}`
+}
+
+/** 在最新一轮里把某 tool_call_id 的项标记为完成/失败，并记下输出 entryId。 */
+function markChecklist(
+  turns: ChecklistTurn[],
+  toolCallId: string,
+  status: 'done' | 'failed',
+  entryId: string | null,
+): ChecklistTurn[] {
+  if (!toolCallId) return turns
+  const idx = turns.length - 1
+  if (idx < 0) return turns
+  const turn = turns[idx]
+  let hit = false
+  const items = turn.items.map((it) => {
+    if (it.id === toolCallId && it.status === 'running') {
+      hit = true
+      return { ...it, status, entryId: entryId ?? it.entryId }
+    }
+    return it
+  })
+  if (!hit) return turns
+  const next = turns.slice()
+  next[idx] = { ...turn, items }
+  return next
+}
+
+/** turn 结束：关闭最后一轮并把仍在进行的步骤兜底标记为完成。 */
+function finalizeTurns(turns: ChecklistTurn[]): ChecklistTurn[] {
+  if (turns.length === 0) return turns
+  const idx = turns.length - 1
+  const turn = turns[idx]
+  if (turn.done) return turns
+  const items = turn.items.map((it) =>
+    it.status === 'running' ? { ...it, status: 'done' as const } : it,
+  )
+  const next = turns.slice()
+  next[idx] = { ...turn, items, done: true }
+  return next
+}
+
 // ── Store ─────────────────────────────────────────────────────────────────────
 
 interface WorkbenchStore {
@@ -138,6 +213,7 @@ interface WorkbenchStore {
 
   entries: WorkbenchEntry[]
   files: TouchedFile[]
+  checklist: ChecklistTurn[]
   tokens: WorkbenchStats
 
   progressAction: string
@@ -250,6 +326,7 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
 
   entries: [],
   files: [],
+  checklist: [],
   tokens: { ...ZERO_STATS },
 
   progressAction: '',
@@ -314,6 +391,7 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
       error: null,
       entries: [],
       files: [],
+      checklist: [],
       tokens: { ...ZERO_STATS },
       progressAction: '',
       running: false,
@@ -351,6 +429,7 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
       error: null,
       entries: [],
       files: [],
+      checklist: [],
       tokens: { ...ZERO_STATS },
       progressAction: '',
       running: false,
@@ -437,6 +516,7 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
       running: false,
       entries: [],
       files: [],
+      checklist: [],
       tokens: { ...ZERO_STATS },
       progressAction: '',
       turnStartedAt: null,
@@ -541,23 +621,50 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
         else if (tool === 'write') action = `正在写入 ${baseName(ev.path ?? '')}`
         else if (tool === 'read') action = `读取 ${baseName(ev.path ?? '')}`
         else action = `执行 ${tool}…`
-        set({ progressAction: action })
+        const clId = ev.tool_call_id ?? ''
+        const clItem: ChecklistItem = {
+          id: clId,
+          tool,
+          title: checklistTitle(tool, ev.cmd, ev.path),
+          status: 'running',
+          entryId: null,
+        }
+        set((s) => {
+          let turns = s.checklist
+          if (turns.length === 0 || turns[turns.length - 1].done) {
+            turns = [...turns, { id: uuid(), items: [], done: false }]
+          }
+          const idx = turns.length - 1
+          const last = turns[idx]
+          const next = turns.slice()
+          next[idx] = { ...last, items: [...last.items, clItem] }
+          return { progressAction: action, checklist: next }
+        })
         break
       }
       case 'tool_bash': {
         closeStreams(set)
+        const id = uuid()
+        const code = ev.exit_code ?? null
+        const failed = code != null && code !== 0
         set((s) => ({
           entries: [
             ...s.entries,
             {
-              id: uuid(),
+              id,
               kind: 'tool_bash',
               toolCallId: ev.tool_call_id ?? '',
               cmd: ev.cmd ?? '',
               output: ev.output ?? '',
-              exitCode: ev.exit_code ?? null,
+              exitCode: code,
             },
           ],
+          checklist: markChecklist(
+            s.checklist,
+            ev.tool_call_id ?? '',
+            failed ? 'failed' : 'done',
+            id,
+          ),
         }))
         break
       }
@@ -577,6 +684,7 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
             },
           ],
           files: upsertFile(s.files, path, 'edit', id),
+          checklist: markChecklist(s.checklist, ev.tool_call_id ?? '', 'done', id),
         }))
         break
       }
@@ -590,23 +698,32 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
             { id, kind: 'tool_write', toolCallId: ev.tool_call_id ?? '', path },
           ],
           files: upsertFile(s.files, path, 'write', id),
+          checklist: markChecklist(s.checklist, ev.tool_call_id ?? '', 'done', id),
         }))
         break
       }
       case 'tool_result': {
         closeStreams(set)
+        const id = uuid()
+        const isError = ev.is_error ?? false
         set((s) => ({
           entries: [
             ...s.entries,
             {
-              id: uuid(),
+              id,
               kind: 'tool_result',
               toolCallId: ev.tool_call_id ?? '',
               tool: ev.tool ?? '',
               output: ev.output ?? '',
-              isError: ev.is_error ?? false,
+              isError,
             },
           ],
+          checklist: markChecklist(
+            s.checklist,
+            ev.tool_call_id ?? '',
+            isError ? 'failed' : 'done',
+            id,
+          ),
         }))
         break
       }
@@ -627,16 +744,30 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
         break
       }
       case 'turn_started': {
-        set((s) => ({
-          running: true,
-          turnStartedAt: s.turnStartedAt ?? Date.now(),
-          progressAction: s.progressAction || '思考中…',
-        }))
+        set((s) => {
+          let turns = s.checklist
+          const last = turns[turns.length - 1]
+          // 复用「已打开且尚无步骤」的空轮，避免出现空清单卡。
+          if (!last || last.done || last.items.length > 0) {
+            turns = [...turns, { id: uuid(), items: [], done: false }]
+          }
+          return {
+            running: true,
+            turnStartedAt: s.turnStartedAt ?? Date.now(),
+            progressAction: s.progressAction || '思考中…',
+            checklist: turns,
+          }
+        })
         break
       }
       case 'turn_completed': {
         closeStreams(set)
-        set({ running: false, progressAction: '', turnStartedAt: null })
+        set((s) => ({
+          running: false,
+          progressAction: '',
+          turnStartedAt: null,
+          checklist: finalizeTurns(s.checklist),
+        }))
         break
       }
       case 'error': {
@@ -649,6 +780,7 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
           running: false,
           progressAction: '',
           turnStartedAt: null,
+          checklist: finalizeTurns(s.checklist),
         }))
         break
       }

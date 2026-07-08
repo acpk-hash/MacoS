@@ -9,6 +9,7 @@ import rehypeKatex from 'rehype-katex'
 import 'highlight.js/styles/github-dark.css'
 import 'katex/dist/katex.min.css'
 import { useWorkbenchStore, type WorkbenchEntry } from '../../stores/workbenchStore'
+import ChecklistPanel from './ChecklistPanel'
 import Composer from '../Composer'
 import type { Attachment } from '../../stores/studioStore'
 import { normalizeMathDelimiters } from '../../lib/mathDelimiters'
@@ -376,6 +377,7 @@ export default function ChatPanel({
   const opening = useWorkbenchStore((s) => s.opening)
   const running = useWorkbenchStore((s) => s.running)
   const entries = useWorkbenchStore((s) => s.entries)
+  const checklist = useWorkbenchStore((s) => s.checklist)
   const tokens = useWorkbenchStore((s) => s.tokens)
   const progressAction = useWorkbenchStore((s) => s.progressAction)
   const turnStartedAt = useWorkbenchStore((s) => s.turnStartedAt)
@@ -396,6 +398,18 @@ export default function ChatPanel({
     if (!el) return
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
     setAutoScroll(nearBottom)
+  }
+
+  const jumpToEntry = (entryId: string | null) => {
+    if (!entryId) return
+    const root = scrollRef.current
+    if (!root) return
+    const node = root.querySelector<HTMLElement>(`[data-entry-id="${entryId}"]`)
+    if (!node) return
+    setAutoScroll(false)
+    node.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    node.classList.add('cl-flash')
+    window.setTimeout(() => node.classList.remove('cl-flash'), 900)
   }
 
   const showToast = (msg: string) => useWorkbenchStore.setState({ notice: msg })
@@ -426,7 +440,14 @@ export default function ChatPanel({
               例如「修复 build 报错」或「给这个组件加暗色主题」。
             </div>
           ) : (
-            entries.map((e) => <EntryItem key={e.id} entry={e} />)
+            <>
+              <ChecklistPanel checklist={checklist} onJump={jumpToEntry} />
+              {entries.map((e) => (
+                <div key={e.id} data-entry-id={e.id}>
+                  <EntryItem entry={e} />
+                </div>
+              ))}
+            </>
           )}
         </div>
         {!autoScroll && (
