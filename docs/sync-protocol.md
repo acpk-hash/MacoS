@@ -88,7 +88,8 @@ Body `{ "all": true }` plus `Authorization: Bearer <access>` revokes **all** ref
 ```json
 { "ok": true, "snapshots": {
     "tasks":    { "data": [ /* Task[] */ ],    "updated_at": 1790000000000 },
-    "sessions": { "data": [ /* Session[] */ ], "updated_at": 1790000000000 }
+    "sessions": { "data": [ /* Session[] */ ], "updated_at": 1790000000000 },
+    "chat":     { "data": { /* ChatSnapshot */ }, "updated_at": 1790000000000 }
 } }
 ```
 A `kind` is absent until the desktop pushes it at least once.
@@ -120,7 +121,7 @@ Every frame is JSON `{ "type", ... }`. Server-relayed frames add `"from_device"`
 
 | type | payload | effect |
 |---|---|---|
-| `snapshot_update` | `{ "kind": "tasks" or "sessions", "data": <array/object> }` | Overwrites the stored snapshot for that kind; broadcast to the other devices on the account. Sent by desktop. |
+| `snapshot_update` | `{ "kind": "tasks" \| "sessions" \| "chat", "data": <array/object> }` | Overwrites the stored snapshot for that kind; broadcast to the other devices on the account. Sent by desktop. |
 | `event_append` | `{ "type": "<event_type>", "data": <object> }` | Appended to the event log with a server-assigned `seq`; broadcast to other devices; sender gets an `ack`. Sent by desktop. |
 | `command` | `{ "command": "<name>", "data": <object> }` | Appended to the event log as `command:<name>`; relayed to **desktop** devices only; sender gets an `ack`. Sent by mobile. |
 | `ping` | none | Server replies `pong` (app-level, separate from WS protocol ping frames). |
@@ -161,6 +162,33 @@ validate the inner shape.
 ```json
 { "id": "s1", "task_id": "t1", "engine": "codex|claude", "thread_id": "abc123" }
 ```
+
+### Chat (snapshot kind `chat` = `ChatSnapshot`, one object)
+The desktop chat/studio conversations, pushed so the mobile app can **read** them.
+The snapshot is a single object with two arrays:
+```json
+{
+  "sessions": [
+    { "id": "cs1", "title": "重构同步层", "model": "gpt-5.5",
+      "created_at": 1790000000000, "updated_at": 1790000000000 }
+  ],
+  "messages": [
+    { "id": "m1", "session_id": "cs1", "role": "user|assistant",
+      "content": "消息正文（明文，供手机查看）", "model": "gpt-5.5",
+      "status": "complete|streaming|stopped|error",
+      "created_at": 1790000000000,
+      "attachments": [ { "kind": "image", "name": "shot.png" },
+                       { "kind": "text",  "name": "notes.txt", "text": "内联文本" } ] }
+  ]
+}
+```
+Privacy rules the **desktop enforces before sending** (the server relays verbatim):
+- Message `content` is synced in full (the point of the feature is reading chats on the phone).
+- **API keys / credentials are never included** — chat rows do not hold them, and only the
+  whitelisted fields above are serialized.
+- Attachments are reduced to **metadata only**: image `data_url` (large base64) is dropped,
+  keeping `kind` + `name`; text attachments keep their (already textual) `text`.
+- `messages` is capped to the most recent N across all sessions (desktop-side limit).
 
 ### Event `type` vocabulary (suggested)
 `task_progress`, `task_status`, `session_started`, `session_output`, `session_ended`.

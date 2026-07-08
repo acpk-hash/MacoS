@@ -251,6 +251,29 @@ impl Db {
         rows.collect()
     }
 
+    /// List the most recent chat messages across ALL sessions (newest first,
+    /// capped) for the mobile sync `chat` snapshot. Callers reverse to
+    /// chronological order before shipping.
+    pub fn chat_messages_recent(&self, limit: i64) -> SqlResult<Vec<ChatMessageRow>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, session_id, role, content, attachments_json, model, status, created_at              FROM chat_messages ORDER BY created_at DESC, rowid DESC LIMIT ?1",
+        )?;
+        let rows = stmt.query_map(params![limit], |r| {
+            Ok(ChatMessageRow {
+                id: r.get(0)?,
+                session_id: r.get(1)?,
+                role: r.get(2)?,
+                content: r.get(3)?,
+                attachments_json: r.get(4)?,
+                model: r.get(5)?,
+                status: r.get(6)?,
+                created_at: r.get(7)?,
+            })
+        })?;
+        rows.collect()
+    }
+
     // -- Generated media CRUD ------------------------------------------------
 
     /// Insert a generated-media row (typically with status `running`/`pending`).

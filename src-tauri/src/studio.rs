@@ -135,6 +135,7 @@ pub(crate) async fn chat_sessions_create(
         .db
         .chat_session_create(&id, &title, &model)
         .map_err(|e| e.to_string())?;
+    state.sync.notify_snapshot();
     state
         .db
         .chat_session_get(&id)
@@ -151,7 +152,9 @@ pub(crate) async fn chat_sessions_rename(
     state
         .db
         .chat_session_rename(&session_id, &title)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    state.sync.notify_snapshot();
+    Ok(())
 }
 
 #[tauri::command]
@@ -162,7 +165,9 @@ pub(crate) async fn chat_sessions_delete(
     state
         .db
         .chat_session_delete(&session_id)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    state.sync.notify_snapshot();
+    Ok(())
 }
 
 #[tauri::command]
@@ -225,6 +230,8 @@ pub(crate) async fn chat_send(
     // Auto-title from the first user message (only when title is still empty).
     let _ = db.chat_session_set_title_if_empty(&session_id, &title_from(&user_content));
     let _ = db.chat_session_touch(&session_id);
+    // Push the new user message (+ streaming placeholder) to the phone.
+    state.sync.notify_snapshot();
 
     // Build the OpenAI messages array from full history.
     let history = db
@@ -295,6 +302,7 @@ pub(crate) async fn chat_send(
             let status = if o.stopped { "stopped" } else { "complete" };
             let _ = db.chat_message_update(&assistant_id, &o.text, status);
             let _ = db.chat_session_touch(&session_id);
+            state.sync.notify_snapshot();
             emit(
                 &app,
                 json!({

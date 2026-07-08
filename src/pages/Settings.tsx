@@ -2134,7 +2134,7 @@ function SyncSection() {
       {/* Data-scope notice */}
       <div className="bg-blue-950/30 border border-blue-900/40 rounded-lg p-3">
         <p className="text-xs text-blue-200/90 leading-relaxed">
-          同步任务与进度摘要到你的手机；聊天原文、API 密钥永不上传。
+          同步任务、进度与对话内容到你的手机；对话正文会同步（API 密钥绝不上传，附件仅同步文本与文件名、大图不上传）。
         </p>
       </div>
 

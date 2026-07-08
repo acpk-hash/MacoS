@@ -33,7 +33,7 @@ use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::Connector;
 
 use crate::agent::events::AgentEvent;
-use crate::db::Db;
+use crate::db::{ChatMessageRow, ChatSessionRow, Db};
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -68,6 +68,8 @@ const SNAPSHOT_DEBOUNCE: Duration = Duration::from_millis(500);
 const APP_PING_INTERVAL: Duration = Duration::from_secs(25);
 const MAX_BACKOFF_SECS: u64 = 60;
 const ASSISTANT_SUMMARY_MAX: usize = 200;
+/// Max chat messages (across all sessions) carried in one `chat` snapshot.
+const CHAT_MESSAGE_SYNC_LIMIT: i64 = 2000;
 
 // ── Public status / device types ──────────────────────────────────────────────
 
@@ -614,6 +616,84 @@ fn device_name() -> String {
 
 // ── Snapshot / event assembly (pure, unit-tested) ─────────────────────────────
 
+/// Filter a stored `attachments_json` array into sync-safe attachment metadata.
+///
+/// Privacy: image attachments keep only `kind` + `name` — the raw base64
+/// `data_url` (potentially multi-MB) is dropped. Text attachments keep their
+/// (already textual) `text`. Unparseable input yields an empty array. No
+/// credentials ever live in attachments, but this whitelist guarantees only the
+/// listed fields cross the wire.
+fn filter_attachments_json(raw: &str) -> Value {
+    let parsed: Value = match serde_json::from_str(raw) {
+        Ok(v) => v,
+        Err(_) => return json!([]),
+    };
+    let Some(arr) = parsed.as_array() else {
+        return json!([]);
+    };
+    let out: Vec<Value> = arr
+        .iter()
+        .map(|a| {
+            let kind = a.get("kind").and_then(|x| x.as_str()).unwrap_or("");
+            let mut m = serde_json::Map::new();
+            m.insert("kind".to_string(), json!(kind));
+            if let Some(name) = a.get("name").and_then(|x| x.as_str()) {
+                m.insert("name".to_string(), json!(name));
+            }
+            if kind == "text" {
+                if let Some(t) = a.get("text").and_then(|x| x.as_str()) {
+                    m.insert("text".to_string(), json!(t));
+                }
+            }
+            Value::Object(m)
+        })
+        .collect();
+    Value::Array(out)
+}
+
+/// Build the `chat` snapshot payload `{ sessions, messages }` from stored rows.
+///
+/// Message `content` is included in full (the feature is reading chats on the
+/// phone), but attachments are reduced to metadata via `filter_attachments_json`
+/// and no API keys / credentials are ever serialized (only the whitelisted
+/// fields below). `messages` is expected pre-trimmed + chronologically ordered.
+/// Pure → unit-tested.
+fn build_chat_snapshot(sessions: &[ChatSessionRow], messages: &[ChatMessageRow]) -> Value {
+    let sessions_v: Vec<Value> = sessions
+        .iter()
+        .map(|s| {
+            json!({
+                "id": s.id,
+                "title": s.title,
+                "model": s.model,
+                "created_at": s.created_at,
+                "updated_at": s.updated_at,
+            })
+        })
+        .collect();
+    let messages_v: Vec<Value> = messages
+        .iter()
+        .map(|m| {
+            let atts = m
+                .attachments_json
+                .as_deref()
+                .map(filter_attachments_json)
+                .unwrap_or_else(|| json!([]));
+            json!({
+                "id": m.id,
+                "session_id": m.session_id,
+                "role": m.role,
+                "content": m.content,
+                "model": m.model,
+                "status": m.status,
+                "created_at": m.created_at,
+                "attachments": atts,
+            })
+        })
+        .collect();
+    json!({ "sessions": sessions_v, "messages": messages_v })
+}
+
 fn snapshot_frame(kind: &str, data: Value) -> Value {
     json!({ "type": "snapshot_update", "payload": { "kind": kind, "data": data } })
 }
@@ -1059,6 +1139,19 @@ async fn push_snapshots(write: &mut WsWrite, db: &Db) -> Result<(), ()> {
         .send(Message::Text(snapshot_frame("sessions", sessions_data).to_string()))
         .await
         .map_err(|_| ())?;
+
+    // Chat conversations (privacy-filtered: full text, but no API keys and no
+    // large image base64 — attachments are reduced to metadata).
+    let chat_sessions = db.chat_sessions_list().unwrap_or_default();
+    let mut chat_messages = db
+        .chat_messages_recent(CHAT_MESSAGE_SYNC_LIMIT)
+        .unwrap_or_default();
+    chat_messages.reverse(); // newest-first (DB) → chronological for the phone
+    let chat_data = build_chat_snapshot(&chat_sessions, &chat_messages);
+    write
+        .send(Message::Text(snapshot_frame("chat", chat_data).to_string()))
+        .await
+        .map_err(|_| ())?;
     Ok(())
 }
 
@@ -1179,6 +1272,81 @@ mod tests {
             CommandAction::Unknown(c) => assert_eq!(c, "bogus"),
             _ => panic!("expected Unknown"),
         }
+    }
+
+    // ── chat snapshot: attachment filtering + privacy ─────────────────────────
+    #[test]
+    fn filter_attachments_drops_image_base64_keeps_metadata_and_text() {
+        // Image attachment with a big data_url → keep only kind + name.
+        let raw = r#"[
+            {"kind":"image","name":"shot.png","data_url":"data:image/png;base64,AAAABBBBCCCCDDDD"},
+            {"kind":"text","name":"notes.txt","text":"hello file"}
+        ]"#;
+        let v = filter_attachments_json(raw);
+        let arr = v.as_array().expect("array");
+        assert_eq!(arr.len(), 2);
+        // image: no data_url leaks, metadata kept
+        assert_eq!(arr[0]["kind"], "image");
+        assert_eq!(arr[0]["name"], "shot.png");
+        assert!(arr[0].get("data_url").is_none(), "image base64 must be stripped");
+        // text: keeps textual content
+        assert_eq!(arr[1]["kind"], "text");
+        assert_eq!(arr[1]["text"], "hello file");
+        // no base64 substring anywhere in the serialized output
+        assert!(!v.to_string().contains("AAAABBBB"));
+    }
+
+    #[test]
+    fn filter_attachments_bad_input_is_empty_array() {
+        assert_eq!(filter_attachments_json("not json"), json!([]));
+        assert_eq!(filter_attachments_json("{\"kind\":\"image\"}"), json!([]));
+    }
+
+    #[test]
+    fn build_chat_snapshot_shape_and_no_secrets() {
+        let sessions = vec![ChatSessionRow {
+            id: "cs1".into(),
+            title: "重构".into(),
+            model: "gpt-5.5".into(),
+            created_at: 1,
+            updated_at: 2,
+        }];
+        let messages = vec![
+            ChatMessageRow {
+                id: "m1".into(),
+                session_id: "cs1".into(),
+                role: "user".into(),
+                content: "看看这张图".into(),
+                attachments_json: Some(
+                    r#"[{"kind":"image","name":"a.png","data_url":"data:image/png;base64,ZZZZSECRET"}]"#
+                        .into(),
+                ),
+                model: Some("gpt-5.5".into()),
+                status: "complete".into(),
+                created_at: 1,
+            },
+            ChatMessageRow {
+                id: "m2".into(),
+                session_id: "cs1".into(),
+                role: "assistant".into(),
+                content: "这是一只猫".into(),
+                attachments_json: None,
+                model: Some("gpt-5.5".into()),
+                status: "complete".into(),
+                created_at: 2,
+            },
+        ];
+        let snap = build_chat_snapshot(&sessions, &messages);
+        assert_eq!(snap["sessions"][0]["id"], "cs1");
+        assert_eq!(snap["sessions"][0]["title"], "重构");
+        assert_eq!(snap["messages"].as_array().unwrap().len(), 2);
+        // full content is synced (feature requirement)
+        assert_eq!(snap["messages"][0]["content"], "看看这张图");
+        assert_eq!(snap["messages"][1]["content"], "这是一只猫");
+        // image base64 never crosses the wire
+        assert_eq!(snap["messages"][0]["attachments"][0]["kind"], "image");
+        assert!(snap["messages"][0]["attachments"][0].get("data_url").is_none());
+        assert!(!snap.to_string().contains("ZZZZSECRET"), "image base64 must not leak");
     }
 
     // ── snapshot_frame ────────────────────────────────────────────────────────
