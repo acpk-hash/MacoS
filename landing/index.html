@@ -5,39 +5,32 @@
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AgentBoard — 本地运行的 Agent 任务工作台</title>
-<!-- 字体：M PLUS Rounded 1c（圆润无衬线）。使用 fonts.loli.net（Google Fonts 国内镜像，中国大陆可访问），失败时浏览器自动回退到本地圆润/系统字体。 -->
+<!-- 字体：Inter（清晰无衬线 UI 字体）。使用 fonts.loli.net（Google Fonts 国内镜像，中国大陆可访问），失败时浏览器自动回退到 PingFang SC / 思源黑体 / 微软雅黑等系统字体。 -->
 <link rel="preconnect" href="https://fonts.loli.net">
-<link href="https://fonts.loli.net/css2?family=M+PLUS+Rounded+1c:wght@400;500;700;800&family=Baloo+2:wght@600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.loli.net/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  /* 底色（深紫蓝，不纯黑） */
-  --bg: #14121f;
-  --surface: #1e1b2e;
-  --surface-2: #272338;
-  --elevated: #2f2a44;
-  --border: rgba(255,255,255,0.08);
-  --border-strong: rgba(180,150,255,0.22);
-
-  /* 点缀霓光 pastel */
-  --sakura: #ff7fbf;
-  --lavender: #b58fff;
-  --sky: #7fb0ff;
-  --mint: #7fe7c4;
-  --gold: #ffd88f;
-  --coral: #ff8b9a;
-
-  /* 主渐变 */
-  --grad-primary: linear-gradient(135deg, #ff7fbf 0%, #b58fff 50%, #7fb0ff 100%);
-
-  /* 文字 */
-  --text: #ece8fb;
-  --text-muted: #a49dc7;
-  --text-dim: #6f6a8f;
-
-  --round-card: 18px;
-  --round-btn: 12px;
+  --bg: #f7f9fc;
+  --surface: #ffffff;
+  --surface-2: #f1f4f9;
+  --elevated: #ffffff;
+  --border: #e2e8f0;
+  --border-strong: #cbd7e6;
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --primary-tint: #eff4ff;
+  --primary-ring: rgba(37,99,235,0.35);
+  --ok: #16a34a;
+  --warn: #d97706;
+  --text: #1e293b;
+  --text-muted: #475569;
+  --text-dim: #94a3b8;
+  --shadow-card: 0 1px 3px rgba(15,23,42,0.06), 0 1px 2px rgba(15,23,42,0.04);
+  --shadow-hover: 0 6px 18px rgba(15,23,42,0.10), 0 2px 6px rgba(15,23,42,0.06);
+  --round-card: 12px;
+  --round-btn: 8px;
 }
 
 html { scroll-behavior: smooth; }
@@ -45,51 +38,34 @@ html { scroll-behavior: smooth; }
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: "M PLUS Rounded 1c", "Baloo 2", ui-rounded, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  font-family: "Inter", "PingFang SC", "Source Han Sans SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
   font-size: 16px;
   line-height: 1.7;
   min-height: 100vh;
   position: relative;
   overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* 全局弥散霓光背景：顶部粉、底部蓝 + 中部薰衣草，极低透明度叠在 --bg 上 */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
-  z-index: -2;
-  background:
-    radial-gradient(60% 45% at 22% 0%, rgba(255,127,191,0.20) 0%, transparent 60%),
-    radial-gradient(55% 40% at 82% 8%, rgba(181,143,255,0.16) 0%, transparent 62%),
-    radial-gradient(75% 55% at 50% 108%, rgba(127,176,255,0.22) 0%, transparent 60%);
-  pointer-events: none;
-}
-/* 极淡星点纹理，透明度 <5% */
-body::after {
-  content: "";
-  position: fixed;
-  inset: 0;
   z-index: -1;
-  background-image:
-    radial-gradient(1.2px 1.2px at 12% 22%, rgba(255,255,255,0.5), transparent),
-    radial-gradient(1px 1px at 68% 14%, rgba(255,255,255,0.45), transparent),
-    radial-gradient(1.4px 1.4px at 84% 62%, rgba(255,255,255,0.4), transparent),
-    radial-gradient(1px 1px at 32% 78%, rgba(255,255,255,0.4), transparent),
-    radial-gradient(1.1px 1.1px at 52% 44%, rgba(255,255,255,0.35), transparent);
-  opacity: 0.045;
+  background-image: radial-gradient(rgba(37,99,235,0.5) 1px, transparent 1px);
+  background-size: 26px 26px;
+  opacity: 0.025;
   pointer-events: none;
 }
 
-a { color: var(--sky); text-decoration: none; transition: color 0.15s; }
-a:hover { color: var(--sakura); }
+a { color: var(--primary); text-decoration: none; transition: color 0.15s; }
+a:hover { color: var(--primary-hover); text-decoration: underline; }
 
-/* ===== HEADER ===== */
 header {
   border-bottom: 1px solid var(--border);
   padding: 0 2rem;
   backdrop-filter: blur(10px);
-  background: rgba(20,18,31,0.55);
+  background: rgba(247,249,252,0.85);
   position: sticky;
   top: 0;
   z-index: 20;
@@ -100,85 +76,64 @@ header {
   display: flex;
   align-items: center;
   height: 64px;
-  gap: 0.75rem;
+  gap: 0.7rem;
 }
 .logo-mark {
-  width: 34px;
-  height: 34px;
-  background: var(--grad-primary);
-  border-radius: 11px;
-  display: grid;
-  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: block;
   flex-shrink: 0;
-  box-shadow: 0 4px 16px rgba(255,127,191,0.32);
+  box-shadow: 0 2px 6px rgba(37,99,235,0.28);
 }
-.logo-mark svg { display: block; }
 .logo-text {
-  font-size: 1.18rem;
-  font-weight: 800;
+  font-size: 1.15rem;
+  font-weight: 700;
   letter-spacing: -0.01em;
   color: var(--text);
 }
 .logo-ver {
   font-size: 0.72rem;
   font-weight: 600;
-  background: rgba(181,143,255,0.12);
+  background: var(--primary-tint);
   border: 1px solid var(--border-strong);
   border-radius: 999px;
   padding: 2px 10px;
-  color: var(--lavender);
+  color: var(--primary);
   margin-left: auto;
 }
 
-/* ===== HERO ===== */
 .hero {
   max-width: 980px;
   margin: 0 auto;
   padding: 4.5rem 2rem 3.5rem;
   text-align: center;
 }
-.mascot {
-  width: 132px;
-  height: 132px;
-  margin: 0 auto 1.75rem;
+.hero-logo {
+  width: 76px;
+  height: 76px;
+  margin: 0 auto 1.9rem;
   display: block;
-  animation: float 4.5s ease-in-out infinite;
-  filter: drop-shadow(0 10px 26px rgba(181,143,255,0.35));
-}
-@keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-10px); }
-}
-.mascot .twinkle { animation: twinkle 2.6s ease-in-out infinite; transform-origin: center; }
-@keyframes twinkle {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.45; transform: scale(0.82); }
+  border-radius: 18px;
+  box-shadow: var(--shadow-hover);
 }
 .hero h1 {
   font-size: clamp(2.1rem, 5.5vw, 3rem);
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: -0.02em;
   line-height: 1.22;
   margin-bottom: 1.15rem;
   color: var(--text);
 }
-.hero h1 em {
-  font-style: normal;
-  background: var(--grad-primary);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: transparent;
-}
+.hero h1 em { font-style: normal; color: var(--primary); }
 .hero .tagline {
   font-size: 1.12rem;
   color: var(--text-muted);
-  max-width: 540px;
+  max-width: 560px;
   margin: 0 auto 2.5rem;
   line-height: 1.8;
 }
 
-/* ===== FEATURES ===== */
 .features {
   max-width: 980px;
   margin: 0 auto;
@@ -188,33 +143,32 @@ header {
   gap: 1.25rem;
 }
 .card {
-  background: rgba(30,27,46,0.72);
-  backdrop-filter: blur(14px);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--round-card);
   padding: 1.75rem;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
-  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  box-shadow: var(--shadow-card);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
 }
 .card:hover {
-  transform: translateY(-4px);
+  transform: translateY(-3px);
   border-color: var(--border-strong);
-  box-shadow: 0 12px 32px rgba(181,143,255,0.18), inset 0 1px 0 rgba(255,255,255,0.08);
+  box-shadow: var(--shadow-hover);
 }
 .card-icon {
-  width: 46px;
-  height: 46px;
-  border-radius: 14px;
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
   display: grid;
   place-items: center;
   margin-bottom: 1rem;
-  font-size: 1.35rem;
-  background: linear-gradient(135deg, rgba(255,127,191,0.18), rgba(127,176,255,0.18));
-  border: 1px solid var(--border-strong);
+  font-size: 1.3rem;
+  background: var(--primary-tint);
+  border: 1px solid var(--border);
 }
 .card h3 {
   font-size: 1.05rem;
-  font-weight: 700;
+  font-weight: 600;
   margin-bottom: 0.5rem;
   color: var(--text);
 }
@@ -224,12 +178,11 @@ header {
   line-height: 1.7;
 }
 
-/* ===== DOWNLOAD ===== */
 .download-section {
   position: relative;
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
-  background: rgba(30,27,46,0.35);
+  background: var(--surface);
 }
 .download-inner {
   max-width: 980px;
@@ -238,18 +191,12 @@ header {
 }
 .download-inner h2 {
   font-size: 1.7rem;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: -0.01em;
   margin-bottom: 0.5rem;
   color: var(--text);
 }
-.download-inner h2 em {
-  font-style: normal;
-  background: var(--grad-primary);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
+.download-inner h2 em { font-style: normal; color: var(--primary); }
 .download-inner .sub {
   color: var(--text-muted);
   font-size: 0.92rem;
@@ -261,30 +208,29 @@ header {
   gap: 1.25rem;
 }
 .dl-card {
-  background: rgba(39,35,56,0.6);
-  backdrop-filter: blur(14px);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--round-card);
   padding: 1.6rem;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
-  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  box-shadow: var(--shadow-card);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
 }
 .dl-card:hover {
   transform: translateY(-3px);
   border-color: var(--border-strong);
-  box-shadow: 0 10px 28px rgba(127,176,255,0.16), inset 0 1px 0 rgba(255,255,255,0.08);
+  box-shadow: var(--shadow-hover);
 }
 .dl-card .platform {
   font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--lavender);
+  color: var(--primary);
   margin-bottom: 0.6rem;
 }
 .dl-card .dl-title {
   font-size: 1.08rem;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--text);
   margin-bottom: 0.3rem;
 }
@@ -301,22 +247,28 @@ header {
   padding: 0.65rem 1.35rem;
   border-radius: var(--round-btn);
   font-size: 0.92rem;
-  font-weight: 700;
+  font-weight: 600;
   font-family: inherit;
   cursor: pointer;
   border: none;
-  transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s;
+  transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
   text-decoration: none;
 }
 .btn-primary {
-  background: var(--grad-primary);
-  color: #1a1327;
-  box-shadow: 0 4px 20px rgba(255,127,191,0.28);
+  background: var(--primary);
+  color: #ffffff;
+  box-shadow: 0 1px 2px rgba(15,23,42,0.08);
 }
 .btn-primary:hover {
+  background: var(--primary-hover);
+  color: #ffffff;
   transform: translateY(-1px);
-  box-shadow: 0 8px 26px rgba(255,127,191,0.4);
-  color: #1a1327;
+  box-shadow: var(--shadow-hover);
+  text-decoration: none;
+}
+.btn-primary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--primary-ring);
 }
 .btn-disabled {
   background: var(--surface-2);
@@ -327,38 +279,35 @@ header {
 .coming-soon-tag {
   display: inline-block;
   font-size: 0.72rem;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.04em;
-  background: rgba(255,216,143,0.14);
-  color: var(--gold);
-  border: 1px solid rgba(255,216,143,0.3);
+  background: #fff7ed;
+  color: var(--warn);
+  border: 1px solid #fed7aa;
   border-radius: 999px;
   padding: 2px 9px;
   margin-left: 0.5rem;
   vertical-align: middle;
 }
 
-/* ===== NOTICE ===== */
 .notice {
   max-width: 980px;
   margin: 2.5rem auto 0;
   padding: 0 2rem;
 }
 .notice-box {
-  border: 1px solid rgba(255,216,143,0.28);
-  background: rgba(255,216,143,0.08);
-  border-radius: 16px;
+  border: 1px solid #fde8c8;
+  background: #fffaf1;
+  border-radius: var(--round-card);
   padding: 1.1rem 1.35rem;
   display: flex;
   gap: 0.75rem;
   align-items: flex-start;
-  backdrop-filter: blur(10px);
 }
 .notice-icon { font-size: 1.05rem; flex-shrink: 0; padding-top: 1px; }
-.notice-text { font-size: 0.86rem; color: #e7c98a; line-height: 1.7; }
-.notice-text strong { color: var(--gold); }
+.notice-text { font-size: 0.86rem; color: #92600b; line-height: 1.7; }
+.notice-text strong { color: var(--warn); }
 
-/* ===== FOOTER ===== */
 footer {
   max-width: 980px;
   margin: 3rem auto 0;
@@ -374,12 +323,12 @@ footer {
 }
 .footer-links { display: flex; gap: 1.5rem; }
 .footer-links a { color: var(--text-muted); }
-.footer-links a:hover { color: var(--sakura); }
+.footer-links a:hover { color: var(--primary); }
 
 @media (max-width: 560px) {
   header { padding: 0 1.25rem; }
   .hero { padding: 3rem 1.25rem 2.5rem; }
-  .mascot { width: 108px; height: 108px; }
+  .hero-logo { width: 64px; height: 64px; }
   .features { padding: 0 1.25rem 3.5rem; }
   .download-inner { padding: 3rem 1.25rem; }
   .notice { padding: 0 1.25rem; }
@@ -387,7 +336,6 @@ footer {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .mascot, .mascot .twinkle { animation: none; }
   html { scroll-behavior: auto; }
   * { transition: none !important; }
 }
@@ -397,55 +345,33 @@ footer {
 
 <header>
   <div class="header-inner">
-    <div class="logo-mark">
-      <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-        <rect x="1" y="1" width="7" height="7" rx="2" fill="white" opacity="0.95"/>
-        <rect x="10" y="1" width="7" height="7" rx="2" fill="white" opacity="0.7"/>
-        <rect x="1" y="10" width="7" height="7" rx="2" fill="white" opacity="0.7"/>
-        <rect x="10" y="10" width="7" height="7" rx="2" fill="white" opacity="0.5"/>
-      </svg>
-    </div>
+    <svg class="logo-mark" viewBox="0 0 40 40" fill="none" role="img" aria-label="AgentBoard">
+      <defs>
+        <linearGradient id="hLogoGrad" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#2563eb"/>
+          <stop offset="1" stop-color="#3b82f6"/>
+        </linearGradient>
+      </defs>
+      <rect width="40" height="40" rx="9" fill="url(#hLogoGrad)"/>
+      <ellipse cx="20" cy="20" rx="7.4" ry="9.6" stroke="#ffffff" stroke-width="3" fill="none"/>
+      <line x1="20" y1="7" x2="20" y2="33" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    </svg>
     <span class="logo-text">AgentBoard</span>
     <span class="logo-ver">v0.6.0 Beta</span>
   </div>
 </header>
 
 <section class="hero">
-  <!-- 可爱吉祥物：圆脑袋大眼小星灵，粉蓝配色，头顶星芒。轻微浮动动画（尊重 prefers-reduced-motion） -->
-  <svg class="mascot" viewBox="0 0 160 160" fill="none" role="img" aria-label="AgentBoard 吉祥物星灵">
+  <svg class="hero-logo" viewBox="0 0 40 40" fill="none" role="img" aria-label="AgentBoard logo">
     <defs>
-      <linearGradient id="mBody" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0" stop-color="#ff7fbf"/>
-        <stop offset="0.5" stop-color="#b58fff"/>
-        <stop offset="1" stop-color="#7fb0ff"/>
+      <linearGradient id="heroLogoGrad" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#2563eb"/>
+        <stop offset="1" stop-color="#3b82f6"/>
       </linearGradient>
-      <radialGradient id="mCheek" cx="0.5" cy="0.5" r="0.5">
-        <stop offset="0" stop-color="#ff7fbf" stop-opacity="0.9"/>
-        <stop offset="1" stop-color="#ff7fbf" stop-opacity="0"/>
-      </radialGradient>
     </defs>
-    <!-- 头顶星芒 -->
-    <path class="twinkle" d="M80 8 L84 20 L96 24 L84 28 L80 40 L76 28 L64 24 L76 20 Z" fill="#ffd88f"/>
-    <!-- 天线 -->
-    <line x1="80" y1="40" x2="80" y2="52" stroke="#b58fff" stroke-width="3" stroke-linecap="round"/>
-    <!-- 圆脑袋身体 -->
-    <rect x="34" y="50" width="92" height="82" rx="34" fill="url(#mBody)"/>
-    <rect x="34" y="50" width="92" height="82" rx="34" fill="#14121f" opacity="0.06"/>
-    <!-- 脸屏 -->
-    <rect x="46" y="64" width="68" height="54" rx="24" fill="#1e1b2e"/>
-    <!-- 大眼 -->
-    <circle cx="66" cy="90" r="8" fill="#7fb0ff"/>
-    <circle cx="94" cy="90" r="8" fill="#7fb0ff"/>
-    <circle cx="68.5" cy="87.5" r="2.6" fill="#ffffff"/>
-    <circle cx="96.5" cy="87.5" r="2.6" fill="#ffffff"/>
-    <!-- 微笑 -->
-    <path d="M72 102 Q80 109 88 102" stroke="#ff7fbf" stroke-width="3" stroke-linecap="round" fill="none"/>
-    <!-- 腮红 -->
-    <circle cx="55" cy="102" r="7" fill="url(#mCheek)"/>
-    <circle cx="105" cy="102" r="7" fill="url(#mCheek)"/>
-    <!-- 侧边小闪 -->
-    <circle class="twinkle" cx="128" cy="60" r="3.2" fill="#7fe7c4"/>
-    <circle class="twinkle" cx="30" cy="72" r="2.6" fill="#ffd88f"/>
+    <rect width="40" height="40" rx="9" fill="url(#heroLogoGrad)"/>
+    <ellipse cx="20" cy="20" rx="7.4" ry="9.6" stroke="#ffffff" stroke-width="3" fill="none"/>
+    <line x1="20" y1="7" x2="20" y2="33" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
   </svg>
   <h1>把 AI Agent 装进<em>看板</em><br>本地运行，数据不出机</h1>
   <p class="tagline">AgentBoard 是一个本地优先的 Agent 任务工作台——像管理项目卡片一样管理你的 AI 任务，实时看到每一步文件修改。</p>
