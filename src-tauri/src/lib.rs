@@ -11,6 +11,7 @@ pub mod sediment;
 pub mod studio;
 pub mod sync;
 pub mod wecom;
+pub mod workspace_fs;
 
 use std::sync::Arc;
 
@@ -39,6 +40,7 @@ pub(crate) struct AppState {
     studio: studio::StudioState,
     sync: sync::SyncManager,
     pi: pi_engine::PiEngine,
+    ws: workspace_fs::WorkspaceState,
 }
 
 /// Mark the sync snapshot dirty (task/session rows changed). No-op if sync is
@@ -988,6 +990,7 @@ pub fn run() {
             studio: studio::StudioState::new(),
             sync: sync::SyncManager::new(),
             pi: pi_engine::PiEngine::new(),
+            ws: workspace_fs::WorkspaceState::new(),
         })
         .setup(|app| {
             // Seed a default provider from the legacy Codex relay config the
@@ -1111,6 +1114,15 @@ pub fn run() {
             sediment_skills,
             sediment_reuse,
             sediment_delete,
+            workspace_fs::ws_open_folder,
+            workspace_fs::ws_list_dir,
+            workspace_fs::ws_read_file,
+            workspace_fs::ws_write_file,
+            workspace_fs::ws_create,
+            workspace_fs::ws_rename,
+            workspace_fs::ws_delete,
+            workspace_fs::ws_search,
+            workspace_fs::ws_recent_folders,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
