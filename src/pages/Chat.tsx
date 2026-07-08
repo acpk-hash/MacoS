@@ -42,7 +42,7 @@ function renderMarkdown(text: string): React.ReactNode {
       return (
         <pre
           key={i}
-          className="bg-gray-950 rounded p-2 mt-1 mb-1 text-xs font-mono overflow-x-auto whitespace-pre-wrap"
+          className="bg-bg rounded p-2 mt-1 mb-1 text-xs font-mono overflow-x-auto whitespace-pre-wrap"
         >
           {code}
         </pre>
@@ -72,14 +72,14 @@ function DiffViewer({ diff }: { diff: string }) {
         // Header lines (--- / +++ / @@)
         if (line.startsWith('---') || line.startsWith('+++')) {
           return (
-            <div key={i} className="text-gray-500">
+            <div key={i} className="text-ink-dim">
               {line}
             </div>
           )
         }
         if (line.startsWith('@@')) {
           return (
-            <div key={i} className="text-gray-500 bg-gray-900 px-1">
+            <div key={i} className="text-ink-dim bg-surface px-1">
               {line}
             </div>
           )
@@ -99,7 +99,7 @@ function DiffViewer({ diff }: { diff: string }) {
           )
         }
         return (
-          <div key={i} className="text-gray-400 px-1">
+          <div key={i} className="text-ink-muted px-1">
             {line}
           </div>
         )
@@ -125,7 +125,7 @@ function FileEditRow({
   const statusColor: Record<FileEditStatus, string> = {
     pending: 'text-yellow-400',
     approved: 'text-green-400',
-    reverted: 'text-gray-500',
+    reverted: 'text-ink-dim',
   }
   const statusLabel: Record<FileEditStatus, string> = {
     pending: '待审',
@@ -134,13 +134,13 @@ function FileEditRow({
   }
 
   return (
-    <div className="border border-gray-800 rounded-lg overflow-hidden">
+    <div className="border border-line rounded-lg overflow-hidden">
       {/* File header row */}
       <div
-        className="flex items-center gap-2 px-3 py-2 bg-gray-900 cursor-pointer hover:bg-gray-800 transition-colors select-none"
+        className="flex items-center gap-2 px-3 py-2 bg-surface cursor-pointer hover:bg-surface-2 transition-colors select-none"
         onClick={() => info.diff && setExpanded((v) => !v)}
       >
-        <span className="text-gray-300 text-xs font-mono truncate flex-1" title={info.path}>
+        <span className="text-ink-muted text-xs font-mono truncate flex-1" title={info.path}>
           {filename}
         </span>
 
@@ -163,7 +163,7 @@ function FileEditRow({
 
         {/* Expand toggle */}
         {info.diff && (
-          <span className="flex-shrink-0 text-gray-600 text-xs">
+          <span className="flex-shrink-0 text-ink-dim text-xs">
             {expanded ? '▲' : '▼'}
           </span>
         )}
@@ -171,14 +171,14 @@ function FileEditRow({
 
       {/* Diff content */}
       {expanded && info.diff && (
-        <div className="bg-gray-950 border-t border-gray-800 max-h-80 overflow-y-auto p-2">
+        <div className="bg-bg border-t border-line max-h-80 overflow-y-auto p-2">
           <DiffViewer diff={info.diff} />
         </div>
       )}
 
       {/* Action buttons */}
       {info.status === 'pending' && (
-        <div className="flex gap-2 px-3 py-2 border-t border-gray-800 bg-gray-900/50">
+        <div className="flex gap-2 px-3 py-2 border-t border-line bg-surface/50">
           <button
             onClick={() => onApprove(info.path)}
             className="text-xs px-2 py-1 rounded bg-green-900/50 hover:bg-green-800/70 text-green-300 border border-green-800 transition-colors"
@@ -247,7 +247,7 @@ function DiffPanel({
   if (files.length === 0) {
     return (
       <div className="flex items-center justify-center h-full">
-        <p className="text-gray-600 text-xs select-none">暂无文件改动</p>
+        <p className="text-ink-dim text-xs select-none">暂无文件改动</p>
       </div>
     )
   }
@@ -255,8 +255,8 @@ function DiffPanel({
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="px-3 py-2 border-b border-gray-800 flex items-center gap-2 flex-shrink-0">
-        <span className="text-xs text-gray-400 font-medium flex-1">
+      <div className="px-3 py-2 border-b border-line flex items-center gap-2 flex-shrink-0">
+        <span className="text-xs text-ink-muted font-medium flex-1">
           本次改动 ({files.length})
         </span>
         {pendingFiles.length > 0 && (
@@ -284,18 +284,18 @@ function DiffPanel({
       {/* Revert confirm dialog */}
       {confirmRevert && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="bg-gray-900 border border-gray-700 rounded-xl p-5 max-w-sm w-full mx-4 shadow-xl">
-            <p className="text-sm text-gray-200 mb-1 font-medium">确认回滚？</p>
-            <p className="text-xs text-gray-400 mb-4 font-mono break-all">
+          <div className="bg-surface border border-line rounded-xl p-5 max-w-sm w-full mx-4 shadow-xl">
+            <p className="text-sm text-ink mb-1 font-medium">确认回滚？</p>
+            <p className="text-xs text-ink-muted mb-4 font-mono break-all">
               {confirmRevert}
             </p>
-            <p className="text-xs text-gray-500 mb-4">
+            <p className="text-xs text-ink-dim mb-4">
               此操作会将文件恢复到本会话开始前的状态，无法撤销。
             </p>
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => setConfirmRevert(null)}
-                className="text-xs px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 transition-colors"
+                className="text-xs px-3 py-1.5 rounded-lg bg-surface-2 hover:bg-elevated text-ink-muted border border-line transition-colors"
               >
                 取消
               </button>
@@ -326,7 +326,7 @@ function EntryView({
     case 'user_message':
       return (
         <div className="flex justify-end">
-          <div className="max-w-lg px-4 py-2.5 rounded-2xl rounded-br-sm bg-blue-600 text-white text-sm leading-relaxed break-words">
+          <div className="max-w-lg px-4 py-2.5 rounded-2xl rounded-br-sm bg-sakura text-white text-sm leading-relaxed break-words">
             {renderText(entry.text)}
           </div>
         </div>
@@ -335,7 +335,7 @@ function EntryView({
     case 'assistant_message':
       return (
         <div className="flex justify-start">
-          <div className="max-w-lg px-4 py-2.5 rounded-2xl rounded-bl-sm bg-gray-800 text-gray-200 text-sm leading-relaxed break-words">
+          <div className="max-w-lg px-4 py-2.5 rounded-2xl rounded-bl-sm bg-surface-2 text-ink text-sm leading-relaxed break-words">
             {renderMarkdown(entry.text)}
           </div>
         </div>
@@ -344,15 +344,15 @@ function EntryView({
     case 'file_edit': {
       const filename = entry.path.split(/[\\/]/).pop() ?? entry.path
       return (
-        <div className="flex items-center gap-2 text-xs text-gray-400 py-0.5 pl-1">
+        <div className="flex items-center gap-2 text-xs text-ink-muted py-0.5 pl-1">
           <span aria-hidden="true">✏️</span>
           <span>
             修改{' '}
-            <code className="text-blue-400 font-mono" title={entry.path}>
+            <code className="text-sky font-mono" title={entry.path}>
               {filename}
             </code>
           </span>
-          <span className="text-gray-600 capitalize">{entry.editKind}</span>
+          <span className="text-ink-dim capitalize">{entry.editKind}</span>
           {(entry.added > 0 || entry.removed > 0) && (
             <span className="font-mono">
               {entry.added > 0 && (
@@ -372,12 +372,12 @@ function EntryView({
       const shortCmd =
         entry.cmd.length > 120 ? entry.cmd.slice(0, 120) + '…' : entry.cmd
       return (
-        <div className="bg-gray-900 rounded-lg border border-gray-800 p-2 text-xs font-mono">
+        <div className="bg-surface rounded-lg border border-line p-2 text-xs font-mono">
           <div className="flex items-center gap-2">
-            <span className="text-gray-500 flex-shrink-0" aria-hidden="true">
+            <span className="text-ink-dim flex-shrink-0" aria-hidden="true">
               ▶
             </span>
-            <span className="text-gray-300 flex-1 truncate" title={entry.cmd}>
+            <span className="text-ink-muted flex-1 truncate" title={entry.cmd}>
               {shortCmd}
             </span>
             <span
@@ -393,7 +393,7 @@ function EntryView({
             {entry.outputTail && (
               <button
                 onClick={onToggleExpand}
-                className="flex-shrink-0 text-gray-500 hover:text-gray-300 transition-colors"
+                className="flex-shrink-0 text-ink-dim hover:text-ink-muted transition-colors"
                 title={entry.expanded ? '收起输出' : '展开输出'}
               >
                 {entry.expanded ? '▲' : '▼'}
@@ -401,7 +401,7 @@ function EntryView({
             )}
           </div>
           {entry.expanded && entry.outputTail && (
-            <pre className="mt-2 text-gray-400 text-xs whitespace-pre-wrap max-h-48 overflow-y-auto border-t border-gray-800 pt-2">
+            <pre className="mt-2 text-ink-muted text-xs whitespace-pre-wrap max-h-48 overflow-y-auto border-t border-line pt-2">
               {entry.outputTail}
             </pre>
           )}
@@ -411,7 +411,7 @@ function EntryView({
 
     case 'usage':
       return (
-        <div className="text-xs text-gray-600 text-center py-0.5">
+        <div className="text-xs text-ink-dim text-center py-0.5">
           tokens — in {entry.inputTokens.toLocaleString()} (cached{' '}
           {entry.cachedInputTokens.toLocaleString()}) / out{' '}
           {entry.outputTokens.toLocaleString()} / reasoning{' '}
@@ -436,7 +436,7 @@ function EntryView({
 function StatusBadge({ status }: { status: string }) {
   if (status === 'running') {
     return (
-      <span className="text-xs px-2 py-0.5 rounded-full bg-blue-900/70 text-blue-300 border border-blue-800">
+      <span className="text-xs px-2 py-0.5 rounded-full bg-sakura/70 text-sky border border-lavender">
         运行中
       </span>
     )
@@ -461,7 +461,7 @@ function StatusBadge({ status }: { status: string }) {
 // ── Session list (left sidebar) ───────────────────────────────────────────────
 
 function statusBadgeClass(status: string): string {
-  if (status === 'running') return 'bg-blue-900/70 text-blue-300 border-blue-800'
+  if (status === 'running') return 'bg-sakura/70 text-sky border-lavender'
   if (status === 'failed') return 'bg-red-900/70 text-red-300 border-red-800'
   if (status === 'awaiting_review') return 'bg-yellow-900/70 text-yellow-300 border-yellow-800'
   return 'bg-green-900/70 text-green-300 border-green-800'
@@ -497,13 +497,13 @@ function SessionListPanel({
   onNewSession: () => void
 }) {
   return (
-    <div className="flex flex-col w-52 flex-shrink-0 border-r border-gray-800 h-full">
+    <div className="flex flex-col w-52 flex-shrink-0 border-r border-line h-full">
       {/* Header */}
-      <div className="px-3 py-2 border-b border-gray-800 flex items-center gap-1 flex-shrink-0">
-        <span className="text-xs text-gray-400 font-medium flex-1">会话历史</span>
+      <div className="px-3 py-2 border-b border-line flex items-center gap-1 flex-shrink-0">
+        <span className="text-xs text-ink-muted font-medium flex-1">会话历史</span>
         <button
           onClick={onNewSession}
-          className="text-xs px-2 py-0.5 rounded bg-blue-900/50 hover:bg-blue-800/70 text-blue-300 border border-blue-800 transition-colors whitespace-nowrap"
+          className="text-xs px-2 py-0.5 rounded bg-sakura/50 hover:bg-sakura/70 text-sky border border-lavender transition-colors whitespace-nowrap"
           title="新会话"
         >
           + 新
@@ -513,7 +513,7 @@ function SessionListPanel({
       {/* Task list */}
       <div className="flex-1 overflow-y-auto py-1">
         {tasks.length === 0 && (
-          <p className="text-gray-600 text-xs text-center mt-4 px-2 select-none">暂无历史</p>
+          <p className="text-ink-dim text-xs text-center mt-4 px-2 select-none">暂无历史</p>
         )}
         {tasks.map((task) => {
           const isActive = (task.last_session_id ?? task.id) === activeSessionId
@@ -522,15 +522,15 @@ function SessionListPanel({
               key={task.id}
               onClick={() => onSelectSession(task)}
               className={[
-                'w-full text-left px-3 py-2 border-b border-gray-800/50 transition-colors',
+                'w-full text-left px-3 py-2 border-b border-line/50 transition-colors',
                 isActive
-                  ? 'bg-blue-900/30 border-l-2 border-l-blue-500'
-                  : 'hover:bg-gray-800/60',
+                  ? 'bg-sakura/30 border-l-2 border-l-blue-500'
+                  : 'hover:bg-surface-2/60',
               ].join(' ')}
             >
               {/* Title */}
               <p
-                className="text-xs text-gray-200 leading-snug line-clamp-2 break-words"
+                className="text-xs text-ink leading-snug line-clamp-2 break-words"
                 title={task.title}
               >
                 {task.title || '(无标题)'}
@@ -543,7 +543,7 @@ function SessionListPanel({
                 >
                   {statusLabel(task.status)}
                 </span>
-                <span className="text-[10px] text-gray-600">
+                <span className="text-[10px] text-ink-dim">
                   {relativeTime(task.updated_at)}
                 </span>
               </div>
@@ -631,8 +631,8 @@ export default function Chat() {
   if (!isTauri) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3">
-        <p className="text-gray-400 text-sm">请在桌面应用中使用</p>
-        <p className="text-gray-600 text-xs">
+        <p className="text-ink-muted text-sm">请在桌面应用中使用</p>
+        <p className="text-ink-dim text-xs">
           此功能需要 Tauri 桌面运行时，无法在普通浏览器中运行。
         </p>
       </div>
@@ -729,19 +729,19 @@ export default function Chat() {
       {/* ── Center: chat column ────────────────────────────────────────────── */}
       <div className="flex flex-col flex-1 min-w-0 h-full">
         {/* ── Top bar ────────────────────────────────────────────────────────── */}
-        <div className="px-4 py-2 border-b border-gray-800 flex-shrink-0 flex items-center gap-2 min-h-[44px]">
+        <div className="px-4 py-2 border-b border-line flex-shrink-0 flex items-center gap-2 min-h-[44px]">
           <input
             type="text"
             value={workdir}
             onChange={(e) => setWorkdir(e.target.value)}
             placeholder="选择 agent 工作目录"
-            className="flex-1 min-w-0 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-xs text-gray-200 placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-colors"
+            className="flex-1 min-w-0 bg-surface-2 border border-line rounded-lg px-3 py-1.5 text-xs text-ink placeholder-ink-dim focus:outline-none focus:border-lavender transition-colors"
           />
 
           {/* Browse button */}
           <button
             onClick={handleBrowse}
-            className="flex-shrink-0 text-xs px-2 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 border border-gray-700 transition-colors whitespace-nowrap"
+            className="flex-shrink-0 text-xs px-2 py-1.5 rounded-lg bg-surface-2 hover:bg-elevated text-ink-muted border border-line transition-colors whitespace-nowrap"
             title="选择工作目录"
           >
             浏览…
@@ -749,8 +749,8 @@ export default function Chat() {
 
           {/* Confirmation policy badge (read-only display; set in Settings) */}
           <span
-            className="flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded border border-gray-700
-                       text-gray-500 bg-gray-800/60 whitespace-nowrap"
+            className="flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded border border-line
+                       text-ink-dim bg-surface-2/60 whitespace-nowrap"
             title="确认策略（在设置中修改）即将生效"
           >
             {confirmPolicy === 'per_file' ? '逐文件批准' : '自动执行'}
@@ -771,7 +771,7 @@ export default function Chat() {
           {hasFileEdits && (
             <button
               onClick={() => setDiffPanelOpen((v) => !v)}
-              className="flex-shrink-0 text-xs px-2 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 border border-gray-700 transition-colors whitespace-nowrap"
+              className="flex-shrink-0 text-xs px-2 py-1.5 rounded-lg bg-surface-2 hover:bg-elevated text-ink-muted border border-line transition-colors whitespace-nowrap"
               title={diffPanelOpen ? '收起改动面板' : '展开改动面板'}
             >
               {diffPanelOpen ? '收起改动' : '本次改动'}
@@ -783,7 +783,7 @@ export default function Chat() {
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
           {entries.length === 0 && !streamingText ? (
             <div className="flex items-center justify-center h-full">
-              <p className="text-gray-600 text-sm select-none">
+              <p className="text-ink-dim text-sm select-none">
                 输入提示词开始新会话
               </p>
             </div>
@@ -805,7 +805,7 @@ export default function Chat() {
               assistant_message entry when the turn text lands. */}
           {streamingText && (
             <div className="flex justify-start">
-              <div className="max-w-lg px-4 py-2.5 rounded-2xl rounded-bl-sm bg-gray-800 text-gray-200 text-sm leading-relaxed break-words">
+              <div className="max-w-lg px-4 py-2.5 rounded-2xl rounded-bl-sm bg-surface-2 text-ink text-sm leading-relaxed break-words">
                 {renderMarkdown(streamingText)}
                 <BlinkCursor />
               </div>
@@ -816,7 +816,7 @@ export default function Chat() {
         </div>
 
         {/* ── Input area ────────────────────────────────────────────────────── */}
-        <div className="px-4 py-3 border-t border-gray-800 flex-shrink-0">
+        <div className="px-4 py-3 border-t border-line flex-shrink-0">
           <div className="flex gap-2 items-end">
             <textarea
               rows={2}
@@ -829,12 +829,12 @@ export default function Chat() {
                   : '输入提示词，Enter 发送，Shift+Enter 换行…'
               }
               disabled={isRunning}
-              className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-500 resize-none disabled:opacity-50 transition-colors"
+              className="flex-1 bg-surface-2 border border-line rounded-xl px-4 py-2.5 text-sm text-ink placeholder-ink-dim focus:outline-none focus:border-lavender resize-none disabled:opacity-50 transition-colors"
             />
             <button
               onClick={handleSend}
               disabled={isRunning || !inputText.trim()}
-              className="flex-shrink-0 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-colors"
+              className="flex-shrink-0 bg-sakura hover:bg-sakura disabled:opacity-40 disabled:cursor-not-allowed text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-colors"
             >
               发送
             </button>
@@ -844,7 +844,7 @@ export default function Chat() {
 
       {/* ── Right: diff panel ──────────────────────────────────────────────── */}
       {hasFileEdits && diffPanelOpen && activeSessionId && (
-        <div className="w-72 flex-shrink-0 border-l border-gray-800 flex flex-col h-full">
+        <div className="w-72 flex-shrink-0 border-l border-line flex flex-col h-full">
           <DiffPanel sessionId={activeSessionId} fileEdits={fileEdits} />
         </div>
       )}

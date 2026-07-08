@@ -9,6 +9,7 @@ import {
 import Composer from '../components/Composer'
 import ImageAnnotator from '../components/ImageAnnotator'
 import ModelPicker from '../components/ModelPicker'
+import { Mascot } from '../components/ui'
 
 // ── Environment guard ─────────────────────────────────────────────────────────
 
@@ -94,7 +95,7 @@ async function downloadMedia(
 
 function Spinner() {
   return (
-    <span className="inline-block w-6 h-6 rounded-full border-2 border-gray-600 border-t-blue-400 animate-spin" />
+    <span className="inline-block w-6 h-6 rounded-full border-2 border-line border-t-blue-400 animate-spin" />
   )
 }
 
@@ -112,7 +113,7 @@ function ModeSwitch({
     { key: 'video', label: '视频' },
   ]
   return (
-    <div className="inline-flex p-0.5 rounded-lg bg-gray-800 border border-gray-700">
+    <div className="inline-flex p-0.5 rounded-lg bg-surface-2 border border-line">
       {tabs.map((t) => (
         <button
           key={t.key}
@@ -120,8 +121,8 @@ function ModeSwitch({
           className={[
             'px-3.5 py-1 rounded-md text-xs font-medium transition-colors',
             mode === t.key
-              ? 'bg-blue-600 text-white'
-              : 'text-gray-400 hover:text-gray-200',
+              ? 'bg-sakura text-white'
+              : 'text-ink-muted hover:text-ink',
           ].join(' ')}
         >
           {t.label}
@@ -155,10 +156,10 @@ function ParamsBar({
   onCount: (v: number) => void
 }) {
   const selCls =
-    'bg-gray-900 border border-gray-700 rounded-lg px-2.5 py-1.5 text-xs text-gray-200 focus:outline-none focus:border-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed'
+    'bg-surface border border-line rounded-lg px-2.5 py-1.5 text-xs text-ink focus:outline-none focus:border-lavender transition-colors disabled:opacity-50 disabled:cursor-not-allowed'
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <label className="text-[11px] text-gray-500">模型</label>
+      <label className="text-[11px] text-ink-dim">模型</label>
       <ModelPicker
         models={imageModels}
         value={{ providerId, modelId: model }}
@@ -169,7 +170,7 @@ function ParamsBar({
         className={selCls + ' max-w-[180px]'}
       />
 
-      <label className="text-[11px] text-gray-500 ml-1">尺寸</label>
+      <label className="text-[11px] text-ink-dim ml-1">尺寸</label>
       <select
         value={size}
         disabled={disabled}
@@ -184,7 +185,7 @@ function ParamsBar({
         ))}
       </select>
 
-      <label className="text-[11px] text-gray-500 ml-1">数量</label>
+      <label className="text-[11px] text-ink-dim ml-1">数量</label>
       <select
         value={count}
         disabled={disabled}
@@ -223,10 +224,10 @@ function MediaCard({
 }) {
   if (row.status === 'running' || row.status === 'pending') {
     return (
-      <div className="relative aspect-square rounded-xl overflow-hidden border border-gray-800 bg-gray-900/60 flex flex-col items-center justify-center gap-3">
-        <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-gray-800/40 to-gray-900/40" />
+      <div className="relative aspect-square rounded-xl overflow-hidden border border-line bg-surface/60 flex flex-col items-center justify-center gap-3">
+        <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-surface-2/40 to-surface/40" />
         <Spinner />
-        <span className="relative text-[11px] text-gray-500">生成中…</span>
+        <span className="relative text-[11px] text-ink-dim">生成中…</span>
       </div>
     )
   }
@@ -254,7 +255,7 @@ function MediaCard({
   // done
   const src = row.local_path ? convertFileSrc(row.local_path) : ''
   return (
-    <div className="group relative aspect-square rounded-xl overflow-hidden border border-gray-800 bg-gray-900">
+    <div className="group relative aspect-square rounded-xl overflow-hidden border border-line bg-surface">
       <button onClick={onOpen} className="block w-full h-full" title="查看大图">
         {row.kind === 'video' ? (
           <video
@@ -293,7 +294,7 @@ function MediaCard({
 
       {/* Prompt caption on hover */}
       <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-        <p className="text-[11px] text-gray-200 line-clamp-2 leading-snug">
+        <p className="text-[11px] text-ink line-clamp-2 leading-snug">
           {row.prompt}
         </p>
       </div>
@@ -322,8 +323,8 @@ function IconBtn({
       className={[
         'w-7 h-7 flex items-center justify-center rounded-lg text-sm border backdrop-blur transition-colors',
         danger
-          ? 'bg-black/50 border-gray-700 text-gray-200 hover:bg-red-700 hover:border-red-600'
-          : 'bg-black/50 border-gray-700 text-gray-200 hover:bg-gray-700',
+          ? 'bg-black/50 border-line text-ink hover:bg-red-700 hover:border-red-600'
+          : 'bg-black/50 border-line text-ink hover:bg-elevated',
       ].join(' ')}
     >
       {children}
@@ -376,33 +377,33 @@ function Lightbox({
         className="flex items-center justify-between px-4 py-2.5 flex-shrink-0"
         onClick={(e) => e.stopPropagation()}
       >
-        <span className="text-xs text-gray-400">
+        <span className="text-xs text-ink-muted">
           {index + 1} / {items.length}
         </span>
         <div className="flex items-center gap-2">
           {row.kind === 'image' && (
             <button
               onClick={() => onAnnotate(row)}
-              className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs transition-colors"
+              className="px-3 py-1.5 rounded-lg bg-sakura hover:bg-sakura text-white text-xs transition-colors"
             >
               标注修改
             </button>
           )}
           <button
             onClick={() => onDownload(row)}
-            className="px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs border border-gray-700 transition-colors"
+            className="px-3 py-1.5 rounded-lg bg-surface-2 hover:bg-elevated text-ink text-xs border border-line transition-colors"
           >
             下载
           </button>
           <button
             onClick={() => onDelete(row)}
-            className="px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-red-700 text-gray-200 text-xs border border-gray-700 hover:border-red-600 transition-colors"
+            className="px-3 py-1.5 rounded-lg bg-surface-2 hover:bg-red-700 text-ink text-xs border border-line hover:border-red-600 transition-colors"
           >
             删除
           </button>
           <button
             onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 transition-colors"
+            className="w-8 h-8 flex items-center justify-center rounded-lg bg-surface-2 hover:bg-elevated text-ink border border-line transition-colors"
             title="关闭 (Esc)"
           >
             ✕
@@ -418,7 +419,7 @@ function Lightbox({
         {index > 0 && (
           <button
             onClick={() => onIndex(index - 1)}
-            className="absolute left-4 w-10 h-10 flex items-center justify-center rounded-full bg-gray-800/80 hover:bg-gray-700 text-gray-200 border border-gray-700 transition-colors"
+            className="absolute left-4 w-10 h-10 flex items-center justify-center rounded-full bg-surface-2/80 hover:bg-elevated text-ink border border-line transition-colors"
             title="上一张 (←)"
           >
             ‹
@@ -436,7 +437,7 @@ function Lightbox({
         {index < items.length - 1 && (
           <button
             onClick={() => onIndex(index + 1)}
-            className="absolute right-4 w-10 h-10 flex items-center justify-center rounded-full bg-gray-800/80 hover:bg-gray-700 text-gray-200 border border-gray-700 transition-colors"
+            className="absolute right-4 w-10 h-10 flex items-center justify-center rounded-full bg-surface-2/80 hover:bg-elevated text-ink border border-line transition-colors"
             title="下一张 (→)"
           >
             ›
@@ -449,11 +450,11 @@ function Lightbox({
         className="flex-shrink-0 px-4 py-3 max-w-3xl mx-auto w-full"
         onClick={(e) => e.stopPropagation()}
       >
-        <p className="text-sm text-gray-200 break-words mb-1.5">{row.prompt}</p>
-        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-500">
+        <p className="text-sm text-ink break-words mb-1.5">{row.prompt}</p>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-ink-dim">
           <span>模型：{row.model || '—'}</span>
           {size && <span>尺寸：{size}</span>}
-          {isEditedRow(row) && <span className="text-blue-400">由标注修改而来</span>}
+          {isEditedRow(row) && <span className="text-sky">由标注修改而来</span>}
           <span>时间：{formatTime(row.created_at)}</span>
         </div>
       </div>
@@ -466,8 +467,9 @@ function Lightbox({
 function ImageEmptyState({ onPick }: { onPick: (text: string) => void }) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-4">
-      <h1 className="text-2xl font-semibold text-gray-200 mb-1">开始生成图像</h1>
-      <p className="text-sm text-gray-500 mb-8">
+      <Mascot mood="idle" size={92} className="mb-4" />
+      <h1 className="text-2xl font-bold text-gradient mb-1">开始生成图像</h1>
+      <p className="text-sm text-ink-dim mb-8">
         在下方输入描述，或从示例开始，生成结果会出现在这里
       </p>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-3xl">
@@ -475,7 +477,7 @@ function ImageEmptyState({ onPick }: { onPick: (text: string) => void }) {
           <button
             key={p}
             onClick={() => onPick(p)}
-            className="text-left px-4 py-3 rounded-xl border border-gray-800 bg-gray-900/50 hover:bg-gray-800 hover:border-gray-700 text-sm text-gray-300 leading-relaxed transition-colors"
+            className="text-left px-4 py-3 rounded-card glass hover:-translate-y-0.5 hover:border-line-strong text-sm text-ink-muted leading-relaxed transition-all duration-150"
           >
             {p}
           </button>
@@ -488,10 +490,10 @@ function ImageEmptyState({ onPick }: { onPick: (text: string) => void }) {
 function VideoLockedState() {
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-4">
-      <div className="max-w-md w-full rounded-2xl border border-dashed border-gray-700 bg-gray-900/40 px-6 py-10 flex flex-col items-center text-center gap-3">
-        <span className="text-3xl select-none">🎬</span>
-        <h2 className="text-lg font-semibold text-gray-300">视频生成暂未开通</h2>
-        <p className="text-sm text-gray-500 leading-relaxed">
+      <div className="max-w-md w-full rounded-pop glass-strong px-6 py-10 flex flex-col items-center text-center gap-3">
+        <Mascot mood="sad" size={72} />
+        <h2 className="text-lg font-semibold text-ink-muted">视频生成暂未开通</h2>
+        <p className="text-sm text-ink-dim leading-relaxed">
           当前 API 未开通视频模型——开通后此处将自动可用。
         </p>
       </div>
@@ -650,8 +652,8 @@ export default function StudioGen() {
     mode === 'video' || (mode === 'image' && imageModels.length === 0)
 
   const plusMenu = (close: () => void) => (
-    <div className="w-44 py-1 rounded-lg bg-gray-800 border border-gray-700 shadow-xl max-h-72 overflow-y-auto">
-      <div className="px-3 py-1 text-[10px] text-gray-500 select-none">模式</div>
+    <div className="w-44 py-1 rounded-lg bg-surface-2 border border-line shadow-xl max-h-72 overflow-y-auto">
+      <div className="px-3 py-1 text-[10px] text-ink-dim select-none">模式</div>
       {(['image', 'video'] as Mode[]).map((m) => (
         <button
           key={m}
@@ -659,16 +661,16 @@ export default function StudioGen() {
             setMode(m)
             close()
           }}
-          className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700 transition-colors"
+          className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-ink-muted hover:bg-elevated transition-colors"
         >
           <span>{m === 'image' ? '图像' : '视频'}</span>
-          {mode === m && <span className="text-blue-400">✓</span>}
+          {mode === m && <span className="text-sky">✓</span>}
         </button>
       ))}
-      <div className="border-t border-gray-700 my-1" />
-      <div className="px-3 py-1 text-[10px] text-gray-500 select-none">图像模型</div>
+      <div className="border-t border-line my-1" />
+      <div className="px-3 py-1 text-[10px] text-ink-dim select-none">图像模型</div>
       {imageModels.length === 0 && (
-        <div className="px-3 py-1.5 text-xs text-gray-600">暂无可用模型</div>
+        <div className="px-3 py-1.5 text-xs text-ink-dim">暂无可用模型</div>
       )}
       {imageModels.map((m) => (
         <button
@@ -678,11 +680,11 @@ export default function StudioGen() {
             setMode('image')
             close()
           }}
-          className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700 transition-colors"
+          className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-ink-muted hover:bg-elevated transition-colors"
         >
           <span className="truncate">{m.modelId}</span>
           {imageModel === m.modelId && imageProviderId === m.providerId && (
-            <span className="text-blue-400 ml-1">✓</span>
+            <span className="text-sky ml-1">✓</span>
           )}
         </button>
       ))}
@@ -692,8 +694,8 @@ export default function StudioGen() {
   if (!isTauri) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3">
-        <p className="text-gray-400 text-sm">请在桌面应用中使用</p>
-        <p className="text-gray-600 text-xs">
+        <p className="text-ink-muted text-sm">请在桌面应用中使用</p>
+        <p className="text-ink-dim text-xs">
           此功能需要 Tauri 桌面运行时，无法在普通浏览器中运行。
         </p>
       </div>
@@ -708,10 +710,10 @@ export default function StudioGen() {
   return (
     <div className="flex flex-col h-full">
       {/* Top bar */}
-      <div className="px-4 py-2 border-b border-gray-800 flex-shrink-0 flex items-center gap-3 min-h-[48px]">
+      <div className="px-4 py-2 border-b border-line flex-shrink-0 flex items-center gap-3 min-h-[48px]">
         <ModeSwitch mode={mode} onChange={setMode} />
         <div className="flex-1" />
-        <span className="text-xs text-gray-500 truncate max-w-[200px]">
+        <span className="text-xs text-ink-dim truncate max-w-[200px]">
           {mode === 'image' ? imageModel || '无可用图像模型' : '视频模式'}
         </span>
       </div>
@@ -810,16 +812,16 @@ export default function StudioGen() {
       {/* Delete confirm */}
       {confirmDelete && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="bg-gray-900 border border-gray-700 rounded-xl p-5 max-w-sm w-full mx-4 shadow-xl">
-            <p className="text-sm text-gray-200 mb-1 font-medium">
+          <div className="bg-surface border border-line rounded-xl p-5 max-w-sm w-full mx-4 shadow-xl">
+            <p className="text-sm text-ink mb-1 font-medium">
               删除该{confirmDelete.kind === 'video' ? '视频' : '图片'}？
             </p>
-            <p className="text-xs text-gray-400 mb-4 truncate">{confirmDelete.prompt}</p>
-            <p className="text-xs text-gray-500 mb-4">此操作会永久删除本地文件，无法撤销。</p>
+            <p className="text-xs text-ink-muted mb-4 truncate">{confirmDelete.prompt}</p>
+            <p className="text-xs text-ink-dim mb-4">此操作会永久删除本地文件，无法撤销。</p>
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => setConfirmDelete(null)}
-                className="text-xs px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 transition-colors"
+                className="text-xs px-3 py-1.5 rounded-lg bg-surface-2 hover:bg-elevated text-ink-muted border border-line transition-colors"
               >
                 取消
               </button>
@@ -839,7 +841,7 @@ export default function StudioGen() {
 
       {/* Toast */}
       {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] px-4 py-2 rounded-lg bg-gray-800 border border-gray-700 text-sm text-gray-200 shadow-xl">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] px-4 py-2 rounded-lg bg-surface-2 border border-line text-sm text-ink shadow-xl">
           {toast}
         </div>
       )}

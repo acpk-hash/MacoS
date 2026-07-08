@@ -173,13 +173,13 @@ export default function Composer({
         onDrop={handleDrop}
         className={[
           maxWidthClass,
-          'mx-auto rounded-2xl border bg-gray-800/70 transition-colors',
-          dragOver ? 'border-blue-500 bg-blue-950/20' : 'border-gray-700',
+          'mx-auto rounded-pop glass transition-colors',
+          dragOver ? 'border-lavender bg-sakura/20' : 'border-line',
           disabled ? 'opacity-60' : '',
         ].join(' ')}
       >
         {paramsSlot && (
-          <div className="px-3 pt-3 border-b border-gray-700/60 pb-3">
+          <div className="px-3 pt-3 border-b border-line/60 pb-3">
             {paramsSlot}
           </div>
         )}
@@ -189,7 +189,7 @@ export default function Composer({
             {attachments.map((a, i) => (
               <div
                 key={i}
-                className="relative group flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gray-900 border border-gray-700 text-xs text-gray-300"
+                className="relative group flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-surface border border-line text-xs text-ink-muted"
               >
                 {a.kind === 'image' && a.data_url ? (
                   <img
@@ -203,7 +203,7 @@ export default function Composer({
                 <span className="max-w-[140px] truncate">{a.name}</span>
                 <button
                   onClick={() => removeAttachment(i)}
-                  className="ml-1 text-gray-500 hover:text-red-400 transition-colors"
+                  className="ml-1 text-ink-dim hover:text-red-400 transition-colors"
                   title="移除"
                 >
                   ✕
@@ -218,7 +218,7 @@ export default function Composer({
             <div className="relative flex-shrink-0">
               <button
                 onClick={() => setPlusOpen((v) => !v)}
-                className="w-9 h-9 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-700 hover:text-gray-200 transition-colors text-xl leading-none"
+                className="w-9 h-9 flex items-center justify-center rounded-lg text-ink-muted hover:bg-elevated hover:text-ink transition-colors text-xl leading-none"
                 title={renderPlusMenu ? '更多' : '添加附件'}
               >
                 +
@@ -229,13 +229,13 @@ export default function Composer({
                     {renderPlusMenu(() => setPlusOpen(false))}
                   </div>
                 ) : (
-                  <div className="absolute bottom-11 left-0 z-20 w-36 py-1 rounded-lg bg-gray-800 border border-gray-700 shadow-xl">
+                  <div className="absolute bottom-11 left-0 z-20 w-36 py-1 rounded-lg bg-surface-2 border border-line shadow-xl">
                     <button
                       onClick={() => {
                         setPlusOpen(false)
                         imageInputRef.current?.click()
                       }}
-                      className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700 transition-colors"
+                      className="w-full text-left px-3 py-1.5 text-xs text-ink-muted hover:bg-elevated transition-colors"
                     >
                       上传图片
                     </button>
@@ -244,7 +244,7 @@ export default function Composer({
                         setPlusOpen(false)
                         textInputRef.current?.click()
                       }}
-                      className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700 transition-colors"
+                      className="w-full text-left px-3 py-1.5 text-xs text-ink-muted hover:bg-elevated transition-colors"
                     >
                       上传文本文件
                     </button>
@@ -262,7 +262,7 @@ export default function Composer({
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             placeholder={placeholder ?? '发送消息，Enter 发送 / Shift+Enter 换行'}
-            className="flex-1 bg-transparent resize-none px-2 py-2 text-[15px] text-gray-100 placeholder-gray-500 focus:outline-none max-h-[200px] disabled:cursor-not-allowed"
+            className="flex-1 bg-transparent resize-none px-2 py-2 text-[15px] text-ink placeholder-ink-dim focus:outline-none max-h-[200px] disabled:cursor-not-allowed"
           />
 
           {busy && onStop ? (
@@ -271,13 +271,13 @@ export default function Composer({
               className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-gray-200 hover:bg-white text-gray-900 transition-colors"
               title="停止生成"
             >
-              <span className="w-3 h-3 bg-gray-900 rounded-[2px]" />
+              <span className="w-3 h-3 bg-surface rounded-[2px]" />
             </button>
           ) : (
             <button
               onClick={handleSend}
               disabled={!canSend}
-              className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-30 disabled:cursor-not-allowed text-white transition-colors"
+              className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-btn bg-grad-primary shadow-glow-primary hover:-translate-y-px disabled:opacity-30 disabled:shadow-none disabled:translate-y-0 disabled:cursor-not-allowed text-white transition-all"
               title="发送"
             >
               ↑
@@ -289,7 +289,7 @@ export default function Composer({
         <p
           className={[
             maxWidthClass,
-            'mx-auto text-center text-[10px] text-gray-600 mt-2',
+            'mx-auto text-center text-[10px] text-ink-dim mt-2',
           ].join(' ')}
         >
           {footerHint}

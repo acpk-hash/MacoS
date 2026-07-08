@@ -179,16 +179,16 @@ function ProvidersSection() {
   }
 
   const inputCls =
-    'w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors'
+    'w-full bg-surface-2 border border-line rounded-lg px-3 py-2 text-sm text-ink placeholder-ink-dim focus:outline-none focus:border-lavender transition-colors'
 
   return (
-    <div className="bg-gray-900 border border-gray-700 rounded-xl p-4 space-y-4">
-      <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+    <div className="glass rounded-card p-4 space-y-4">
+      <h3 className="text-xs font-semibold text-ink-muted uppercase tracking-wider">
         模型服务商
       </h3>
-      <p className="text-xs text-gray-500 -mt-2 leading-relaxed">
+      <p className="text-xs text-ink-dim -mt-2 leading-relaxed">
         配置多个 OpenAI 兼容服务商，聊天/生成页的模型下拉将聚合所有已启用服务商的模型。
-        <span className="text-gray-400">
+        <span className="text-ink-muted">
           API Key 仅保存在本机凭据管理器，不会上传。
         </span>
       </p>
@@ -196,31 +196,31 @@ function ProvidersSection() {
       {/* Provider cards */}
       <div className="space-y-2">
         {providers.length === 0 && (
-          <p className="text-xs text-gray-500 italic">暂无服务商，点击下方添加</p>
+          <p className="text-xs text-ink-dim italic">暂无服务商，点击下方添加</p>
         )}
         {providers.map((p) => {
           const t = tests[p.id]
           return (
             <div
               key={p.id}
-              className="bg-gray-800/60 border border-gray-700 rounded-lg px-3 py-2.5 space-y-2"
+              className="bg-surface-2/60 border border-line rounded-lg px-3 py-2.5 space-y-2"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <p className="text-sm font-semibold text-gray-200 truncate">
+                    <p className="text-sm font-semibold text-ink truncate">
                       {p.label}
                     </p>
                     {p.is_default && (
-                      <span className="text-[10px] text-blue-300 bg-blue-900/40 px-1.5 py-0.5 rounded">
+                      <span className="text-[10px] text-sky bg-sakura/40 px-1.5 py-0.5 rounded">
                         默认
                       </span>
                     )}
-                    <span className="text-[10px] text-gray-500 bg-gray-700/60 px-1.5 py-0.5 rounded">
+                    <span className="text-[10px] text-ink-dim bg-elevated/60 px-1.5 py-0.5 rounded">
                       {p.wire_api}
                     </span>
                   </div>
-                  <p className="text-xs text-gray-500 truncate">{p.base_url}</p>
+                  <p className="text-xs text-ink-dim truncate">{p.base_url}</p>
                   <p className="text-xs mt-0.5">
                     {p.has_key ? (
                       <span className="text-green-500">
@@ -234,7 +234,7 @@ function ProvidersSection() {
                 <button
                   onClick={() => toggleEnabled(p)}
                   className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ${
-                    p.enabled ? 'bg-blue-500' : 'bg-gray-600'
+                    p.enabled ? 'bg-sakura' : 'bg-elevated'
                   }`}
                   title={p.enabled ? '已启用' : '已禁用'}
                   aria-label="Toggle provider enabled"
@@ -251,13 +251,13 @@ function ProvidersSection() {
                 <button
                   onClick={() => runTest(p.id)}
                   disabled={t === 'loading'}
-                  className="text-blue-400 hover:text-blue-300 disabled:text-gray-600 transition-colors"
+                  className="text-sky hover:text-sky disabled:text-ink-dim transition-colors"
                 >
                   {t === 'loading' ? '测试中…' : '测试'}
                 </button>
                 <button
                   onClick={() => startEdit(p)}
-                  className="text-gray-400 hover:text-gray-200 transition-colors"
+                  className="text-ink-muted hover:text-ink transition-colors"
                 >
                   编辑
                 </button>
@@ -272,7 +272,7 @@ function ProvidersSection() {
                     </button>
                     <button
                       onClick={() => setConfirmDelete(null)}
-                      className="text-gray-500 hover:text-gray-400"
+                      className="text-ink-dim hover:text-ink-muted"
                     >
                       取消
                     </button>
@@ -280,7 +280,7 @@ function ProvidersSection() {
                 ) : (
                   <button
                     onClick={() => setConfirmDelete(p.id)}
-                    className="text-gray-600 hover:text-red-400 transition-colors"
+                    className="text-ink-dim hover:text-red-400 transition-colors"
                   >
                     删除
                   </button>
@@ -305,13 +305,13 @@ function ProvidersSection() {
 
       {/* Add / edit form */}
       {showForm ? (
-        <div className="bg-gray-800/60 border border-gray-700 rounded-lg p-3 space-y-2.5">
-          <h4 className="text-xs font-semibold text-gray-300">
+        <div className="bg-surface-2/60 border border-line rounded-lg p-3 space-y-2.5">
+          <h4 className="text-xs font-semibold text-ink-muted">
             {editId ? '编辑服务商' : '添加服务商'}
           </h4>
           {formError && <p className="text-xs text-red-400">{formError}</p>}
           <div>
-            <label className="block text-xs text-gray-500 mb-1">名称</label>
+            <label className="block text-xs text-ink-dim mb-1">名称</label>
             <input
               type="text"
               value={form.label}
@@ -321,7 +321,7 @@ function ProvidersSection() {
             />
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Base URL</label>
+            <label className="block text-xs text-ink-dim mb-1">Base URL</label>
             <input
               type="text"
               value={form.base_url}
@@ -333,7 +333,7 @@ function ProvidersSection() {
             />
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Wire API</label>
+            <label className="block text-xs text-ink-dim mb-1">Wire API</label>
             <select
               value={form.wire_api}
               onChange={(e) =>
@@ -349,10 +349,10 @@ function ProvidersSection() {
             </select>
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1">
+            <label className="block text-xs text-ink-dim mb-1">
               API Key
               {editId && (
-                <span className="text-gray-600 ml-1">（留空=不修改）</span>
+                <span className="text-ink-dim ml-1">（留空=不修改）</span>
               )}
             </label>
             <input
@@ -363,21 +363,21 @@ function ProvidersSection() {
               autoComplete="new-password"
               className={inputCls}
             />
-            <p className="text-xs text-gray-600 mt-0.5">
+            <p className="text-xs text-ink-dim mt-0.5">
               仅保存在本机凭据管理器，不入数据库、不上传。
             </p>
           </div>
           <div className="flex gap-2 justify-end pt-1">
             <button
               onClick={resetForm}
-              className="px-3 py-1.5 text-xs text-gray-400 hover:text-gray-300 transition-colors"
+              className="px-3 py-1.5 text-xs text-ink-muted hover:text-ink-muted transition-colors"
             >
               取消
             </button>
             <button
               onClick={submit}
               disabled={busy}
-              className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 text-white rounded transition-colors"
+              className="px-3 py-1.5 text-xs bg-sakura hover:bg-sakura disabled:bg-elevated text-white rounded transition-colors"
             >
               {busy ? '保存中…' : '保存'}
             </button>
@@ -386,7 +386,7 @@ function ProvidersSection() {
       ) : (
         <button
           onClick={startAdd}
-          className="w-full py-2 border border-dashed border-gray-700 hover:border-gray-500 rounded-lg text-xs text-gray-500 hover:text-gray-400 transition-colors"
+          className="w-full py-2 border border-dashed border-line hover:border-line-strong rounded-lg text-xs text-ink-dim hover:text-ink-muted transition-colors"
         >
           + 添加服务商
         </button>
@@ -479,52 +479,52 @@ function ModelServiceSection() {
     cfg?.has_api_key ? `已设置（${cfg.key_mask}）` : '输入 API Key…'
 
   return (
-    <div className="bg-gray-900 border border-gray-700 rounded-xl p-4 space-y-4">
-      <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+    <div className="glass rounded-card p-4 space-y-4">
+      <h3 className="text-xs font-semibold text-ink-muted uppercase tracking-wider">
         模型服务
       </h3>
-      <p className="text-xs text-gray-500 -mt-2">
-        写入 <code className="text-gray-400">~/.codex/config.toml</code> 和{' '}
-        <code className="text-gray-400">auth.json</code>；修改对新会话生效，写入前自动备份。
+      <p className="text-xs text-ink-dim -mt-2">
+        写入 <code className="text-ink-muted">~/.codex/config.toml</code> 和{' '}
+        <code className="text-ink-muted">auth.json</code>；修改对新会话生效，写入前自动备份。
       </p>
 
       <div className="space-y-3">
         {/* Provider name */}
         <div>
-          <label className="block text-xs text-gray-500 mb-1">服务商名称 (model_provider)</label>
+          <label className="block text-xs text-ink-dim mb-1">服务商名称 (model_provider)</label>
           <input
             type="text"
             value={form.provider_name}
             onChange={(e) => setForm((f) => ({ ...f, provider_name: e.target.value }))}
             placeholder="OpenAI"
-            className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm
-                       text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500
+            className="w-full bg-surface-2 border border-line rounded-lg px-3 py-2 text-sm
+                       text-ink placeholder-ink-dim focus:outline-none focus:border-lavender
                        transition-colors"
           />
         </div>
 
         {/* base_url */}
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Base URL</label>
+          <label className="block text-xs text-ink-dim mb-1">Base URL</label>
           <input
             type="text"
             value={form.base_url}
             onChange={(e) => setForm((f) => ({ ...f, base_url: e.target.value }))}
             placeholder="https://api.openai.com"
-            className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm
-                       text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500
+            className="w-full bg-surface-2 border border-line rounded-lg px-3 py-2 text-sm
+                       text-ink placeholder-ink-dim focus:outline-none focus:border-lavender
                        transition-colors"
           />
         </div>
 
         {/* wire_api */}
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Wire API</label>
+          <label className="block text-xs text-ink-dim mb-1">Wire API</label>
           <select
             value={form.wire_api}
             onChange={(e) => setForm((f) => ({ ...f, wire_api: e.target.value }))}
-            className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm
-                       text-gray-200 focus:outline-none focus:border-blue-500 transition-colors"
+            className="w-full bg-surface-2 border border-line rounded-lg px-3 py-2 text-sm
+                       text-ink focus:outline-none focus:border-lavender transition-colors"
           >
             {WIRE_API_OPTIONS.map((opt) => (
               <option key={opt} value={opt}>
@@ -536,14 +536,14 @@ function ModelServiceSection() {
 
         {/* model */}
         <div>
-          <label className="block text-xs text-gray-500 mb-1">模型名称 (model)</label>
+          <label className="block text-xs text-ink-dim mb-1">模型名称 (model)</label>
           <input
             type="text"
             value={form.model}
             onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}
             placeholder="gpt-5.5"
-            className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm
-                       text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500
+            className="w-full bg-surface-2 border border-line rounded-lg px-3 py-2 text-sm
+                       text-ink placeholder-ink-dim focus:outline-none focus:border-lavender
                        transition-colors"
           />
         </div>
@@ -551,7 +551,7 @@ function ModelServiceSection() {
         {/* reasoning effort — reuses REASONING_EFFORT_OPTIONS, linked to the
             existing "推理深度" dropdown via settings_set on save */}
         <div>
-          <label className="block text-xs text-gray-500 mb-1">
+          <label className="block text-xs text-ink-dim mb-1">
             推理力度 (model_reasoning_effort)
           </label>
           <select
@@ -559,8 +559,8 @@ function ModelServiceSection() {
             onChange={(e) =>
               setForm((f) => ({ ...f, model_reasoning_effort: e.target.value }))
             }
-            className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm
-                       text-gray-200 focus:outline-none focus:border-blue-500 transition-colors"
+            className="w-full bg-surface-2 border border-line rounded-lg px-3 py-2 text-sm
+                       text-ink focus:outline-none focus:border-lavender transition-colors"
           >
             {REASONING_EFFORT_OPTIONS.map((opt) => (
               <option key={opt} value={opt}>
@@ -568,14 +568,14 @@ function ModelServiceSection() {
               </option>
             ))}
           </select>
-          <p className="text-xs text-gray-600 mt-0.5">
+          <p className="text-xs text-ink-dim mt-0.5">
             保存时同步写入 config.toml 和应用设置
           </p>
         </div>
 
         {/* API Key */}
         <div>
-          <label className="block text-xs text-gray-500 mb-1">
+          <label className="block text-xs text-ink-dim mb-1">
             API Key{' '}
             {cfg?.has_api_key && (
               <span className="text-green-600 ml-1">（已设置）</span>
@@ -587,11 +587,11 @@ function ModelServiceSection() {
             onChange={(e) => setForm((f) => ({ ...f, api_key: e.target.value }))}
             placeholder={keyPlaceholder}
             autoComplete="new-password"
-            className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm
-                       text-gray-200 placeholder-gray-500 focus:outline-none focus:border-blue-500
+            className="w-full bg-surface-2 border border-line rounded-lg px-3 py-2 text-sm
+                       text-ink placeholder-ink-dim focus:outline-none focus:border-lavender
                        transition-colors"
           />
-          <p className="text-xs text-gray-600 mt-0.5">
+          <p className="text-xs text-ink-dim mt-0.5">
             留空=不修改；写入 auth.json（无 BOM UTF-8，不入数据库）
           </p>
         </div>
@@ -602,7 +602,7 @@ function ModelServiceSection() {
         <button
           onClick={handleSave}
           disabled={saving}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700
+          className="px-4 py-2 bg-sakura hover:bg-sakura disabled:bg-elevated
                      text-white text-sm rounded-lg transition-colors"
         >
           {saving ? '保存中…' : '保存配置'}
@@ -610,8 +610,8 @@ function ModelServiceSection() {
         <button
           onClick={handleTest}
           disabled={testing}
-          className="px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800
-                     text-gray-200 text-sm rounded-lg transition-colors"
+          className="px-4 py-2 bg-elevated hover:bg-elevated disabled:bg-surface-2
+                     text-ink text-sm rounded-lg transition-colors"
         >
           {testing ? '测试中…' : '测试连通'}
         </button>
@@ -751,13 +751,13 @@ function EngineSection() {
       {/* Engine status */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+          <h3 className="text-xs font-semibold text-ink-muted uppercase tracking-wider">
             引擎状态
           </h3>
           <button
             onClick={detect}
             disabled={detecting}
-            className="text-xs text-blue-400 hover:text-blue-300 disabled:text-gray-600 transition-colors"
+            className="text-xs text-sky hover:text-sky disabled:text-ink-dim transition-colors"
           >
             {detecting ? '检测中…' : '重新检测'}
           </button>
@@ -765,16 +765,16 @@ function EngineSection() {
 
         <div className="space-y-2">
           {/* Codex */}
-          <div className="flex items-center justify-between bg-gray-900 rounded-lg px-3 py-2.5">
+          <div className="flex items-center justify-between bg-surface rounded-lg px-3 py-2.5">
             <div className="flex items-center gap-2.5">
               <span
                 className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                  codexEngine?.available ? 'bg-green-400' : 'bg-gray-600'
+                  codexEngine?.available ? 'bg-green-400' : 'bg-elevated'
                 }`}
               />
-              <span className="text-sm font-medium text-gray-200">Codex</span>
+              <span className="text-sm font-medium text-ink">Codex</span>
             </div>
-            <span className="text-xs text-gray-400">
+            <span className="text-xs text-ink-muted">
               {detecting
                 ? '…'
                 : codexEngine?.available
@@ -784,14 +784,14 @@ function EngineSection() {
           </div>
 
           {/* Claude (coming soon) */}
-          <div className="flex items-center justify-between bg-gray-900 rounded-lg px-3 py-2.5 opacity-50">
+          <div className="flex items-center justify-between bg-surface rounded-lg px-3 py-2.5 opacity-50">
             <div className="flex items-center gap-2.5">
               <span
                 className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                  claudeEngine?.available ? 'bg-green-400' : 'bg-gray-600'
+                  claudeEngine?.available ? 'bg-green-400' : 'bg-elevated'
                 }`}
               />
-              <span className="text-sm font-medium text-gray-200">Claude</span>
+              <span className="text-sm font-medium text-ink">Claude</span>
             </div>
             <span className="text-xs text-yellow-600 bg-yellow-900/30 px-1.5 py-0.5 rounded">
               即将支持
@@ -802,7 +802,7 @@ function EngineSection() {
 
       {/* Agent engine mode (Codex CLI vs embedded engine) */}
       <div>
-        <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+        <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wider mb-2">
           Agent 引擎
         </label>
         <div className="space-y-1.5">
@@ -814,9 +814,9 @@ function EngineSection() {
               checked={engineMode === 'codex-cli'}
               onChange={() => handleEngineModeChange('codex-cli')}
               disabled={switchingMode}
-              className="accent-blue-500"
+              className="accent-sakura"
             />
-            <span className="text-sm text-gray-200">Codex CLI（需已安装 codex）</span>
+            <span className="text-sm text-ink">Codex CLI（需已安装 codex）</span>
           </label>
           <label className="flex items-center gap-2 cursor-pointer">
             <input
@@ -826,22 +826,22 @@ function EngineSection() {
               checked={engineMode === 'embedded'}
               onChange={() => handleEngineModeChange('embedded')}
               disabled={switchingMode}
-              className="accent-blue-500"
+              className="accent-sakura"
             />
-            <span className="text-sm text-gray-200">内置引擎（推荐）</span>
+            <span className="text-sm text-ink">内置引擎（推荐）</span>
           </label>
         </div>
-        <p className="text-xs text-gray-500 mt-1.5">
+        <p className="text-xs text-ink-dim mt-1.5">
           切换即生效于下次派发的会话；当前正在运行的会话不受影响。
         </p>
 
         {/* Embedded engine readiness */}
-        <div className="mt-3 bg-gray-900 border border-gray-700 rounded-lg p-3 space-y-2">
+        <div className="mt-3 bg-surface border border-line rounded-lg p-3 space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-gray-400">内置引擎状态</span>
+            <span className="text-xs font-medium text-ink-muted">内置引擎状态</span>
             <button
               onClick={loadEmbeddedStatus}
-              className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+              className="text-xs text-sky hover:text-sky transition-colors"
             >
               重新检测
             </button>
@@ -855,11 +855,11 @@ function EngineSection() {
               }`}
             />
             <div className="min-w-0">
-              <p className="text-xs text-gray-300">引擎可执行文件</p>
+              <p className="text-xs text-ink-muted">引擎可执行文件</p>
               {embeddedStatus == null ? (
-                <p className="text-xs text-gray-600">检测中…</p>
+                <p className="text-xs text-ink-dim">检测中…</p>
               ) : embeddedStatus.engine_bin_found ? (
-                <p className="text-xs text-gray-500 font-mono break-all">
+                <p className="text-xs text-ink-dim font-mono break-all">
                   {embeddedStatus.engine_bin_path}
                 </p>
               ) : (
@@ -878,11 +878,11 @@ function EngineSection() {
               }`}
             />
             <div className="min-w-0">
-              <p className="text-xs text-gray-300">codex.exe 探测</p>
+              <p className="text-xs text-ink-muted">codex.exe 探测</p>
               {embeddedStatus == null ? (
-                <p className="text-xs text-gray-600">检测中…</p>
+                <p className="text-xs text-ink-dim">检测中…</p>
               ) : embeddedStatus.codex_found ? (
-                <p className="text-xs text-gray-500 font-mono break-all">
+                <p className="text-xs text-ink-dim font-mono break-all">
                   {embeddedStatus.codex_exe_path}
                 </p>
               ) : (
@@ -898,7 +898,7 @@ function EngineSection() {
 
       {/* Default workdir */}
       <div>
-        <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+        <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wider mb-2">
           默认工作目录
         </label>
         <div className="flex gap-2">
@@ -914,19 +914,19 @@ function EngineSection() {
               }
             }}
             placeholder="选择或输入目录路径…"
-            className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200
-                       placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors"
+            className="flex-1 bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink
+                       placeholder-ink-dim focus:outline-none focus:border-lavender transition-colors"
           />
           <button
             onClick={pickWorkdir}
-            className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-gray-200 text-sm rounded-lg
+            className="px-3 py-2 bg-elevated hover:bg-elevated text-ink text-sm rounded-lg
                        transition-colors whitespace-nowrap"
           >
             选择目录
           </button>
         </div>
         {currentWorkdir && (
-          <p className="text-xs text-gray-500 mt-1">
+          <p className="text-xs text-ink-dim mt-1">
             新会话/新任务的工作目录默认值
           </p>
         )}
@@ -934,36 +934,36 @@ function EngineSection() {
 
       {/* Confirmation policy */}
       <div>
-        <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">
+        <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wider mb-1">
           确认策略
         </label>
-        <p className="text-xs text-gray-500 mb-2">
+        <p className="text-xs text-ink-dim mb-2">
           即将生效 — 存储当前策略并在 Chat 页展示徽标，拦截逻辑将在后续版本接入。
         </p>
         <select
           value={currentPolicy}
           onChange={(e) => saveSetting('confirmation_policy', e.target.value)}
-          className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm
-                     text-gray-200 focus:outline-none focus:border-blue-500 transition-colors"
+          className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm
+                     text-ink focus:outline-none focus:border-lavender transition-colors"
         >
           <option value="auto">自动执行</option>
           <option value="per_file">逐文件批准</option>
         </select>
         {saving['confirmation_policy'] && (
-          <p className="text-xs text-gray-500 mt-1">保存中…</p>
+          <p className="text-xs text-ink-dim mt-1">保存中…</p>
         )}
       </div>
 
       {/* Reasoning effort */}
       <div>
-        <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+        <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wider mb-2">
           推理深度 (reasoning effort)
         </label>
         <select
           value={currentEffort}
           onChange={(e) => saveSetting('reasoning_effort', e.target.value)}
-          className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm
-                     text-gray-200 focus:outline-none focus:border-blue-500 transition-colors"
+          className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm
+                     text-ink focus:outline-none focus:border-lavender transition-colors"
         >
           {REASONING_EFFORT_OPTIONS.map((opt) => (
             <option key={opt} value={opt}>
@@ -971,11 +971,11 @@ function EngineSection() {
             </option>
           ))}
         </select>
-        <p className="text-xs text-gray-500 mt-1">
-          已生效：新 Agent 会话和跟进回复将以 <code className="text-gray-400">-c model_reasoning_effort={currentEffort}</code> 启动 Codex
+        <p className="text-xs text-ink-dim mt-1">
+          已生效：新 Agent 会话和跟进回复将以 <code className="text-ink-muted">-c model_reasoning_effort={currentEffort}</code> 启动 Codex
         </p>
         {saving['reasoning_effort'] && (
-          <p className="text-xs text-blue-400 mt-1">已保存</p>
+          <p className="text-xs text-sky mt-1">已保存</p>
         )}
       </div>
 
@@ -1078,35 +1078,35 @@ function McpSection() {
 
   return (
     <div className="space-y-4">
-      <p className="text-xs text-gray-500 leading-relaxed">
+      <p className="text-xs text-ink-dim leading-relaxed">
         管理 Codex CLI 的 MCP 服务器配置（
-        <code className="text-gray-400">~/.codex/config.toml</code>）。
+        <code className="text-ink-muted">~/.codex/config.toml</code>）。
         修改对新会话生效，写入前自动备份 config.toml.bak。
       </p>
 
       {/* Server list */}
       {loading ? (
-        <p className="text-xs text-gray-500">加载中…</p>
+        <p className="text-xs text-ink-dim">加载中…</p>
       ) : servers.length === 0 ? (
-        <p className="text-xs text-gray-500 italic">暂无 MCP 服务器</p>
+        <p className="text-xs text-ink-dim italic">暂无 MCP 服务器</p>
       ) : (
         <div className="space-y-2">
           {servers.map((s) => (
             <div
               key={s.name}
-              className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2.5"
+              className="bg-surface border border-line rounded-lg px-3 py-2.5"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-200">{s.name}</p>
-                  <p className="text-xs text-gray-500 truncate">
+                  <p className="text-sm font-semibold text-ink">{s.name}</p>
+                  <p className="text-xs text-ink-dim truncate">
                     {s.command}
                     {s.args.length > 0 && (
-                      <span className="text-gray-600"> {s.args.join(' ')}</span>
+                      <span className="text-ink-dim"> {s.args.join(' ')}</span>
                     )}
                   </p>
                   {Object.keys(s.env).length > 0 && (
-                    <p className="text-xs text-gray-600">
+                    <p className="text-xs text-ink-dim">
                       env: {Object.keys(s.env).join(', ')}
                     </p>
                   )}
@@ -1123,7 +1123,7 @@ function McpSection() {
                       </button>
                       <button
                         onClick={() => setConfirmDelete(null)}
-                        className="text-xs text-gray-500 hover:text-gray-400"
+                        className="text-xs text-ink-dim hover:text-ink-muted"
                       >
                         取消
                       </button>
@@ -1131,7 +1131,7 @@ function McpSection() {
                   ) : (
                     <button
                       onClick={() => setConfirmDelete(s.name)}
-                      className="text-xs text-gray-600 hover:text-red-400 transition-colors"
+                      className="text-xs text-ink-dim hover:text-red-400 transition-colors"
                     >
                       删除
                     </button>
@@ -1145,25 +1145,25 @@ function McpSection() {
 
       {/* Add server form */}
       {showAdd ? (
-        <div className="bg-gray-900 border border-gray-700 rounded-lg p-3 space-y-3">
-          <h4 className="text-xs font-semibold text-gray-300">添加 MCP 服务器</h4>
+        <div className="bg-surface border border-line rounded-lg p-3 space-y-3">
+          <h4 className="text-xs font-semibold text-ink-muted">添加 MCP 服务器</h4>
           {formError && (
             <p className="text-xs text-red-400">{formError}</p>
           )}
           <div className="space-y-2">
             <div>
-              <label className="block text-xs text-gray-500 mb-1">名称</label>
+              <label className="block text-xs text-ink-dim mb-1">名称</label>
               <input
                 type="text"
                 value={form.name}
                 onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                 placeholder="my-mcp-server"
-                className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1.5 text-xs
-                           text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500"
+                className="w-full bg-surface-2 border border-line rounded px-2 py-1.5 text-xs
+                           text-ink placeholder-ink-dim focus:outline-none focus:border-lavender"
               />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">命令</label>
+              <label className="block text-xs text-ink-dim mb-1">命令</label>
               <input
                 type="text"
                 value={form.command}
@@ -1171,12 +1171,12 @@ function McpSection() {
                   setForm((f) => ({ ...f, command: e.target.value }))
                 }
                 placeholder="npx"
-                className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1.5 text-xs
-                           text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500"
+                className="w-full bg-surface-2 border border-line rounded px-2 py-1.5 text-xs
+                           text-ink placeholder-ink-dim focus:outline-none focus:border-lavender"
               />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">
+              <label className="block text-xs text-ink-dim mb-1">
                 参数（空格分隔）
               </label>
               <input
@@ -1186,12 +1186,12 @@ function McpSection() {
                   setForm((f) => ({ ...f, argsText: e.target.value }))
                 }
                 placeholder="-y @modelcontextprotocol/server-fetch"
-                className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1.5 text-xs
-                           text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500"
+                className="w-full bg-surface-2 border border-line rounded px-2 py-1.5 text-xs
+                           text-ink placeholder-ink-dim focus:outline-none focus:border-lavender"
               />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">
+              <label className="block text-xs text-ink-dim mb-1">
                 环境变量（每行 KEY=VALUE）
               </label>
               <textarea
@@ -1201,8 +1201,8 @@ function McpSection() {
                 }
                 rows={3}
                 placeholder="API_KEY=xxx"
-                className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1.5 text-xs
-                           text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500
+                className="w-full bg-surface-2 border border-line rounded px-2 py-1.5 text-xs
+                           text-ink placeholder-ink-dim focus:outline-none focus:border-lavender
                            resize-none"
               />
             </div>
@@ -1213,14 +1213,14 @@ function McpSection() {
                 setShowAdd(false)
                 setFormError('')
               }}
-              className="px-3 py-1.5 text-xs text-gray-400 hover:text-gray-300 transition-colors"
+              className="px-3 py-1.5 text-xs text-ink-muted hover:text-ink-muted transition-colors"
             >
               取消
             </button>
             <button
               onClick={handleAdd}
               disabled={submitting}
-              className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700
+              className="px-3 py-1.5 text-xs bg-sakura hover:bg-sakura disabled:bg-elevated
                          text-white rounded transition-colors"
             >
               {submitting ? '添加中…' : '添加'}
@@ -1230,8 +1230,8 @@ function McpSection() {
       ) : (
         <button
           onClick={() => setShowAdd(true)}
-          className="w-full py-2 border border-dashed border-gray-700 hover:border-gray-500
-                     rounded-lg text-xs text-gray-500 hover:text-gray-400 transition-colors"
+          className="w-full py-2 border border-dashed border-line hover:border-line-strong
+                     rounded-lg text-xs text-ink-dim hover:text-ink-muted transition-colors"
         >
           + 添加 MCP 服务器
         </button>
@@ -1362,15 +1362,15 @@ function FeishuSection() {
       {/* 开关 */}
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-medium text-gray-200">启用飞书推送</p>
-          <p className="text-xs text-gray-500 mt-0.5">
+          <p className="text-sm font-medium text-ink">启用飞书推送</p>
+          <p className="text-xs text-ink-dim mt-0.5">
             任务完成或失败时向指定用户发送交互卡片
           </p>
         </div>
         <button
           onClick={() => saveSetting('feishu_enabled', enabled ? 'false' : 'true')}
           className={`relative w-11 h-6 rounded-full transition-colors focus:outline-none ${
-            enabled ? 'bg-blue-500' : 'bg-gray-600'
+            enabled ? 'bg-sakura' : 'bg-elevated'
           }`}
           aria-label="Toggle Feishu notifications"
         >
@@ -1385,7 +1385,7 @@ function FeishuSection() {
       {/* Config fields */}
       <div className="space-y-3">
         <div>
-          <label className="block text-xs text-gray-500 mb-1">App ID</label>
+          <label className="block text-xs text-ink-dim mb-1">App ID</label>
           <input
             type="text"
             value={settings['feishu_app_id'] ?? ''}
@@ -1394,14 +1394,14 @@ function FeishuSection() {
             }
             onBlur={(e) => saveSetting('feishu_app_id', e.target.value)}
             placeholder="cli_xxxxxxxxxxxxxxxx"
-            className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm
-                       text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500
+            className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm
+                       text-ink placeholder-ink-dim focus:outline-none focus:border-lavender
                        transition-colors"
           />
         </div>
 
         <div>
-          <label className="block text-xs text-gray-500 mb-1">App Secret</label>
+          <label className="block text-xs text-ink-dim mb-1">App Secret</label>
           <input
             type="password"
             value={settings['feishu_app_secret'] ?? ''}
@@ -1410,19 +1410,19 @@ function FeishuSection() {
             }
             onBlur={(e) => saveSetting('feishu_app_secret', e.target.value)}
             placeholder="••••••••••••••••"
-            className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm
-                       text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500
+            className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm
+                       text-ink placeholder-ink-dim focus:outline-none focus:border-lavender
                        transition-colors"
           />
         </div>
 
         <div>
-          <label className="block text-xs text-gray-500 mb-1">接收者 ID 类型</label>
+          <label className="block text-xs text-ink-dim mb-1">接收者 ID 类型</label>
           <select
             value={settings['feishu_receive_id_type'] ?? 'open_id'}
             onChange={(e) => saveSetting('feishu_receive_id_type', e.target.value)}
-            className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm
-                       text-gray-200 focus:outline-none focus:border-blue-500 transition-colors"
+            className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm
+                       text-ink focus:outline-none focus:border-lavender transition-colors"
           >
             <option value="open_id">open_id（个人）</option>
             <option value="chat_id">chat_id（群组）</option>
@@ -1430,7 +1430,7 @@ function FeishuSection() {
         </div>
 
         <div>
-          <label className="block text-xs text-gray-500 mb-1">接收者 ID</label>
+          <label className="block text-xs text-ink-dim mb-1">接收者 ID</label>
           <input
             type="text"
             value={settings['feishu_receive_id'] ?? ''}
@@ -1439,8 +1439,8 @@ function FeishuSection() {
             }
             onBlur={(e) => saveSetting('feishu_receive_id', e.target.value)}
             placeholder="ou_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-            className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm
-                       text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500
+            className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm
+                       text-ink placeholder-ink-dim focus:outline-none focus:border-lavender
                        transition-colors"
           />
         </div>
@@ -1451,7 +1451,7 @@ function FeishuSection() {
         <button
           onClick={sendTest}
           disabled={testing}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 text-white
+          className="px-4 py-2 bg-sakura hover:bg-sakura disabled:bg-elevated text-white
                      text-sm rounded-lg transition-colors"
         >
           {testing ? '发送中…' : '发送测试卡片'}
@@ -1471,14 +1471,14 @@ function FeishuSection() {
       <div>
         <button
           onClick={showLogs ? () => setShowLogs(false) : loadLogs}
-          className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+          className="text-xs text-sky hover:text-sky transition-colors"
         >
           {showLogs ? '收起推送日志 ▲' : '最近推送日志 ▼'}
         </button>
         {showLogs && (
-          <div className="mt-2 bg-gray-900 rounded-lg p-3 space-y-1 max-h-48 overflow-y-auto">
+          <div className="mt-2 bg-surface rounded-lg p-3 space-y-1 max-h-48 overflow-y-auto">
             {logs.length === 0 ? (
-              <p className="text-xs text-gray-600 italic">暂无日志</p>
+              <p className="text-xs text-ink-dim italic">暂无日志</p>
             ) : (
               logs.map((entry, i) => (
                 <p
@@ -1496,24 +1496,24 @@ function FeishuSection() {
       </div>
 
       {/* ── 指派通道（长连接）sub-block ─────────────────────────────────── */}
-      <div className="bg-gray-900 border border-gray-700 rounded-xl p-4 space-y-4">
-        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+      <div className="glass rounded-card p-4 space-y-4">
+        <h3 className="text-xs font-semibold text-ink-muted uppercase tracking-wider">
           指派通道（长连接）
         </h3>
-        <p className="text-xs text-gray-500 -mt-2 leading-relaxed">
+        <p className="text-xs text-ink-dim -mt-2 leading-relaxed">
           手机给飞书机器人发一句话 → 桌面端自动建 todo 任务卡并回复确认卡片。
           需本机安装 Node.js；飞书应用需订阅{' '}
-          <code className="text-gray-400">im.message.receive_v1</code> 并启用长连接模式。
+          <code className="text-ink-muted">im.message.receive_v1</code> 并启用长连接模式。
         </p>
 
         {/* Node detection */}
         <div className="flex items-center gap-2">
           <span
             className={`w-2 h-2 rounded-full flex-shrink-0 ${
-              nodeVersion ? 'bg-green-400' : nodeVersion === null ? 'bg-red-500' : 'bg-gray-600'
+              nodeVersion ? 'bg-green-400' : nodeVersion === null ? 'bg-red-500' : 'bg-elevated'
             }`}
           />
-          <span className="text-xs text-gray-400">
+          <span className="text-xs text-ink-muted">
             {nodeVersion === undefined
               ? 'Node 检测中…'
               : nodeVersion
@@ -1525,13 +1525,13 @@ function FeishuSection() {
         {/* Auto-start toggle */}
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-xs font-medium text-gray-300">应用启动时自动开启</p>
-            <p className="text-xs text-gray-600 mt-0.5">需同时启用飞书推送且已配置凭据</p>
+            <p className="text-xs font-medium text-ink-muted">应用启动时自动开启</p>
+            <p className="text-xs text-ink-dim mt-0.5">需同时启用飞书推送且已配置凭据</p>
           </div>
           <button
             onClick={() => saveSetting('bridge_autostart', bridgeAutostart ? 'false' : 'true')}
             className={`relative w-9 h-5 rounded-full transition-colors focus:outline-none ${
-              bridgeAutostart ? 'bg-blue-500' : 'bg-gray-600'
+              bridgeAutostart ? 'bg-sakura' : 'bg-elevated'
             }`}
             aria-label="Toggle bridge autostart"
           >
@@ -1551,7 +1551,7 @@ function FeishuSection() {
                 ? 'bg-green-900/40 text-green-300'
                 : bridgeStatus.state === 'error'
                   ? 'bg-red-900/40 text-red-300'
-                  : 'bg-gray-800 text-gray-500'
+                  : 'bg-surface-2 text-ink-dim'
             }`}
           >
             <span
@@ -1560,7 +1560,7 @@ function FeishuSection() {
                   ? 'bg-green-400'
                   : bridgeStatus.state === 'error'
                     ? 'bg-red-400'
-                    : 'bg-gray-600'
+                    : 'bg-elevated'
               }`}
             />
             {bridgeStatus.state === 'running'
@@ -1579,8 +1579,8 @@ function FeishuSection() {
           <button
             onClick={handleBridgeStart}
             disabled={bridgeStarting || bridgeStopping || !nodeVersion}
-            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700
-                       disabled:text-gray-500 text-white text-xs rounded-lg transition-colors"
+            className="px-3 py-1.5 bg-sakura hover:bg-sakura disabled:bg-elevated
+                       disabled:text-ink-dim text-white text-xs rounded-lg transition-colors"
             title={!nodeVersion ? '需要先安装 Node.js' : undefined}
           >
             {bridgeStarting ? '启动中…' : '启动'}
@@ -1588,14 +1588,14 @@ function FeishuSection() {
           <button
             onClick={handleBridgeStop}
             disabled={bridgeStopping || bridgeStarting || bridgeStatus.state === 'stopped'}
-            className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800
-                       disabled:text-gray-600 text-gray-200 text-xs rounded-lg transition-colors"
+            className="px-3 py-1.5 bg-elevated hover:bg-elevated disabled:bg-surface-2
+                       disabled:text-ink-dim text-ink text-xs rounded-lg transition-colors"
           >
             {bridgeStopping ? '停止中…' : '停止'}
           </button>
           <button
             onClick={loadBridgeStatus}
-            className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-400 transition-colors"
+            className="px-3 py-1.5 text-xs text-ink-dim hover:text-ink-muted transition-colors"
           >
             刷新
           </button>
@@ -1605,14 +1605,14 @@ function FeishuSection() {
         <div>
           <button
             onClick={() => setShowBridgeLogs((v) => !v)}
-            className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+            className="text-xs text-sky hover:text-sky transition-colors"
           >
             {showBridgeLogs ? 'Sidecar 日志 ▲' : 'Sidecar 日志 ▼'}
           </button>
           {showBridgeLogs && (
-            <div className="mt-2 bg-gray-950 rounded-lg p-3 space-y-0.5 max-h-40 overflow-y-auto">
+            <div className="mt-2 bg-bg rounded-lg p-3 space-y-0.5 max-h-40 overflow-y-auto">
               {bridgeStatus.logs.length === 0 ? (
-                <p className="text-xs text-gray-600 italic">暂无日志</p>
+                <p className="text-xs text-ink-dim italic">暂无日志</p>
               ) : (
                 bridgeStatus.logs.map((entry, i) => (
                   <p
@@ -1622,7 +1622,7 @@ function FeishuSection() {
                         ? 'text-red-400'
                         : entry.includes('[WARN]')
                           ? 'text-yellow-400'
-                          : 'text-gray-400'
+                          : 'text-ink-muted'
                     }`}
                   >
                     {entry}
@@ -1638,21 +1638,21 @@ function FeishuSection() {
       <div>
         <button
           onClick={() => setShowGuide(!showGuide)}
-          className="text-xs text-gray-500 hover:text-gray-400 transition-colors"
+          className="text-xs text-ink-dim hover:text-ink-muted transition-colors"
         >
           {showGuide ? '收起配置指引 ▲' : '如何配置 ▼'}
         </button>
         {showGuide && (
-          <div className="mt-2 bg-gray-900 rounded-lg p-3 text-xs text-gray-400 space-y-2 leading-relaxed">
+          <div className="mt-2 bg-surface rounded-lg p-3 text-xs text-ink-muted space-y-2 leading-relaxed">
             <p>
               1. 打开{' '}
-              <code className="text-gray-300">open.feishu.cn</code> →
+              <code className="text-ink-muted">open.feishu.cn</code> →
               开发者后台 → 创建企业自建应用
             </p>
             <p>2. 应用能力里开启「机器人」</p>
             <p>
               3. 权限管理开通{' '}
-              <code className="text-gray-300">im:message</code>
+              <code className="text-ink-muted">im:message</code>
               （获取与发送单聊、群组消息）并发布版本
             </p>
             <p>
@@ -1663,7 +1663,7 @@ function FeishuSection() {
             </p>
             <p>
               6. 指派通道：开发者后台 → 事件与回调 → 长连接模式：启用；
-              订阅 <code className="text-gray-300">im.message.receive_v1</code> 事件
+              订阅 <code className="text-ink-muted">im.message.receive_v1</code> 事件
             </p>
           </div>
         )}
@@ -1683,18 +1683,18 @@ function SkillsSection() {
 
   return (
     <div className="space-y-3">
-      <p className="text-xs text-gray-500 leading-relaxed">
+      <p className="text-xs text-ink-dim leading-relaxed">
         浏览并启用预置技能，快速赋能 Agent 工作流。Skills 功能即将上线。
       </p>
       {placeholders.map((p) => (
         <div
           key={p.name}
-          className="bg-gray-900 border border-gray-700/50 rounded-lg px-3 py-3 opacity-50"
+          className="bg-surface border border-line/50 rounded-lg px-3 py-3 opacity-50"
         >
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-300">{p.name}</p>
-              <p className="text-xs text-gray-500 mt-0.5">{p.desc}</p>
+              <p className="text-sm font-medium text-ink-muted">{p.name}</p>
+              <p className="text-xs text-ink-dim mt-0.5">{p.desc}</p>
             </div>
             <span className="text-xs text-yellow-600 bg-yellow-900/30 px-1.5 py-0.5 rounded">
               即将上线
@@ -1717,19 +1717,19 @@ function AgentMarketSection() {
 
   return (
     <div className="space-y-3">
-      <p className="text-xs text-gray-500 leading-relaxed">
+      <p className="text-xs text-ink-dim leading-relaxed">
         从社区市场安装预构建 Agent，一键部署到本地看板，开箱即用。Agent 市场即将上线。
       </p>
       <div className="grid grid-cols-1 gap-2">
         {cards.map((c) => (
           <div
             key={c.name}
-            className="bg-gray-900 border border-gray-700/50 rounded-lg px-3 py-3 opacity-50"
+            className="bg-surface border border-line/50 rounded-lg px-3 py-3 opacity-50"
           >
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-300">{c.name}</p>
-                <p className="text-xs text-gray-600 mt-0.5">{c.org}</p>
+                <p className="text-sm font-medium text-ink-muted">{c.name}</p>
+                <p className="text-xs text-ink-dim mt-0.5">{c.org}</p>
               </div>
               <span className="text-xs text-yellow-600 bg-yellow-900/30 px-1.5 py-0.5 rounded">
                 敬请期待
@@ -1805,15 +1805,15 @@ function WecomSection() {
       {/* 开关 */}
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-medium text-gray-200">启用企业微信推送</p>
-          <p className="text-xs text-gray-500 mt-0.5">
+          <p className="text-sm font-medium text-ink">启用企业微信推送</p>
+          <p className="text-xs text-ink-dim mt-0.5">
             任务完成或失败时向个人微信发送通知（需先扫码关注）
           </p>
         </div>
         <button
           onClick={() => saveSetting('wecom_enabled', enabled ? 'false' : 'true')}
           className={`relative w-11 h-6 rounded-full transition-colors focus:outline-none ${
-            enabled ? 'bg-blue-500' : 'bg-gray-600'
+            enabled ? 'bg-sakura' : 'bg-elevated'
           }`}
           aria-label="Toggle WeChat Work notifications"
         >
@@ -1828,7 +1828,7 @@ function WecomSection() {
       {/* Config fields */}
       <div className="space-y-3">
         <div>
-          <label className="block text-xs text-gray-500 mb-1">企业ID (corpid)</label>
+          <label className="block text-xs text-ink-dim mb-1">企业ID (corpid)</label>
           <input
             type="text"
             value={settings['wecom_corpid'] ?? ''}
@@ -1837,14 +1837,14 @@ function WecomSection() {
             }
             onBlur={(e) => saveSetting('wecom_corpid', e.target.value)}
             placeholder="ww_xxxxxxxxxxxxxxxx"
-            className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm
-                       text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500
+            className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm
+                       text-ink placeholder-ink-dim focus:outline-none focus:border-lavender
                        transition-colors"
           />
         </div>
 
         <div>
-          <label className="block text-xs text-gray-500 mb-1">应用 Secret (corpsecret)</label>
+          <label className="block text-xs text-ink-dim mb-1">应用 Secret (corpsecret)</label>
           <input
             type="password"
             value={settings['wecom_corpsecret'] ?? ''}
@@ -1853,14 +1853,14 @@ function WecomSection() {
             }
             onBlur={(e) => saveSetting('wecom_corpsecret', e.target.value)}
             placeholder="••••••••••••••••"
-            className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm
-                       text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500
+            className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm
+                       text-ink placeholder-ink-dim focus:outline-none focus:border-lavender
                        transition-colors"
           />
         </div>
 
         <div>
-          <label className="block text-xs text-gray-500 mb-1">AgentId</label>
+          <label className="block text-xs text-ink-dim mb-1">AgentId</label>
           <input
             type="text"
             value={settings['wecom_agentid'] ?? ''}
@@ -1869,16 +1869,16 @@ function WecomSection() {
             }
             onBlur={(e) => saveSetting('wecom_agentid', e.target.value)}
             placeholder="1000002"
-            className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm
-                       text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500
+            className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm
+                       text-ink placeholder-ink-dim focus:outline-none focus:border-lavender
                        transition-colors"
           />
         </div>
 
         <div>
-          <label className="block text-xs text-gray-500 mb-1">
+          <label className="block text-xs text-ink-dim mb-1">
             接收者 (touser)
-            <span className="ml-1 text-gray-600">— 默认 @all</span>
+            <span className="ml-1 text-ink-dim">— 默认 @all</span>
           </label>
           <input
             type="text"
@@ -1888,16 +1888,16 @@ function WecomSection() {
             }
             onBlur={(e) => saveSetting('wecom_touser', e.target.value)}
             placeholder="@all 或成员账号"
-            className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm
-                       text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500
+            className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm
+                       text-ink placeholder-ink-dim focus:outline-none focus:border-lavender
                        transition-colors"
           />
         </div>
 
         <div>
-          <label className="block text-xs text-gray-500 mb-1">
+          <label className="block text-xs text-ink-dim mb-1">
             微信插件二维码链接 (wecom_qr_url)
-            <span className="ml-1 text-gray-600">— 可选</span>
+            <span className="ml-1 text-ink-dim">— 可选</span>
           </label>
           <input
             type="text"
@@ -1907,26 +1907,26 @@ function WecomSection() {
             }
             onBlur={(e) => saveSetting('wecom_qr_url', e.target.value)}
             placeholder="https://..."
-            className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm
-                       text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500
+            className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm
+                       text-ink placeholder-ink-dim focus:outline-none focus:border-lavender
                        transition-colors"
           />
         </div>
       </div>
 
       {/* QR code display */}
-      <div className="bg-gray-900 border border-gray-700 rounded-lg p-4">
-        <p className="text-xs text-gray-500 mb-3">
+      <div className="bg-surface border border-line rounded-lg p-4">
+        <p className="text-xs text-ink-dim mb-3">
           微信插件二维码 — 成员扫码后应用消息直达个人微信
         </p>
         {qrUrl ? (
           <img
             src={qrUrl}
             alt="企业微信微信插件二维码"
-            className="w-40 h-40 object-contain rounded-lg border border-gray-600"
+            className="w-40 h-40 object-contain rounded-lg border border-line"
           />
         ) : (
-          <p className="text-xs text-gray-600 italic leading-relaxed">
+          <p className="text-xs text-ink-dim italic leading-relaxed">
             在企业微信管理后台 → 我的企业 → 微信插件 页面获取邀请二维码链接，填入上方字段后此处将显示二维码。
           </p>
         )}
@@ -1937,7 +1937,7 @@ function WecomSection() {
         <button
           onClick={sendTest}
           disabled={testing}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 text-white
+          className="px-4 py-2 bg-sakura hover:bg-sakura disabled:bg-elevated text-white
                      text-sm rounded-lg transition-colors"
         >
           {testing ? '发送中…' : '发送测试消息'}
@@ -1957,14 +1957,14 @@ function WecomSection() {
       <div>
         <button
           onClick={showLogs ? () => setShowLogs(false) : loadLogs}
-          className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+          className="text-xs text-sky hover:text-sky transition-colors"
         >
           {showLogs ? '收起推送日志 ▲' : '最近推送日志 ▼'}
         </button>
         {showLogs && (
-          <div className="mt-2 bg-gray-900 rounded-lg p-3 space-y-1 max-h-48 overflow-y-auto">
+          <div className="mt-2 bg-surface rounded-lg p-3 space-y-1 max-h-48 overflow-y-auto">
             {logs.length === 0 ? (
-              <p className="text-xs text-gray-600 italic">暂无日志</p>
+              <p className="text-xs text-ink-dim italic">暂无日志</p>
             ) : (
               logs.map((entry, i) => (
                 <p
@@ -1985,25 +1985,25 @@ function WecomSection() {
       <div>
         <button
           onClick={() => setShowGuide(!showGuide)}
-          className="text-xs text-gray-500 hover:text-gray-400 transition-colors"
+          className="text-xs text-ink-dim hover:text-ink-muted transition-colors"
         >
           {showGuide ? '收起配置指引 ▲' : '如何配置 ▼'}
         </button>
         {showGuide && (
-          <div className="mt-2 bg-gray-900 rounded-lg p-3 text-xs text-gray-400 space-y-2 leading-relaxed">
+          <div className="mt-2 bg-surface rounded-lg p-3 text-xs text-ink-muted space-y-2 leading-relaxed">
             <p>
               1. 前往{' '}
-              <code className="text-gray-300">qy.weixin.qq.com</code>{' '}
+              <code className="text-ink-muted">qy.weixin.qq.com</code>{' '}
               注册企业微信（个人也可注册，免认证）
             </p>
             <p>
               2. 管理后台 → 应用管理 → 创建自建应用，记下{' '}
-              <code className="text-gray-300">AgentId</code> 和{' '}
-              <code className="text-gray-300">Secret</code>
+              <code className="text-ink-muted">AgentId</code> 和{' '}
+              <code className="text-ink-muted">Secret</code>
             </p>
             <p>
               3. 管理后台 → 我的企业，记下{' '}
-              <code className="text-gray-300">企业ID (corpid)</code>，填入上方
+              <code className="text-ink-muted">企业ID (corpid)</code>，填入上方
             </p>
             <p>
               4. 管理后台 → 我的企业 → 微信插件：开启后让成员用个人微信扫码关注，
@@ -2114,7 +2114,7 @@ function SyncSection() {
       ? 'bg-green-400'
       : state === 'connecting' || state === 'reconnecting'
         ? 'bg-yellow-400'
-        : 'bg-gray-600'
+        : 'bg-elevated'
   const stateLabel =
     state === 'connected'
       ? '已连接'
@@ -2132,8 +2132,8 @@ function SyncSection() {
   return (
     <div className="space-y-5">
       {/* Data-scope notice */}
-      <div className="bg-blue-950/30 border border-blue-900/40 rounded-lg p-3">
-        <p className="text-xs text-blue-200/90 leading-relaxed">
+      <div className="bg-sakura/30 border border-lavender/40 rounded-lg p-3">
+        <p className="text-xs text-sky/90 leading-relaxed">
           同步任务、进度与对话内容到你的手机；对话正文会同步（API 密钥绝不上传，附件仅同步文本与文件名、大图不上传）。
         </p>
       </div>
@@ -2142,25 +2142,25 @@ function SyncSection() {
         // ── Logged in ────────────────────────────────────────────────────────
         <div className="space-y-4">
           {/* Account + connection */}
-          <div className="bg-gray-900 border border-gray-700 rounded-lg p-3 space-y-3">
+          <div className="bg-surface border border-line rounded-lg p-3 space-y-3">
             <div className="flex items-center justify-between">
               <div className="min-w-0">
-                <p className="text-xs text-gray-500">账号</p>
-                <p className="text-sm font-medium text-gray-200 truncate">
+                <p className="text-xs text-ink-dim">账号</p>
+                <p className="text-sm font-medium text-ink truncate">
                   {status.username ?? '—'}
                 </p>
               </div>
-              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium bg-gray-800 text-gray-300">
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium bg-surface-2 text-ink-muted">
                 <span className={`w-1.5 h-1.5 rounded-full ${dotClass}`} />
                 {stateLabel}
               </span>
             </div>
 
             {/* Sync switch */}
-            <div className="flex items-center justify-between pt-1 border-t border-gray-800">
+            <div className="flex items-center justify-between pt-1 border-t border-line">
               <div>
-                <p className="text-sm font-medium text-gray-200">启用同步</p>
-                <p className="text-xs text-gray-500 mt-0.5">
+                <p className="text-sm font-medium text-ink">启用同步</p>
+                <p className="text-xs text-ink-dim mt-0.5">
                   关闭后停止推送并断开长连接
                 </p>
               </div>
@@ -2168,7 +2168,7 @@ function SyncSection() {
                 onClick={toggleEnabled}
                 disabled={toggling}
                 className={`relative w-11 h-6 rounded-full transition-colors focus:outline-none ${
-                  status.enabled ? 'bg-blue-500' : 'bg-gray-600'
+                  status.enabled ? 'bg-sakura' : 'bg-elevated'
                 }`}
                 aria-label="Toggle mobile sync"
               >
@@ -2187,11 +2187,11 @@ function SyncSection() {
 
           {/* Device list */}
           <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+            <p className="text-xs font-semibold text-ink-muted uppercase tracking-wider mb-2">
               已登录设备（{status.device_count}）
             </p>
             {status.devices.length === 0 ? (
-              <p className="text-xs text-gray-600 italic">
+              <p className="text-xs text-ink-dim italic">
                 暂无其他设备。在手机上安装 AgentBoard App 并登录同一账号即可实时查看。
               </p>
             ) : (
@@ -2199,10 +2199,10 @@ function SyncSection() {
                 {status.devices.map((d) => (
                   <div
                     key={d.id}
-                    className="flex items-center justify-between bg-gray-900 rounded-lg px-3 py-2"
+                    className="flex items-center justify-between bg-surface rounded-lg px-3 py-2"
                   >
-                    <span className="text-sm text-gray-200 truncate">{d.name || '未命名设备'}</span>
-                    <span className="text-xs text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded flex-shrink-0">
+                    <span className="text-sm text-ink truncate">{d.name || '未命名设备'}</span>
+                    <span className="text-xs text-ink-dim bg-surface-2 px-1.5 py-0.5 rounded flex-shrink-0">
                       {kindLabel(d.kind)}
                     </span>
                   </div>
@@ -2212,8 +2212,8 @@ function SyncSection() {
           </div>
 
           {/* Guidance */}
-          <div className="bg-gray-900 rounded-lg p-3">
-            <p className="text-xs text-gray-400 leading-relaxed">
+          <div className="bg-surface rounded-lg p-3">
+            <p className="text-xs text-ink-muted leading-relaxed">
               在手机上安装 AgentBoard App 并登录同一账号，即可实时查看任务进度并远程派发。
             </p>
           </div>
@@ -2222,8 +2222,8 @@ function SyncSection() {
           <button
             onClick={doLogout}
             disabled={submitting}
-            className="px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800
-                       text-gray-200 text-sm rounded-lg transition-colors"
+            className="px-4 py-2 bg-elevated hover:bg-elevated disabled:bg-surface-2
+                       text-ink text-sm rounded-lg transition-colors"
           >
             {submitting ? '处理中…' : '退出登录'}
           </button>
@@ -2232,35 +2232,35 @@ function SyncSection() {
       ) : (
         // ── Logged out ───────────────────────────────────────────────────────
         <div className="space-y-4">
-          <p className="text-xs text-gray-500 leading-relaxed">
+          <p className="text-xs text-ink-dim leading-relaxed">
             使用官方同步服务器登录后，桌面端会把任务与进度实时推送到你的手机。
             服务器地址固定为官方服务器，后续版本再开放自建。
           </p>
 
           <div className="space-y-3">
             <div>
-              <label className="block text-xs text-gray-500 mb-1">用户名</label>
+              <label className="block text-xs text-ink-dim mb-1">用户名</label>
               <input
                 type="text"
                 value={form.username}
                 onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
                 placeholder="3-32 位（字母/数字/_.-）"
                 autoComplete="username"
-                className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm
-                           text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500
+                className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm
+                           text-ink placeholder-ink-dim focus:outline-none focus:border-lavender
                            transition-colors"
               />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">密码</label>
+              <label className="block text-xs text-ink-dim mb-1">密码</label>
               <input
                 type="password"
                 value={form.password}
                 onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
                 placeholder="至少 8 位"
                 autoComplete="current-password"
-                className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm
-                           text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500
+                className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm
+                           text-ink placeholder-ink-dim focus:outline-none focus:border-lavender
                            transition-colors"
               />
             </div>
@@ -2270,7 +2270,7 @@ function SyncSection() {
             <button
               onClick={() => doAuth(true)}
               disabled={submitting}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700
+              className="px-4 py-2 bg-sakura hover:bg-sakura disabled:bg-elevated
                          text-white text-sm rounded-lg transition-colors"
             >
               {submitting ? '处理中…' : '注册并登录'}
@@ -2278,8 +2278,8 @@ function SyncSection() {
             <button
               onClick={() => doAuth(false)}
               disabled={submitting}
-              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800
-                         text-gray-200 text-sm rounded-lg transition-colors"
+              className="px-4 py-2 bg-elevated hover:bg-elevated disabled:bg-surface-2
+                         text-ink text-sm rounded-lg transition-colors"
             >
               {submitting ? '处理中…' : '登录'}
             </button>
@@ -2345,24 +2345,24 @@ export default function Settings() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="px-5 py-3 border-b border-gray-800 flex-shrink-0">
+      <div className="px-5 py-3 border-b border-line flex-shrink-0">
         <div className="flex items-center gap-2">
           {activeSection && (
             <button
               onClick={() => setActiveSection(null)}
-              className="text-gray-500 hover:text-gray-300 text-xs transition-colors"
+              className="text-ink-dim hover:text-ink-muted text-xs transition-colors"
             >
               ← 返回
             </button>
           )}
           <div>
-            <h1 className="text-base font-semibold text-gray-100">
+            <h1 className="text-lg font-bold text-gradient">
               {activeSection
                 ? SECTIONS.find((s) => s.id === activeSection)?.title ?? '设置'
                 : '设置'}
             </h1>
             {!activeSection && (
-              <p className="text-xs text-gray-500 mt-0.5">配置引擎、工具与技能</p>
+              <p className="text-xs text-ink-dim mt-0.5">配置引擎、工具与技能</p>
             )}
           </div>
         </div>
@@ -2377,19 +2377,18 @@ export default function Settings() {
               <button
                 key={section.id}
                 onClick={() => setActiveSection(section.id)}
-                className="w-full text-left bg-gray-800 border border-gray-700 rounded-xl p-4
-                           hover:border-gray-600 transition-colors"
+                className="w-full text-left glass rounded-card p-4 transition-all duration-150 hover:-translate-y-0.5 hover:border-line-strong"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
-                    <h2 className="text-sm font-semibold text-gray-100">
+                    <h2 className="text-sm font-semibold text-ink">
                       {section.title}
                     </h2>
-                    <p className="text-xs text-gray-400 mt-1 leading-relaxed">
+                    <p className="text-xs text-ink-muted mt-1 leading-relaxed">
                       {section.description}
                     </p>
                   </div>
-                  <span className="flex-shrink-0 text-gray-500 text-xs mt-0.5">→</span>
+                  <span className="flex-shrink-0 text-ink-dim text-xs mt-0.5">→</span>
                 </div>
               </button>
             ))}

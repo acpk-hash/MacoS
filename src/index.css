@@ -2,6 +2,38 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ══════════════════════════════════════════════════════════════════════════
+   v0.6 二次元设计系统（Sakura Dream）— 基础层
+   色值以 docs/v0.6-design-system-anime.md 为准。
+   ══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --bg: #14121f;
+  --surface: #1e1b2e;
+  --surface-2: #272338;
+  --elevated: #2f2a44;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(180, 150, 255, 0.22);
+
+  --sakura: #ff7fbf;
+  --lavender: #b58fff;
+  --sky: #7fb0ff;
+  --mint: #7fe7c4;
+  --gold: #ffd88f;
+  --coral: #ff8b9a;
+
+  --text: #ece8fb;
+  --text-muted: #a49dc7;
+  --text-dim: #6f6a8f;
+
+  --grad-primary: linear-gradient(135deg, #ff7fbf 0%, #b58fff 50%, #7fb0ff 100%);
+  /* 大背景弥散光：顶部粉、底部蓝，极低透明度叠在 --bg 上 */
+  --grad-soft:
+    radial-gradient(120% 80% at 15% -10%, rgba(255, 127, 191, 0.12) 0%, transparent 55%),
+    radial-gradient(120% 90% at 100% 0%, rgba(181, 143, 255, 0.1) 0%, transparent 55%),
+    radial-gradient(140% 100% at 50% 120%, rgba(127, 176, 255, 0.1) 0%, transparent 60%);
+}
+
 *,
 *::before,
 *::after {
@@ -19,20 +51,127 @@ body,
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', sans-serif;
+  font-family: 'M PLUS Rounded 1c', 'Varela Round', ui-rounded, 'PingFang SC',
+    'Microsoft YaHei', system-ui, sans-serif;
+  color: var(--text);
+  background-color: var(--bg);
+  /* 弥散霓光 + 极淡星点纹理（透明度 < 5%） */
+  background-image: var(--grad-soft),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60'%3E%3Ccircle cx='8' cy='12' r='0.7' fill='%23ffffff' opacity='0.04'/%3E%3Ccircle cx='40' cy='30' r='0.6' fill='%23ffffff' opacity='0.035'/%3E%3Ccircle cx='24' cy='48' r='0.5' fill='%23ffffff' opacity='0.03'/%3E%3C/svg%3E");
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* ── Workflow canvas (React Flow) dark overrides ─────────────────────────── */
+/* ── 玻璃拟态工具类 ─────────────────────────────────────────────────────── */
+@layer components {
+  .glass {
+    background: rgba(30, 27, 46, 0.72);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid var(--border);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+  .glass-strong {
+    background: rgba(39, 35, 56, 0.82);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--border-strong);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+}
 
-/* Breathing glow for running nodes / status dots. */
+/* ── 发光工具类 ─────────────────────────────────────────────────────────── */
+@layer utilities {
+  .glow-primary {
+    box-shadow: 0 4px 20px rgba(255, 127, 191, 0.28);
+  }
+  .glow-sky {
+    box-shadow: 0 0 10px rgba(127, 176, 255, 0.45);
+  }
+  .glow-mint {
+    box-shadow: 0 0 10px rgba(127, 231, 196, 0.45);
+  }
+  .glow-gold {
+    box-shadow: 0 0 10px rgba(255, 216, 143, 0.45);
+  }
+  .glow-coral {
+    box-shadow: 0 0 10px rgba(255, 139, 154, 0.45);
+  }
+  .glow-lavender {
+    box-shadow: 0 0 10px rgba(181, 143, 255, 0.45);
+  }
+
+  /* 渐变文字（hero / 大标题 / logo） */
+  .text-gradient {
+    background: var(--grad-primary);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+
+  /* 渐变描边（用于高亮项/进度条底） */
+  .border-gradient {
+    border: 1px solid transparent;
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      var(--grad-primary) border-box;
+  }
+
+  /* 极淡渐变分隔线 */
+  .divider-soft {
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(181, 143, 255, 0.25),
+      transparent
+    );
+    border: 0;
+  }
+}
+
+/* ── 柔和滚动条 ─────────────────────────────────────────────────────────── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(181, 143, 255, 0.28) transparent;
+}
+*::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(181, 143, 255, 0.24);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(181, 143, 255, 0.4);
+  background-clip: padding-box;
+}
+
+/* ── 尊重 prefers-reduced-motion ────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* ── Workflow canvas (React Flow) — 二次元配色覆盖 ───────────────────────── */
+
 @keyframes canvasBreathe {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.55);
+    box-shadow: 0 0 0 0 rgba(127, 176, 255, 0.5);
   }
   50% {
-    box-shadow: 0 0 14px 4px rgba(59, 130, 246, 0.55);
+    box-shadow: 0 0 14px 4px rgba(127, 176, 255, 0.5);
   }
 }
 
@@ -40,38 +179,34 @@ body {
   animation: canvasBreathe 1.6s ease-in-out infinite;
 }
 
-/* Custom nodes provide their own card; strip React Flow default chrome. */
 .react-flow__node {
   font-size: inherit;
   color: inherit;
 }
 
-/* Edges: dim by default, animated edges use the moving dash. */
 .react-flow__edge-path {
-  stroke: #475569;
+  stroke: #4a4463;
   stroke-width: 1.5;
 }
 .react-flow__edge.animated .react-flow__edge-path {
-  stroke: #3b82f6;
+  stroke: #7fb0ff;
 }
 
-/* Selected node ring. */
 .react-flow__node.selected > div {
-  outline: 2px solid #93c5fd;
+  outline: 2px solid #b58fff;
   outline-offset: 2px;
 }
 
-/* Controls + MiniMap dark theme. */
 .react-flow__controls-button {
-  background: #1f2937;
-  border-bottom: 1px solid #374151;
-  color: #e5e7eb;
-  fill: #e5e7eb;
+  background: #272338;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  color: #ece8fb;
+  fill: #ece8fb;
 }
 .react-flow__controls-button:hover {
-  background: #374151;
+  background: #2f2a44;
 }
 .react-flow__attribution {
   background: transparent;
-  color: #4b5563;
+  color: #6f6a8f;
 }

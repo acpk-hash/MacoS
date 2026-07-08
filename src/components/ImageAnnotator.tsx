@@ -356,10 +356,10 @@ export default function ImageAnnotator({
   return (
     <div className="fixed inset-0 z-[70] bg-black/85 flex flex-col" onClick={onClose}>
       <div
-        className="flex items-center justify-between px-4 py-2.5 flex-shrink-0 border-b border-gray-800"
+        className="flex items-center justify-between px-4 py-2.5 flex-shrink-0 border-b border-line"
         onClick={(e) => e.stopPropagation()}
       >
-        <span className="text-sm text-gray-200 font-medium">图像标注</span>
+        <span className="text-sm text-ink font-medium">图像标注</span>
         <div className="flex items-center gap-2">
           {!showPrompt && (
             <button
@@ -368,14 +368,14 @@ export default function ImageAnnotator({
                 setShowPrompt(true)
               }}
               disabled={!imgReady}
-              className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs disabled:opacity-50 transition-colors"
+              className="px-3 py-1.5 rounded-lg bg-sakura hover:bg-sakura text-white text-xs disabled:opacity-50 transition-colors"
             >
               基于标注修改
             </button>
           )}
           <button
             onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 transition-colors"
+            className="w-8 h-8 flex items-center justify-center rounded-lg bg-surface-2 hover:bg-elevated text-ink border border-line transition-colors"
             title="关闭 (Esc)"
           >
             ✕
@@ -384,7 +384,7 @@ export default function ImageAnnotator({
       </div>
 
       <div
-        className="flex flex-wrap items-center gap-2 px-4 py-2 flex-shrink-0 border-b border-gray-800 bg-gray-900/40"
+        className="flex flex-wrap items-center gap-2 px-4 py-2 flex-shrink-0 border-b border-line bg-surface/40"
         onClick={(e) => e.stopPropagation()}
       >
         {tools.map((t) => (
@@ -395,15 +395,15 @@ export default function ImageAnnotator({
             className={[
               'px-2.5 py-1 rounded-md text-xs border transition-colors',
               tool === t.key
-                ? 'bg-blue-600 text-white border-blue-500'
-                : 'bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700',
+                ? 'bg-sakura text-white border-lavender'
+                : 'bg-surface-2 text-ink-muted border-line hover:bg-elevated',
             ].join(' ')}
           >
             {t.label}
           </button>
         ))}
 
-        <span className="w-px h-5 bg-gray-700 mx-1" />
+        <span className="w-px h-5 bg-elevated mx-1" />
 
         {COLORS.map((c) => (
           <button
@@ -412,7 +412,7 @@ export default function ImageAnnotator({
             title={c}
             className={[
               'w-6 h-6 rounded-full border-2 transition-transform',
-              color === c ? 'border-white scale-110' : 'border-gray-600',
+              color === c ? 'border-white scale-110' : 'border-line',
             ].join(' ')}
             style={{ backgroundColor: c }}
           />
@@ -420,8 +420,8 @@ export default function ImageAnnotator({
 
         {tool === 'brush' && (
           <>
-            <span className="w-px h-5 bg-gray-700 mx-1" />
-            <span className="text-[11px] text-gray-500">笔刷</span>
+            <span className="w-px h-5 bg-elevated mx-1" />
+            <span className="text-[11px] text-ink-dim">笔刷</span>
             {[
               { label: '细', v: 16 },
               { label: '中', v: 28 },
@@ -434,7 +434,7 @@ export default function ImageAnnotator({
                   'px-2 py-1 rounded-md text-xs border transition-colors',
                   brushSize === b.v
                     ? 'bg-pink-600 text-white border-pink-500'
-                    : 'bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700',
+                    : 'bg-surface-2 text-ink-muted border-line hover:bg-elevated',
                 ].join(' ')}
               >
                 {b.label}
@@ -443,18 +443,18 @@ export default function ImageAnnotator({
           </>
         )}
 
-        <span className="w-px h-5 bg-gray-700 mx-1" />
+        <span className="w-px h-5 bg-elevated mx-1" />
         <button
           onClick={undo}
           disabled={ops.length === 0}
-          className="px-2.5 py-1 rounded-md text-xs bg-gray-800 text-gray-300 border border-gray-700 hover:bg-gray-700 disabled:opacity-40 transition-colors"
+          className="px-2.5 py-1 rounded-md text-xs bg-surface-2 text-ink-muted border border-line hover:bg-elevated disabled:opacity-40 transition-colors"
         >
           撤销
         </button>
         <button
           onClick={clearAll}
           disabled={ops.length === 0}
-          className="px-2.5 py-1 rounded-md text-xs bg-gray-800 text-gray-300 border border-gray-700 hover:bg-gray-700 disabled:opacity-40 transition-colors"
+          className="px-2.5 py-1 rounded-md text-xs bg-surface-2 text-ink-muted border border-line hover:bg-elevated disabled:opacity-40 transition-colors"
         >
           清空
         </button>
@@ -483,12 +483,12 @@ export default function ImageAnnotator({
 
       {showPrompt && (
         <div
-          className="flex-shrink-0 border-t border-gray-800 bg-gray-900 px-4 py-3"
+          className="flex-shrink-0 border-t border-line bg-surface px-4 py-3"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="max-w-3xl mx-auto">
             <div className="flex items-center justify-between mb-1.5">
-              <span className="text-xs text-gray-400">
+              <span className="text-xs text-ink-muted">
                 修改指令{hasBrush ? '（已含涂抹蒙版）' : ''} · 模型 {model || '—'}
               </span>
             </div>
@@ -497,21 +497,21 @@ export default function ImageAnnotator({
               onChange={(e) => setPrompt(e.target.value)}
               rows={3}
               autoFocus
-              className="w-full resize-none rounded-lg bg-gray-950 border border-gray-700 px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-blue-500"
+              className="w-full resize-none rounded-lg bg-bg border border-line px-3 py-2 text-sm text-ink focus:outline-none focus:border-lavender"
               placeholder={DEFAULT_GUIDE}
             />
             <div className="flex justify-end gap-2 mt-2">
               <button
                 onClick={() => setShowPrompt(false)}
                 disabled={busy}
-                className="px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs border border-gray-700 transition-colors disabled:opacity-50"
+                className="px-3 py-1.5 rounded-lg bg-surface-2 hover:bg-elevated text-ink-muted text-xs border border-line transition-colors disabled:opacity-50"
               >
                 返回标注
               </button>
               <button
                 onClick={submit}
                 disabled={busy || !prompt.trim()}
-                className="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs transition-colors disabled:opacity-50"
+                className="px-4 py-1.5 rounded-lg bg-sakura hover:bg-sakura text-white text-xs transition-colors disabled:opacity-50"
               >
                 {busy ? '生成中…' : '提交修改'}
               </button>

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Mascot, StatusDot } from '../components/ui'
 import {
   useAgentStore,
   type Session,
@@ -71,7 +72,7 @@ function Toast({ message, onClose }: { message: string; onClose: () => void }) {
     return () => clearTimeout(t)
   }, [onClose])
   return (
-    <div className="fixed bottom-5 right-5 z-50 bg-gray-800 border border-gray-600 text-gray-200 text-sm px-4 py-3 rounded-xl shadow-xl max-w-xs">
+    <div className="fixed bottom-5 right-5 z-50 bg-surface-2 border border-line text-ink text-sm px-4 py-3 rounded-xl shadow-xl max-w-xs">
       {message}
     </div>
   )
@@ -115,7 +116,7 @@ function TodoCard({ task, onDispatch, onDelete, onRenameCommit }: TodoCardProps)
     <div
       draggable
       onDragStart={(e) => e.dataTransfer.setData('task-id', task.id)}
-      className="bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 select-none hover:border-gray-600 transition-colors"
+      className="glass rounded-card px-3 py-2.5 select-none transition-all duration-150 hover:-translate-y-0.5 hover:border-line-strong"
     >
       {/* Title row */}
       {editing ? (
@@ -125,12 +126,12 @@ function TodoCard({ task, onDispatch, onDelete, onRenameCommit }: TodoCardProps)
           onChange={(e) => setDraft(e.target.value)}
           onBlur={commitEdit}
           onKeyDown={onKeyDown}
-          className="w-full bg-gray-700 border border-blue-500 rounded px-2 py-0.5 text-sm text-gray-100 focus:outline-none"
+          className="w-full bg-elevated border border-lavender rounded px-2 py-0.5 text-sm text-ink focus:outline-none"
           onClick={(e) => e.stopPropagation()}
         />
       ) : (
         <p
-          className="text-sm text-gray-200 leading-snug line-clamp-2 cursor-text"
+          className="text-sm text-ink leading-snug line-clamp-2 cursor-text"
           onClick={startEdit}
           title={task.title}
         >
@@ -140,23 +141,23 @@ function TodoCard({ task, onDispatch, onDelete, onRenameCommit }: TodoCardProps)
 
       {/* Workdir + time */}
       <div className="flex items-center gap-1.5 mt-1.5">
-        <span className="text-[10px] text-gray-500 font-mono truncate max-w-[80px]" title={task.workdir}>
+        <span className="text-[10px] text-ink-dim font-mono truncate max-w-[80px]" title={task.workdir}>
           {workdirTail(task.workdir)}
         </span>
-        <span className="text-[10px] text-gray-600">{relativeTime(task.created_at)}</span>
+        <span className="text-[10px] text-ink-dim">{relativeTime(task.created_at)}</span>
       </div>
 
       {/* Action buttons */}
       <div className="flex gap-2 mt-2">
         <button
           onClick={(e) => { e.stopPropagation(); onDispatch(task) }}
-          className="flex-1 text-xs px-2 py-1 rounded-lg bg-blue-900/60 hover:bg-blue-800/80 text-blue-300 border border-blue-800 transition-colors"
+          className="flex-1 text-xs px-2 py-1 rounded-lg bg-sakura/60 hover:bg-sakura/80 text-sky border border-lavender transition-colors"
         >
           派发
         </button>
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(task) }}
-          className="text-xs px-2 py-1 rounded-lg bg-gray-700 hover:bg-red-900/60 text-gray-400 hover:text-red-300 border border-gray-600 hover:border-red-800 transition-colors"
+          className="text-xs px-2 py-1 rounded-lg bg-elevated hover:bg-red-900/60 text-ink-muted hover:text-red-300 border border-line hover:border-red-800 transition-colors"
           title="删除任务"
         >
           删
@@ -182,10 +183,10 @@ function RunningCard({ task, session, onClick }: RunningCardProps) {
       onDragStart={(e) => e.dataTransfer.setData('task-id', task.id)}
       onClick={onClick}
       className={[
-        'bg-gray-800 border rounded-xl px-3 py-2.5 cursor-pointer select-none transition-colors',
+        'glass rounded-card px-3 py-2.5 cursor-pointer select-none transition-all duration-150 hover:-translate-y-0.5',
         isFailed
           ? 'border-red-800/60 hover:border-red-600'
-          : 'border-gray-700 hover:border-gray-500',
+          : 'border-line hover:border-line-strong',
       ].join(' ')}
     >
       {/* Failed badge */}
@@ -200,30 +201,30 @@ function RunningCard({ task, session, onClick }: RunningCardProps) {
       {/* Running indicator */}
       {!isFailed && (
         <div className="flex items-center gap-1.5 mb-1">
-          <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse flex-shrink-0" />
-          <span className="text-[10px] text-blue-400">运行中</span>
+          <StatusDot status="running" size={7} pulse />
+          <span className="text-[10px] text-sky">运行中</span>
         </div>
       )}
 
-      <p className="text-sm text-gray-200 leading-snug line-clamp-2" title={task.title}>
+      <p className="text-sm text-ink leading-snug line-clamp-2" title={task.title}>
         {task.title || '（无标题）'}
       </p>
 
       {/* Latest event summary */}
       {summary && !isFailed && (
-        <p className="text-[10px] text-gray-500 mt-1 truncate" title={summary}>
+        <p className="text-[10px] text-ink-dim mt-1 truncate" title={summary}>
           {summary}
         </p>
       )}
 
       {/* Meta */}
       <div className="flex items-center gap-2 mt-1.5">
-        <span className="text-[10px] text-gray-500 font-mono truncate max-w-[70px]" title={task.workdir}>
+        <span className="text-[10px] text-ink-dim font-mono truncate max-w-[70px]" title={task.workdir}>
           {workdirTail(task.workdir)}
         </span>
-        <span className="text-[10px] text-gray-600">{relativeTime(task.updated_at)}</span>
+        <span className="text-[10px] text-ink-dim">{relativeTime(task.updated_at)}</span>
         {task.file_count > 0 && (
-          <span className="ml-auto text-[10px] bg-gray-700 text-gray-400 px-1.5 py-0.5 rounded-full">
+          <span className="ml-auto text-[10px] bg-elevated text-ink-muted px-1.5 py-0.5 rounded-full">
             {task.file_count} 文件
           </span>
         )}
@@ -243,26 +244,26 @@ function ReviewCard({ task, onClick }: ReviewCardProps) {
       draggable
       onDragStart={(e) => e.dataTransfer.setData('task-id', task.id)}
       onClick={onClick}
-      className="bg-gray-800 border border-yellow-800/50 rounded-xl px-3 py-2.5 cursor-pointer select-none hover:border-yellow-600/70 transition-colors"
+      className="glass rounded-card border-gold/30 px-3 py-2.5 cursor-pointer select-none transition-all duration-150 hover:-translate-y-0.5 hover:border-gold/50"
     >
       <div className="flex items-center gap-1 mb-1.5">
         <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-yellow-900/60 text-yellow-300 border border-yellow-800">
           待确认
         </span>
         {task.file_count > 0 && (
-          <span className="ml-auto text-[10px] bg-gray-700 text-gray-400 px-1.5 py-0.5 rounded-full">
+          <span className="ml-auto text-[10px] bg-elevated text-ink-muted px-1.5 py-0.5 rounded-full">
             {task.file_count} 文件
           </span>
         )}
       </div>
-      <p className="text-sm text-gray-200 leading-snug line-clamp-2" title={task.title}>
+      <p className="text-sm text-ink leading-snug line-clamp-2" title={task.title}>
         {task.title || '（无标题）'}
       </p>
       <div className="flex items-center gap-1.5 mt-1.5">
-        <span className="text-[10px] text-gray-500 font-mono truncate max-w-[80px]" title={task.workdir}>
+        <span className="text-[10px] text-ink-dim font-mono truncate max-w-[80px]" title={task.workdir}>
           {workdirTail(task.workdir)}
         </span>
-        <span className="text-[10px] text-gray-600">{relativeTime(task.updated_at)}</span>
+        <span className="text-[10px] text-ink-dim">{relativeTime(task.updated_at)}</span>
       </div>
     </div>
   )
@@ -277,18 +278,18 @@ function DoneCard({ task, onClick }: DoneCardProps) {
   return (
     <div
       onClick={onClick}
-      className="bg-gray-800 border border-gray-700/50 rounded-xl px-3 py-2.5 cursor-pointer select-none hover:border-gray-600 transition-colors opacity-80"
+      className="glass rounded-card px-3 py-2.5 cursor-pointer select-none transition-all duration-150 opacity-70 hover:opacity-100"
     >
-      <p className="text-sm text-gray-300 leading-snug line-clamp-2" title={task.title}>
+      <p className="text-sm text-ink-muted leading-snug line-clamp-2" title={task.title}>
         {task.title || '（无标题）'}
       </p>
       <div className="flex items-center gap-1.5 mt-1.5">
-        <span className="text-[10px] text-gray-500 font-mono truncate max-w-[80px]" title={task.workdir}>
+        <span className="text-[10px] text-ink-dim font-mono truncate max-w-[80px]" title={task.workdir}>
           {workdirTail(task.workdir)}
         </span>
-        <span className="text-[10px] text-gray-600">{relativeTime(task.updated_at)}</span>
+        <span className="text-[10px] text-ink-dim">{relativeTime(task.updated_at)}</span>
         {task.file_count > 0 && (
-          <span className="ml-auto text-[10px] bg-gray-700/60 text-gray-500 px-1.5 py-0.5 rounded-full">
+          <span className="ml-auto text-[10px] bg-elevated/60 text-ink-dim px-1.5 py-0.5 rounded-full">
             {task.file_count} 文件
           </span>
         )}
@@ -315,15 +316,15 @@ function Column({ title, count, id, onDragOver, onDrop, dragOverCol, children }:
     <div
       className={[
         'w-60 flex-shrink-0 flex flex-col gap-3 rounded-xl transition-colors',
-        isOver ? 'bg-gray-800/40 ring-1 ring-blue-700/50' : '',
+        isOver ? 'bg-surface-2/40 ring-1 ring-lavender/50' : '',
       ].join(' ')}
       onDragOver={(e) => onDragOver(e, id)}
       onDrop={(e) => onDrop(e, id)}
     >
       {/* Column header */}
       <div className="flex items-center justify-between px-1 pt-1">
-        <h2 className="text-sm font-semibold text-gray-300">{title}</h2>
-        <span className="bg-gray-700 text-gray-400 text-xs px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
+        <h2 className="text-sm font-semibold text-ink-muted">{title}</h2>
+        <span className="bg-elevated text-ink-muted text-xs px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
           {count}
         </span>
       </div>
@@ -376,32 +377,32 @@ function NewTaskBar({ onCreated, onToast }: NewTaskBarProps) {
   }
 
   return (
-    <div className="flex items-center gap-2 px-5 py-3 border-b border-gray-800 flex-shrink-0">
+    <div className="flex items-center gap-2 px-5 py-3 border-b border-line flex-shrink-0">
       <input
         type="text"
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         onKeyDown={onKeyDown}
         placeholder="输入新任务标题…"
-        className="flex-1 min-w-0 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-colors"
+        className="flex-1 min-w-0 bg-surface-2 border border-line rounded-lg px-3 py-1.5 text-sm text-ink placeholder-ink-dim focus:outline-none focus:border-lavender transition-colors"
       />
       <input
         type="text"
         value={workdir}
         onChange={(e) => setWorkdir(e.target.value)}
         placeholder="工作目录"
-        className="w-44 flex-shrink-0 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-xs text-gray-200 placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-colors"
+        className="w-44 flex-shrink-0 bg-surface-2 border border-line rounded-lg px-3 py-1.5 text-xs text-ink placeholder-ink-dim focus:outline-none focus:border-lavender transition-colors"
       />
       <button
         onClick={handleBrowse}
-        className="flex-shrink-0 text-xs px-2 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 border border-gray-700 transition-colors whitespace-nowrap"
+        className="flex-shrink-0 text-xs px-2 py-1.5 rounded-lg bg-surface-2 hover:bg-elevated text-ink-muted border border-line transition-colors whitespace-nowrap"
       >
         浏览…
       </button>
       <button
         onClick={handleCreate}
         disabled={creating || !title.trim()}
-        className="flex-shrink-0 text-xs px-3 py-1.5 rounded-lg bg-blue-700 hover:bg-blue-600 disabled:opacity-40 text-white border border-blue-600 transition-colors whitespace-nowrap"
+        className="flex-shrink-0 text-xs px-3 py-1.5 rounded-lg bg-sakura hover:bg-sakura disabled:opacity-40 text-white border border-lavender transition-colors whitespace-nowrap"
       >
         + 创建
       </button>
@@ -522,11 +523,11 @@ export default function Board() {
   if (!isTauri) {
     return (
       <div className="flex flex-col h-full">
-        <div className="px-5 py-3 border-b border-gray-800 flex-shrink-0">
-          <h1 className="text-base font-semibold text-gray-100">任务看板</h1>
+        <div className="px-5 py-3 border-b border-line flex-shrink-0">
+          <h1 className="text-lg font-bold text-gradient">任务看板</h1>
         </div>
         <div className="flex items-center justify-center flex-1">
-          <p className="text-gray-500 text-sm">请在桌面应用中使用</p>
+          <p className="text-ink-dim text-sm">请在桌面应用中使用</p>
         </div>
       </div>
     )
@@ -536,9 +537,9 @@ export default function Board() {
   return (
     <div className="flex flex-col h-full" onDragEnd={handleDragEnd}>
       {/* Header */}
-      <div className="px-5 py-3 border-b border-gray-800 flex-shrink-0">
-        <h1 className="text-base font-semibold text-gray-100">任务看板</h1>
-        <p className="text-xs text-gray-500 mt-0.5">跟踪 Agent 任务执行状态</p>
+      <div className="px-5 py-3 border-b border-line flex-shrink-0">
+        <h1 className="text-lg font-bold text-gradient">任务看板</h1>
+        <p className="text-xs text-ink-dim mt-0.5">跟踪 Agent 任务执行状态</p>
       </div>
 
       {/* New task input */}
@@ -568,7 +569,7 @@ export default function Board() {
               </div>
             ))}
             {todoTasks.length === 0 && (
-              <p className="text-xs text-gray-600 text-center mt-4 select-none">暂无待办任务</p>
+              <div className="flex flex-col items-center mt-6 gap-2 select-none"><Mascot mood="idle" size={44} /><p className="text-xs text-ink-dim">暂无待办任务</p></div>
             )}
           </Column>
 
@@ -590,7 +591,7 @@ export default function Board() {
               />
             ))}
             {failedTasks.length > 0 && runningTasks.length > 0 && (
-              <div className="border-t border-gray-700 my-1" />
+              <div className="border-t border-line my-1" />
             )}
             {failedTasks.map((task) => (
               <RunningCard
@@ -601,7 +602,7 @@ export default function Board() {
               />
             ))}
             {runningTasks.length === 0 && failedTasks.length === 0 && (
-              <p className="text-xs text-gray-600 text-center mt-4 select-none">暂无运行中任务</p>
+              <div className="flex flex-col items-center mt-6 gap-2 select-none"><Mascot mood="thinking" size={44} /><p className="text-xs text-ink-dim">暂无运行中任务</p></div>
             )}
           </Column>
 
@@ -622,9 +623,9 @@ export default function Board() {
               />
             ))}
             {reviewTasks.length === 0 && (
-              <p className="text-xs text-gray-600 text-center mt-4 select-none">暂无待确认任务</p>
+              <div className="flex flex-col items-center mt-6 gap-2 select-none"><Mascot mood="happy" size={44} /><p className="text-xs text-ink-dim">暂无待确认任务</p></div>
             )}
-            <p className="text-[10px] text-gray-700 text-center mt-2 select-none">
+            <p className="text-[10px] text-ink-dim text-center mt-2 select-none">
               拖至"已完成"以验收
             </p>
           </Column>
@@ -646,7 +647,7 @@ export default function Board() {
               />
             ))}
             {doneTasks.length === 0 && (
-              <p className="text-xs text-gray-600 text-center mt-4 select-none">暂无已完成任务</p>
+              <div className="flex flex-col items-center mt-6 gap-2 select-none"><Mascot mood="happy" size={44} /><p className="text-xs text-ink-dim">暂无已完成任务</p></div>
             )}
           </Column>
         </div>
@@ -655,18 +656,18 @@ export default function Board() {
       {/* Delete confirm dialog */}
       {confirmDelete && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="bg-gray-900 border border-gray-700 rounded-xl p-5 max-w-sm w-full mx-4 shadow-xl">
-            <p className="text-sm text-gray-200 mb-1 font-medium">确认删除任务？</p>
-            <p className="text-xs text-gray-400 mb-3 line-clamp-2" title={confirmDelete.title}>
+          <div className="bg-surface border border-line rounded-xl p-5 max-w-sm w-full mx-4 shadow-xl">
+            <p className="text-sm text-ink mb-1 font-medium">确认删除任务？</p>
+            <p className="text-xs text-ink-muted mb-3 line-clamp-2" title={confirmDelete.title}>
               {confirmDelete.title}
             </p>
-            <p className="text-xs text-gray-500 mb-4">
+            <p className="text-xs text-ink-dim mb-4">
               此操作将删除任务及所有关联的会话数据，无法撤销。
             </p>
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => setConfirmDelete(null)}
-                className="text-xs px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 transition-colors"
+                className="text-xs px-3 py-1.5 rounded-lg bg-surface-2 hover:bg-elevated text-ink-muted border border-line transition-colors"
               >
                 取消
               </button>

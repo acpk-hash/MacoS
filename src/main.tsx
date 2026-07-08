@@ -1,5 +1,10 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+// 圆润字体（M PLUS Rounded 1c）— 打包在本地，离线可用。
+import '@fontsource/m-plus-rounded-1c/400.css'
+import '@fontsource/m-plus-rounded-1c/500.css'
+import '@fontsource/m-plus-rounded-1c/700.css'
+import '@fontsource/m-plus-rounded-1c/800.css'
 import './index.css'
 import App from './App'
 import { initAgentEventListener } from './stores/agentStore'

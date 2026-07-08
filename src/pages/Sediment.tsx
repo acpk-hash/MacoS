@@ -14,6 +14,7 @@ import { useWorkbenchStore } from '../stores/workbenchStore'
 import { EntryItem } from './Workbench'
 import { buildFlow } from '../components/canvas/buildFlow'
 import SessionBlock from '../components/canvas/SessionBlock'
+import { Mascot } from '../components/ui'
 
 // ── Formatting helpers ──────────────────────────────────────────────────────────
 
@@ -56,9 +57,9 @@ function statusLabel(s: string): string {
 
 function statusClass(s: string): string {
   if (s === 'failed') return 'bg-red-600/25 text-red-300'
-  if (s === 'running' || s === 'active') return 'bg-blue-600/25 text-blue-300'
+  if (s === 'running' || s === 'active') return 'bg-sakura/25 text-sky'
   if (s === 'awaiting_review') return 'bg-amber-600/25 text-amber-300'
-  return 'bg-gray-700/60 text-gray-300'
+  return 'bg-elevated/60 text-ink-muted'
 }
 
 function KindBadge({ kind }: { kind: RunKind }) {
@@ -89,25 +90,25 @@ function RunCard({
   onDelete: () => void
 }) {
   return (
-    <div className="rounded-xl border border-gray-800 bg-gray-900/50 hover:bg-gray-900/80 transition-colors overflow-hidden">
+    <div className="glass rounded-card hover:-translate-y-0.5 hover:border-line-strong transition-all duration-150 overflow-hidden">
       <button onClick={onOpen} className="w-full text-left px-4 py-3">
         <div className="flex items-center gap-2 mb-1.5">
           <KindBadge kind={run.kind} />
           <span className={'text-[10px] px-1.5 py-0.5 rounded ' + statusClass(run.status)}>
             {statusLabel(run.status)}
           </span>
-          <span className="ml-auto text-[10px] text-gray-500 flex-shrink-0">
+          <span className="ml-auto text-[10px] text-ink-dim flex-shrink-0">
             {fmtDate(run.created_at)}
           </span>
         </div>
-        <div className="text-[13.5px] text-gray-100 font-medium line-clamp-2 break-words">
+        <div className="text-[13.5px] text-ink font-medium line-clamp-2 break-words">
           {run.title || '未命名运行'}
         </div>
-        <div className="mt-1 text-[11px] text-gray-500 font-mono truncate" title={run.cwd}>
+        <div className="mt-1 text-[11px] text-ink-dim font-mono truncate" title={run.cwd}>
           {run.cwd || '—'}
         </div>
-        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gray-400">
-          {run.model && <span className="font-mono text-gray-400">🧠 {run.model}</span>}
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-ink-muted">
+          {run.model && <span className="font-mono text-ink-muted">🧠 {run.model}</span>}
           {run.total_tokens != null && (
             <span className="font-mono">Σ {fmtTokens(run.total_tokens)}</span>
           )}
@@ -115,7 +116,7 @@ function RunCard({
           {run.duration_ms != null && <span>⏱ {fmtDuration(run.duration_ms)}</span>}
         </div>
       </button>
-      <div className="flex items-center gap-1 px-3 py-2 border-t border-gray-800/70 bg-gray-900/40">
+      <div className="flex items-center gap-1 px-3 py-2 border-t border-line/70 bg-surface/40">
         <button
           onClick={onReuse}
           className="text-[11px] px-2.5 py-1 rounded-md bg-emerald-600/80 hover:bg-emerald-600 text-white transition-colors"
@@ -126,7 +127,7 @@ function RunCard({
         <div className="flex-1" />
         <button
           onClick={onDelete}
-          className="text-[11px] px-2.5 py-1 rounded-md text-gray-500 hover:text-red-300 hover:bg-red-950/40 transition-colors"
+          className="text-[11px] px-2.5 py-1 rounded-md text-ink-dim hover:text-red-300 hover:bg-red-950/40 transition-colors"
           title="从沉淀库中删除该运行记录"
         >
           删除
@@ -157,7 +158,7 @@ function BoardDetail({ detail }: { detail: Extract<RunDetail, { kind: 'board' }>
       return next
     })
   if (flow.length === 0) {
-    return <div className="text-[12px] text-gray-600">该任务暂无会话记录</div>
+    return <div className="text-[12px] text-ink-dim">该任务暂无会话记录</div>
   }
   return (
     <div className="space-y-4">
@@ -171,7 +172,7 @@ function BoardDetail({ detail }: { detail: Extract<RunDetail, { kind: 'board' }>
 function WorkbenchDetail({ detail }: { detail: Extract<RunDetail, { kind: 'workbench' }> }) {
   const entries = useMemo(() => rebuildEntries(detail.entries), [detail])
   if (entries.length === 0) {
-    return <div className="text-[12px] text-gray-600">该会话没有可回放的内容</div>
+    return <div className="text-[12px] text-ink-dim">该会话没有可回放的内容</div>
   }
   return (
     <div className="max-w-4xl">
@@ -200,16 +201,16 @@ function DetailOverlay({
   return (
     <div className="fixed inset-0 z-50 flex bg-black/60" onClick={onClose}>
       <div
-        className="ml-auto h-full w-full max-w-3xl bg-gray-950 border-l border-gray-800 flex flex-col shadow-2xl"
+        className="ml-auto h-full w-full max-w-3xl bg-bg border-l border-line flex flex-col shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-800 flex-shrink-0">
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-line flex-shrink-0">
           <KindBadge kind={run.kind} />
           <div className="min-w-0">
-            <div className="text-[13px] text-gray-100 font-medium truncate">
+            <div className="text-[13px] text-ink font-medium truncate">
               {run.title || '未命名运行'}
             </div>
-            <div className="text-[10px] text-gray-500 font-mono truncate" title={run.cwd}>
+            <div className="text-[10px] text-ink-dim font-mono truncate" title={run.cwd}>
               {run.cwd}
             </div>
           </div>
@@ -222,14 +223,14 @@ function DetailOverlay({
           </button>
           <button
             onClick={onClose}
-            className="text-gray-500 hover:text-gray-200 text-lg leading-none px-1 flex-shrink-0"
+            className="text-ink-dim hover:text-ink text-lg leading-none px-1 flex-shrink-0"
             title="关闭"
           >
             ✕
           </button>
         </div>
         <div className="flex-1 overflow-y-auto px-4 py-4">
-          {loading && <div className="text-[12px] text-gray-500">加载中…</div>}
+          {loading && <div className="text-[12px] text-ink-dim">加载中…</div>}
           {error && <div className="text-[12px] text-red-400">{error}</div>}
           {!loading && !error && detail && detail.kind === 'workbench' && (
             <WorkbenchDetail detail={detail} />
@@ -247,9 +248,9 @@ function DetailOverlay({
 
 function SkillCard({ skill, onUse }: { skill: SkillInfo; onUse: () => void }) {
   return (
-    <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-4 flex flex-col">
+    <div className="glass rounded-card p-4 flex flex-col hover:-translate-y-0.5 hover:border-line-strong transition-all duration-150">
       <div className="flex items-center gap-2 mb-1">
-        <span className="text-[13.5px] text-gray-100 font-medium truncate">
+        <span className="text-[13.5px] text-ink font-medium truncate">
           {skill.name}
         </span>
         <span
@@ -263,16 +264,16 @@ function SkillCard({ skill, onUse }: { skill: SkillInfo; onUse: () => void }) {
           {skill.source}
         </span>
       </div>
-      <p className="text-[12px] text-gray-400 leading-5 line-clamp-3 flex-1">
+      <p className="text-[12px] text-ink-muted leading-5 line-clamp-3 flex-1">
         {skill.description || '（无描述）'}
       </p>
-      <div className="mt-2 text-[10px] text-gray-600 font-mono truncate" title={skill.path}>
+      <div className="mt-2 text-[10px] text-ink-dim font-mono truncate" title={skill.path}>
         {skill.path}
       </div>
       <div className="mt-3">
         <button
           onClick={onUse}
-          className="text-[11px] px-2.5 py-1 rounded-md bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-200 transition-colors"
+          className="text-[11px] px-2.5 py-1 rounded-md bg-surface-2 hover:bg-elevated border border-line text-ink transition-colors"
           title="打开工作台，在本地用这个技能开一轮"
         >
           在工作台使用
@@ -362,7 +363,7 @@ export default function Sediment() {
       onClick={() => setTab(id)}
       className={[
         'px-3 py-1.5 text-[13px] rounded-lg transition-colors',
-        tab === id ? 'bg-gray-800 text-gray-100' : 'text-gray-500 hover:text-gray-300',
+        tab === id ? 'bg-surface-2 text-ink' : 'text-ink-dim hover:text-ink-muted',
       ].join(' ')}
     >
       {label}
@@ -376,21 +377,21 @@ export default function Sediment() {
   ]
 
   return (
-    <div className="h-full flex flex-col bg-gray-950 text-gray-100">
-      <header className="px-4 py-3 border-b border-gray-800 flex-shrink-0">
+    <div className="h-full flex flex-col text-ink">
+      <header className="px-4 py-3 border-b border-line flex-shrink-0">
         <div className="flex items-center gap-2">
-          <h1 className="text-sm font-semibold mr-2">沉淀</h1>
+          <h1 className="text-base font-bold text-gradient mr-2">沉淀</h1>
           <TabButton id="runs" label="运行历史" />
           <TabButton id="skills" label="技能库" />
         </div>
-        <p className="text-[11px] text-gray-500 mt-1">
+        <p className="text-[11px] text-ink-dim mt-1">
           你过去让 AI 做过什么、用了哪些技能——可回顾、可检索、可复用的本地资产库。
         </p>
       </header>
 
       {tab === 'runs' ? (
         <div className="flex-1 flex flex-col min-h-0">
-          <div className="px-4 py-2.5 border-b border-gray-800 flex items-center gap-2 flex-shrink-0">
+          <div className="px-4 py-2.5 border-b border-line flex items-center gap-2 flex-shrink-0">
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -398,11 +399,11 @@ export default function Sediment() {
                 if (e.key === 'Enter') void loadRuns()
               }}
               placeholder="搜索标题 / 目录 / 模型，回车检索"
-              className="flex-1 max-w-md bg-gray-900 border border-gray-800 rounded-lg px-3 py-1.5 text-[12px] text-gray-200 placeholder-gray-600 focus:outline-none focus:border-emerald-600 transition-colors"
+              className="flex-1 max-w-md bg-surface border border-line rounded-lg px-3 py-1.5 text-[12px] text-ink placeholder-ink-dim focus:outline-none focus:border-emerald-600 transition-colors"
             />
             <button
               onClick={() => void loadRuns()}
-              className="text-[12px] px-2.5 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 transition-colors"
+              className="text-[12px] px-2.5 py-1.5 rounded-lg bg-surface-2 hover:bg-elevated border border-line text-ink-muted transition-colors"
             >
               搜索
             </button>
@@ -416,7 +417,7 @@ export default function Sediment() {
                     'text-[11px] px-2.5 py-1.5 rounded-lg transition-colors',
                     filterKind === f.id
                       ? 'bg-emerald-600/80 text-white'
-                      : 'bg-gray-900 border border-gray-800 text-gray-400 hover:text-gray-200',
+                      : 'bg-surface border border-line text-ink-muted hover:text-ink',
                   ].join(' ')}
                 >
                   {f.label}
@@ -428,12 +429,12 @@ export default function Sediment() {
           <div className="flex-1 overflow-y-auto px-4 py-4">
             {runsError && <div className="mb-3 text-[12px] text-red-400">{runsError}</div>}
             {runsLoading && runs.length === 0 ? (
-              <div className="text-[12px] text-gray-500">加载中…</div>
+              <div className="text-[12px] text-ink-dim">加载中…</div>
             ) : runs.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-center py-20">
-                <div className="text-5xl mb-4 opacity-40">🗂️</div>
-                <p className="text-gray-400 text-sm">还没有可沉淀的运行记录</p>
-                <p className="text-gray-600 text-xs mt-1">
+                <Mascot mood="idle" size={80} className="mb-4" />
+                <p className="text-ink-muted text-sm">还没有可沉淀的运行记录</p>
+                <p className="text-ink-dim text-xs mt-1">
                   去「工作台」或「看板」跑一轮，运行历史会自动出现在这里。
                 </p>
               </div>
@@ -456,12 +457,12 @@ export default function Sediment() {
         <div className="flex-1 overflow-y-auto px-4 py-4">
           {skillsError && <div className="mb-3 text-[12px] text-red-400">{skillsError}</div>}
           {skillsLoading && skills.length === 0 ? (
-            <div className="text-[12px] text-gray-500">扫描中…</div>
+            <div className="text-[12px] text-ink-dim">扫描中…</div>
           ) : skills.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center py-20">
-              <div className="text-5xl mb-4 opacity-40">🧩</div>
-              <p className="text-gray-400 text-sm">没有发现本地技能</p>
-              <p className="text-gray-600 text-xs mt-1 max-w-sm leading-5">
+              <Mascot mood="thinking" size={80} className="mb-4" />
+              <p className="text-ink-muted text-sm">没有发现本地技能</p>
+              <p className="text-ink-dim text-xs mt-1 max-w-sm leading-5">
                 在 pi(~/.pi/agent/skills)或 codex(~/.codex/skills)的技能目录下
                 放入含 SKILL.md 的技能，它们会出现在这里。
               </p>

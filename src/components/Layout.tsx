@@ -1,4 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom'
+import Mascot from './ui/Mascot'
 
 // "工作台" group (direct-API studio) — unchanged.
 const studioItems = [
@@ -26,10 +27,10 @@ const navItems = [{ to: '/settings', label: '设置' }]
 
 const linkClass = ({ isActive }: { isActive: boolean }) =>
   [
-    'flex flex-col items-center justify-center h-10 rounded-lg text-xs font-medium transition-colors',
+    'group flex flex-col items-center justify-center h-10 rounded-btn text-xs font-medium transition-all duration-150',
     isActive
-      ? 'bg-blue-600 text-white'
-      : 'text-gray-400 hover:bg-gray-800 hover:text-gray-100',
+      ? 'text-white bg-grad-primary shadow-glow-primary'
+      : 'text-ink-muted hover:bg-white/8 hover:text-ink',
   ].join(' ')
 
 type NavItem = { to: string; label: string; hint?: string; title?: string }
@@ -39,28 +40,39 @@ function NavEntry({ item }: { item: NavItem }) {
     <NavLink to={item.to} title={item.title ?? item.label} className={linkClass}>
       <span className="leading-none">{item.label}</span>
       {item.hint && (
-        <span className="text-[8px] text-gray-500 leading-none mt-0.5">{item.hint}</span>
+        <span className="text-[8px] text-ink-dim leading-none mt-0.5">
+          {item.hint}
+        </span>
       )}
     </NavLink>
   )
 }
 
+function GroupTitle({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="text-[9px] text-ink-dim/80 text-center mb-1 tracking-wider select-none">
+      {children}
+    </span>
+  )
+}
+
 export default function Layout() {
   return (
-    <div className="flex h-screen bg-gray-950 text-gray-100">
+    <div className="flex h-screen text-ink">
       {/* Left sidebar */}
-      <aside className="w-16 flex flex-col items-center py-4 gap-4 bg-gray-900 border-r border-gray-800 flex-shrink-0">
-        {/* Logo */}
-        <div className="flex flex-col items-center">
-          <span className="text-xs font-bold text-blue-400 leading-none">Agent</span>
-          <span className="text-xs font-bold text-blue-300 leading-none">Board</span>
+      <aside className="w-16 flex flex-col items-center py-4 gap-4 glass border-r border-line flex-shrink-0 z-10">
+        {/* Logo — 吉祥物 + 渐变字 */}
+        <div className="flex flex-col items-center gap-1">
+          <Mascot mood="idle" size={34} still title="AgentBoard" />
+          <div className="flex flex-col items-center leading-none">
+            <span className="text-[11px] font-extrabold text-gradient leading-none">Agent</span>
+            <span className="text-[11px] font-extrabold text-gradient leading-none">Board</span>
+          </div>
         </div>
 
         {/* 工作台 group */}
         <nav className="flex flex-col gap-1 w-full px-2">
-          <span className="text-[9px] text-gray-600 text-center mb-0.5 select-none">
-            工作台
-          </span>
+          <GroupTitle>工作台</GroupTitle>
           {studioItems.map((item) => (
             <NavEntry key={item.to} item={item} />
           ))}
@@ -68,9 +80,7 @@ export default function Layout() {
 
         {/* Agent group */}
         <nav className="flex flex-col gap-1 w-full px-2">
-          <span className="text-[9px] text-gray-600 text-center mb-0.5 select-none">
-            Agent
-          </span>
+          <GroupTitle>Agent</GroupTitle>
           {agentItems.map((item) => (
             <NavEntry key={item.to} item={item} />
           ))}
@@ -78,16 +88,14 @@ export default function Layout() {
 
         {/* 沉淀 group */}
         <nav className="flex flex-col gap-1 w-full px-2">
-          <span className="text-[9px] text-gray-600 text-center mb-0.5 select-none">
-            沉淀
-          </span>
+          <GroupTitle>沉淀</GroupTitle>
           {sedimentItems.map((item) => (
             <NavEntry key={item.to} item={item} />
           ))}
         </nav>
 
         {/* Divider */}
-        <div className="w-8 border-t border-gray-800" />
+        <div className="w-8 divider-soft" />
 
         {/* Utility links */}
         <nav className="flex flex-col gap-1 w-full px-2">

@@ -22,6 +22,7 @@ import {
 } from '../lib/exportChat'
 import Composer from '../components/Composer'
 import ModelPicker from '../components/ModelPicker'
+import { Mascot } from '../components/ui'
 
 // ── Environment guard ─────────────────────────────────────────────────────────
 
@@ -89,12 +90,12 @@ function CodeBlock({
     }
   }
   return (
-    <div className="my-3 rounded-lg overflow-hidden border border-gray-800 bg-[#0d1117]">
-      <div className="flex items-center justify-between px-3 py-1 bg-gray-900/80 border-b border-gray-800">
-        <span className="text-[11px] text-gray-500 font-mono lowercase">{lang}</span>
+    <div className="my-3 rounded-lg overflow-hidden border border-line bg-[#0d1117]">
+      <div className="flex items-center justify-between px-3 py-1 bg-surface/80 border-b border-line">
+        <span className="text-[11px] text-ink-dim font-mono lowercase">{lang}</span>
         <button
           onClick={copy}
-          className="text-[11px] text-gray-400 hover:text-gray-200 transition-colors"
+          className="text-[11px] text-ink-muted hover:text-ink transition-colors"
         >
           {copied ? '已复制' : '复制'}
         </button>
@@ -115,7 +116,7 @@ const mdComponents: Components = {
     const isBlock = !!match || raw.includes('\n')
     if (!isBlock) {
       return (
-        <code className="px-1.5 py-0.5 rounded bg-gray-800 text-[0.85em] font-mono text-blue-200">
+        <code className="px-1.5 py-0.5 rounded bg-surface-2 text-[0.85em] font-mono text-sky">
           {children}
         </code>
       )
@@ -144,7 +145,7 @@ const mdComponents: Components = {
     <h3 className="text-base font-semibold mt-3 mb-1.5">{children}</h3>
   ),
   blockquote: ({ children }) => (
-    <blockquote className="border-l-2 border-gray-700 pl-3 my-2 text-gray-400">
+    <blockquote className="border-l-2 border-line pl-3 my-2 text-ink-muted">
       {children}
     </blockquote>
   ),
@@ -158,7 +159,7 @@ const mdComponents: Components = {
           void openExternal(href)
         }
       }}
-      className="text-blue-400 hover:text-blue-300 underline underline-offset-2 cursor-pointer"
+      className="text-sky hover:text-sky underline underline-offset-2 cursor-pointer"
     >
       {children}
       <span aria-hidden="true" className="ml-0.5 text-[0.72em] opacity-70 align-super">
@@ -166,19 +167,19 @@ const mdComponents: Components = {
       </span>
     </a>
   ),
-  hr: () => <hr className="my-4 border-gray-800" />,
+  hr: () => <hr className="my-4 border-line" />,
   table: ({ children }) => (
     <div className="my-3 overflow-x-auto">
       <table className="border-collapse text-sm">{children}</table>
     </div>
   ),
   th: ({ children }) => (
-    <th className="border border-gray-700 px-3 py-1.5 bg-gray-900 text-left font-medium">
+    <th className="border border-line px-3 py-1.5 bg-surface text-left font-medium">
       {children}
     </th>
   ),
   td: ({ children }) => (
-    <td className="border border-gray-800 px-3 py-1.5">{children}</td>
+    <td className="border border-line px-3 py-1.5">{children}</td>
   ),
 }
 
@@ -188,7 +189,7 @@ const MarkdownMessage = React.memo(function MarkdownMessage({
   text: string
 }) {
   return (
-    <div className="text-[15px] text-gray-200 break-words">
+    <div className="text-[15px] text-ink break-words">
       <ReactMarkdown
         remarkPlugins={REMARK_PLUGINS}
         rehypePlugins={REHYPE_PLUGINS}
@@ -234,12 +235,12 @@ function AttachmentPreview({ atts }: { atts: Attachment[] }) {
             key={i}
             src={a.data_url}
             alt={a.name ?? '图片'}
-            className="max-h-40 rounded-lg border border-gray-700 object-cover"
+            className="max-h-40 rounded-lg border border-line object-cover"
           />
         ) : (
           <span
             key={i}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-800 border border-gray-700 text-xs text-gray-300"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-2 border border-line text-xs text-ink-muted"
           >
             <span aria-hidden="true">📄</span>
             {a.name ?? '文本文件'}
@@ -283,14 +284,14 @@ function ExportMenu({
         type="button"
         title={title}
         onClick={() => setOpen((v) => !v)}
-        className={buttonClass ?? 'text-xs hover:text-gray-300 transition-colors'}
+        className={buttonClass ?? 'text-xs hover:text-ink-muted transition-colors'}
       >
         {label}
       </button>
       {open && (
         <div
           className={[
-            'absolute z-30 mt-1 w-44 py-1 rounded-lg bg-gray-800 border border-gray-700 shadow-xl',
+            'absolute z-30 mt-1 w-44 py-1 rounded-lg bg-surface-2 border border-line shadow-xl',
             align === 'right' ? 'right-0' : 'left-0',
           ].join(' ')}
         >
@@ -299,7 +300,7 @@ function ExportMenu({
               setOpen(false)
               onMd()
             }}
-            className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700 transition-colors"
+            className="w-full text-left px-3 py-1.5 text-xs text-ink-muted hover:bg-elevated transition-colors"
           >
             导出为 Markdown (.md)
           </button>
@@ -308,7 +309,7 @@ function ExportMenu({
               setOpen(false)
               onHtml()
             }}
-            className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700 transition-colors"
+            className="w-full text-left px-3 py-1.5 text-xs text-ink-muted hover:bg-elevated transition-colors"
           >
             导出为 HTML (.html)
           </button>
@@ -366,7 +367,7 @@ const MessageItem = React.memo(function MessageItem({
       <div className="flex flex-col items-end">
         <AttachmentPreview atts={atts} />
         {msg.content && (
-          <div className="max-w-[85%] px-4 py-2.5 rounded-2xl rounded-br-md bg-blue-600 text-white text-[15px] leading-7 whitespace-pre-wrap break-words">
+          <div className="max-w-[85%] px-4 py-2.5 rounded-pop rounded-br-md bg-grad-primary shadow-glow-primary text-white text-[15px] leading-7 whitespace-pre-wrap break-words">
             {msg.content}
           </div>
         )}
@@ -395,10 +396,10 @@ const MessageItem = React.memo(function MessageItem({
 
       {/* Action row */}
       {!isError && msg.status !== 'streaming' && msg.content !== '' && (
-        <div className="flex items-center gap-3 mt-1.5 text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex items-center gap-3 mt-1.5 text-ink-dim opacity-0 group-hover:opacity-100 transition-opacity">
           <button
             onClick={copyMessage}
-            className="text-xs hover:text-gray-300 transition-colors"
+            className="text-xs hover:text-ink-muted transition-colors"
           >
             {copied ? '已复制' : '复制'}
           </button>
@@ -411,7 +412,7 @@ const MessageItem = React.memo(function MessageItem({
           {isLastAssistant && (
             <button
               onClick={onRegenerate}
-              className="text-xs hover:text-gray-300 transition-colors"
+              className="text-xs hover:text-ink-muted transition-colors"
             >
               重新生成
             </button>
@@ -470,11 +471,11 @@ function SessionSidebar({
   }
 
   return (
-    <div className="flex flex-col w-60 flex-shrink-0 border-r border-gray-800 h-full bg-gray-900/40">
+    <div className="flex flex-col w-60 flex-shrink-0 border-r border-line h-full bg-surface/40">
       <div className="px-3 py-2.5 flex-shrink-0">
         <button
           onClick={onNew}
-          className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 text-sm font-medium transition-colors"
+          className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-surface-2 hover:bg-elevated text-ink border border-line text-sm font-medium transition-colors"
         >
           <span className="text-base leading-none">+</span> 新对话
         </button>
@@ -482,7 +483,7 @@ function SessionSidebar({
 
       <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
         {sessions.length === 0 && (
-          <p className="text-gray-600 text-xs text-center mt-6 select-none">
+          <p className="text-ink-dim text-xs text-center mt-6 select-none">
             暂无对话
           </p>
         )}
@@ -504,7 +505,7 @@ function SessionSidebar({
                     setEditingId(null)
                   }
                 }}
-                className="w-full bg-gray-800 border border-blue-600 rounded-lg px-2.5 py-2 text-sm text-gray-100 focus:outline-none"
+                className="w-full bg-surface-2 border border-lavender rounded-lg px-2.5 py-2 text-sm text-ink focus:outline-none"
               />
             )
           }
@@ -515,17 +516,17 @@ function SessionSidebar({
               onDoubleClick={() => startEdit(s)}
               className={[
                 'group relative flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer transition-colors',
-                isActive ? 'bg-gray-800' : 'hover:bg-gray-800/60',
+                isActive ? 'bg-surface-2' : 'hover:bg-surface-2/60',
               ].join(' ')}
             >
               <div className="flex-1 min-w-0">
                 <p
-                  className="text-sm text-gray-200 truncate leading-snug"
+                  className="text-sm text-ink truncate leading-snug"
                   title={s.title || '新对话'}
                 >
                   {s.title || '新对话'}
                 </p>
-                <p className="text-[10px] text-gray-600 mt-0.5">
+                <p className="text-[10px] text-ink-dim mt-0.5">
                   {relativeTime(s.updated_at)}
                 </p>
               </div>
@@ -534,20 +535,20 @@ function SessionSidebar({
                   e.stopPropagation()
                   setMenuId(menuId === s.id ? null : s.id)
                 }}
-                className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded text-gray-500 hover:text-gray-200 hover:bg-gray-700 opacity-0 group-hover:opacity-100 transition-opacity"
+                className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded text-ink-dim hover:text-ink hover:bg-elevated opacity-0 group-hover:opacity-100 transition-opacity"
                 title="更多"
               >
                 ⋯
               </button>
 
               {menuId === s.id && (
-                <div className="absolute right-1 top-9 z-20 w-28 py-1 rounded-lg bg-gray-800 border border-gray-700 shadow-xl">
+                <div className="absolute right-1 top-9 z-20 w-28 py-1 rounded-lg bg-surface-2 border border-line shadow-xl">
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
                       startEdit(s)
                     }}
-                    className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700 transition-colors"
+                    className="w-full text-left px-3 py-1.5 text-xs text-ink-muted hover:bg-elevated transition-colors"
                   >
                     重命名
                   </button>
@@ -557,7 +558,7 @@ function SessionSidebar({
                       setMenuId(null)
                       setConfirmDelete(s)
                     }}
-                    className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-gray-700 transition-colors"
+                    className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-elevated transition-colors"
                   >
                     删除
                   </button>
@@ -571,18 +572,18 @@ function SessionSidebar({
       {/* Delete confirm */}
       {confirmDelete && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="bg-gray-900 border border-gray-700 rounded-xl p-5 max-w-sm w-full mx-4 shadow-xl">
-            <p className="text-sm text-gray-200 mb-1 font-medium">删除该对话？</p>
-            <p className="text-xs text-gray-400 mb-4 truncate">
+          <div className="bg-surface border border-line rounded-xl p-5 max-w-sm w-full mx-4 shadow-xl">
+            <p className="text-sm text-ink mb-1 font-medium">删除该对话？</p>
+            <p className="text-xs text-ink-muted mb-4 truncate">
               {confirmDelete.title || '新对话'}
             </p>
-            <p className="text-xs text-gray-500 mb-4">
+            <p className="text-xs text-ink-dim mb-4">
               此操作会永久删除该对话及其全部消息，无法撤销。
             </p>
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => setConfirmDelete(null)}
-                className="text-xs px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 transition-colors"
+                className="text-xs px-3 py-1.5 rounded-lg bg-surface-2 hover:bg-elevated text-ink-muted border border-line transition-colors"
               >
                 取消
               </button>
@@ -608,14 +609,15 @@ function SessionSidebar({
 function EmptyState({ onPick }: { onPick: (text: string) => void }) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-4">
-      <h1 className="text-2xl font-semibold text-gray-200 mb-1">有什么可以帮你的？</h1>
-      <p className="text-sm text-gray-500 mb-8">直接输入问题，或从下面的示例开始</p>
+      <Mascot mood="happy" size={92} className="mb-4" />
+      <h1 className="text-2xl font-bold text-gradient mb-1">有什么可以帮你的？</h1>
+      <p className="text-sm text-ink-dim mb-8">直接输入问题，或从下面的示例开始</p>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-3xl">
         {EXAMPLE_PROMPTS.map((p) => (
           <button
             key={p}
             onClick={() => onPick(p)}
-            className="text-left px-4 py-3 rounded-xl border border-gray-800 bg-gray-900/50 hover:bg-gray-800 hover:border-gray-700 text-sm text-gray-300 leading-relaxed transition-colors"
+            className="text-left px-4 py-3 rounded-card glass hover:-translate-y-0.5 hover:border-line-strong text-sm text-ink-muted leading-relaxed transition-all duration-150"
           >
             {p}
           </button>
@@ -723,8 +725,8 @@ export default function StudioChat() {
   if (!isTauri) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3">
-        <p className="text-gray-400 text-sm">请在桌面应用中使用</p>
-        <p className="text-gray-600 text-xs">
+        <p className="text-ink-muted text-sm">请在桌面应用中使用</p>
+        <p className="text-ink-dim text-xs">
           此功能需要 Tauri 桌面运行时，无法在普通浏览器中运行。
         </p>
       </div>
@@ -755,17 +757,17 @@ export default function StudioChat() {
 
       <div className="flex flex-col flex-1 min-w-0 h-full">
         {/* Top bar */}
-        <div className="px-4 py-2 border-b border-gray-800 flex-shrink-0 flex items-center gap-2 min-h-[48px]">
+        <div className="px-4 py-2 border-b border-line flex-shrink-0 flex items-center gap-2 min-h-[48px]">
           <button
             onClick={() => setSidebarOpen((v) => !v)}
-            className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-800 hover:text-gray-200 transition-colors"
+            className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-lg text-ink-muted hover:bg-surface-2 hover:text-ink transition-colors"
             title={sidebarOpen ? '收起会话栏' : '展开会话栏'}
           >
             ☰
           </button>
 
           <span
-            className="text-sm text-gray-300 font-medium truncate max-w-[40%]"
+            className="text-sm text-ink-muted font-medium truncate max-w-[40%]"
             title={activeSession?.title}
           >
             {activeSession?.title || '新对话'}
@@ -778,7 +780,7 @@ export default function StudioChat() {
               align="left"
               onMd={() => void exportConversation('md')}
               onHtml={() => void exportConversation('html')}
-              buttonClass="flex-shrink-0 text-xs text-gray-400 hover:text-gray-200 border border-gray-700 rounded-lg px-2.5 py-1.5 transition-colors"
+              buttonClass="flex-shrink-0 text-xs text-ink-muted hover:text-ink border border-line rounded-lg px-2.5 py-1.5 transition-colors"
             />
           )}
 
@@ -789,7 +791,7 @@ export default function StudioChat() {
             models={aggModels}
             value={{ providerId: currentProviderId ?? '', modelId: currentModel }}
             onChange={(v) => setModelSel(v.providerId, v.modelId)}
-            className="flex-shrink-0 bg-gray-800 border border-gray-700 rounded-lg px-2.5 py-1.5 text-xs text-gray-200 focus:outline-none focus:border-blue-500 transition-colors max-w-[220px]"
+            className="flex-shrink-0 bg-surface-2 border border-line rounded-lg px-2.5 py-1.5 text-xs text-ink focus:outline-none focus:border-lavender transition-colors max-w-[220px]"
             title="选择模型"
           />
         </div>
@@ -836,7 +838,7 @@ export default function StudioChat() {
               {!autoScroll && (
                 <button
                   onClick={scrollToBottom}
-                  className="absolute bottom-4 left-1/2 -translate-x-1/2 w-9 h-9 flex items-center justify-center rounded-full bg-gray-800 border border-gray-700 text-gray-300 hover:bg-gray-700 shadow-lg transition-colors"
+                  className="absolute bottom-4 left-1/2 -translate-x-1/2 w-9 h-9 flex items-center justify-center rounded-full bg-surface-2 border border-line text-ink-muted hover:bg-elevated shadow-lg transition-colors"
                   title="回到底部"
                 >
                   ↓
@@ -860,7 +862,7 @@ export default function StudioChat() {
 
       {/* Toast */}
       {(toast || loadError) && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg bg-gray-800 border border-gray-700 text-sm text-gray-200 shadow-xl">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg bg-surface-2 border border-line text-sm text-ink shadow-xl">
           {toast ?? loadError}
         </div>
       )}

@@ -20,7 +20,7 @@ async function invokeTauri<T>(
 }
 
 function taskDot(status: string): string {
-  if (status === 'running') return 'bg-blue-400 canvas-glow'
+  if (status === 'running') return 'bg-sky canvas-glow'
   if (status === 'failed') return 'bg-red-500'
   if (status === 'awaiting_review') return 'bg-amber-400'
   if (status === 'done') return 'bg-green-500'
@@ -133,17 +133,17 @@ export default function Canvas() {
   const empty = historyTasks.length === 0
 
   return (
-    <div className="h-full flex flex-col bg-gray-950 text-gray-100">
-      <header className="px-4 py-3 border-b border-gray-800 flex-shrink-0">
+    <div className="h-full flex flex-col bg-bg text-ink">
+      <header className="px-4 py-3 border-b border-line flex-shrink-0">
         <h1 className="text-sm font-semibold">执行流</h1>
-        <p className="text-[11px] text-gray-500">
+        <p className="text-[11px] text-ink-dim">
           Agent 执行过程的只读可视化视图（会话 · 命令 · 文件 · 回复）。要主动改本地文件，请用「工作台」。
         </p>
       </header>
 
       <div className="flex-1 flex min-h-0">
-        <aside className="w-56 border-r border-gray-800 bg-gray-900/60 overflow-y-auto flex-shrink-0">
-          <div className="px-3 py-2 text-[11px] text-gray-500 sticky top-0 bg-gray-900/90">
+        <aside className="w-56 border-r border-line bg-surface/60 overflow-y-auto flex-shrink-0">
+          <div className="px-3 py-2 text-[11px] text-ink-dim sticky top-0 bg-surface/90">
             任务列表
           </div>
           {historyTasks.map((t) => (
@@ -153,8 +153,8 @@ export default function Canvas() {
                 setSelectedTaskId(t.id)
                 setExpanded(new Set())
               }}
-              className={`w-full text-left px-3 py-2 border-b border-gray-800/60 hover:bg-gray-800/60 transition-colors ${
-                selectedTaskId === t.id ? 'bg-gray-800' : ''
+              className={`w-full text-left px-3 py-2 border-b border-line/60 hover:bg-surface-2/60 transition-colors ${
+                selectedTaskId === t.id ? 'bg-surface-2' : ''
               }`}
             >
               <div className="flex items-center gap-2">
@@ -163,7 +163,7 @@ export default function Canvas() {
                 />
                 <span className="text-xs truncate">{t.title || '未命名任务'}</span>
               </div>
-              <div className="text-[10px] text-gray-500 mt-0.5 pl-4">
+              <div className="text-[10px] text-ink-dim mt-0.5 pl-4">
                 {t.session_count} 会话 · {t.file_count} 文件
               </div>
             </button>
@@ -174,19 +174,19 @@ export default function Canvas() {
           {empty ? (
             <div className="h-full flex flex-col items-center justify-center text-center px-6">
               <div className="text-5xl mb-4 opacity-40">🗺️</div>
-              <p className="text-gray-400 text-sm">
+              <p className="text-ink-muted text-sm">
                 派发一个任务，在这里看 Agent 怎么干活
               </p>
             </div>
           ) : (
             <div className="max-w-3xl mx-auto px-4 py-4 space-y-4">
               {selectedTask && (
-                <div className="text-[13px] font-medium text-gray-200">
+                <div className="text-[13px] font-medium text-ink">
                   {selectedTask.title || '未命名任务'}
                 </div>
               )}
               {flow.length === 0 ? (
-                <div className="text-[12px] text-gray-600">该任务暂无会话记录</div>
+                <div className="text-[12px] text-ink-dim">该任务暂无会话记录</div>
               ) : (
                 flow.map((sess) => (
                   <SessionBlock
