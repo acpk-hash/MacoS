@@ -11,6 +11,7 @@ import 'katex/dist/katex.min.css'
 import { useWorkbenchStore, type WorkbenchEntry } from '../../stores/workbenchStore'
 import Composer from '../Composer'
 import type { Attachment } from '../../stores/studioStore'
+import { normalizeMathDelimiters } from '../../lib/mathDelimiters'
 
 const REMARK_PLUGINS = [remarkGfm, remarkMath]
 const REHYPE_PLUGINS = [
@@ -72,7 +73,7 @@ const MarkdownLite = React.memo(function MarkdownLite({ text }: { text: string }
         rehypePlugins={REHYPE_PLUGINS}
         components={mdComponents}
       >
-        {text}
+        {normalizeMathDelimiters(text)}
       </ReactMarkdown>
     </div>
   )
@@ -409,7 +410,7 @@ export default function ChatPanel({
       <div className="flex items-center gap-2 px-3 h-9 border-b border-line flex-shrink-0">
         <span className="text-[11px] text-sakura">✦</span>
         <span className="text-[12px] text-ink font-medium flex-1">AI 助手</span>
-        {opening && <span className="text-[10.5px] text-lavender animate-pulse">引擎启动中…</span>}
+        {opening && <span className="text-[10.5px] text-lavender animate-pulse">内置引擎启动中…</span>}
         {sessionId && !opening && (
           <span className="text-[10.5px] text-mint">● 就绪</span>
         )}
@@ -465,7 +466,7 @@ export default function ChatPanel({
         maxWidthClass="max-w-full"
         placeholder={
           !sessionId
-            ? '正在连接本地 AI 引擎…'
+            ? '内置引擎启动中…'
             : running
             ? '输入插话内容，Enter 发送（会打断当前任务）'
             : '交代一个任务，Enter 发送'

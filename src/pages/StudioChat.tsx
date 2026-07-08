@@ -13,6 +13,7 @@ import {
   type ChatSessionRow,
 } from '../stores/studioStore'
 import { parseAttachments } from '../lib/attachments'
+import { normalizeMathDelimiters } from '../lib/mathDelimiters'
 import {
   conversationToHtml,
   conversationToMarkdown,
@@ -195,7 +196,7 @@ const MarkdownMessage = React.memo(function MarkdownMessage({
         rehypePlugins={REHYPE_PLUGINS}
         components={mdComponents}
       >
-        {text}
+        {normalizeMathDelimiters(text)}
       </ReactMarkdown>
     </div>
   )

@@ -13,6 +13,7 @@ import rehypeHighlight from 'rehype-highlight'
 import rehypeKatex from 'rehype-katex'
 import katexCss from 'katex/dist/katex.min.css?inline'
 import hljsCss from 'highlight.js/styles/github-dark.css?inline'
+import { normalizeMathDelimiters } from './mathDelimiters'
 import type { ChatMessageRow } from '../stores/studioStore'
 
 // Same plugin set as the live renderer (module-level → stable references).
@@ -23,7 +24,7 @@ const exportRehype = [rehypeHighlight, [rehypeKatex, { throwOnError: false }]] a
 
 /** A single assistant/user message → its raw markdown content. */
 export function messageToMarkdown(msg: ChatMessageRow): string {
-  return msg.content.trim() + '\n'
+  return normalizeMathDelimiters(msg.content.trim()) + '\n'
 }
 
 /** The whole conversation → markdown, split into `## 用户 / ## 助手` sections. */
@@ -37,7 +38,8 @@ export function conversationToMarkdown(
     if (!m.content.trim()) continue
     const who = m.role === 'user' ? '用户' : '助手'
     const time = new Date(m.created_at).toLocaleString('zh-CN')
-    parts.push(`## ${who} · ${time}\n\n${m.content.trim()}\n`)
+    const body = normalizeMathDelimiters(m.content.trim())
+    parts.push(`## ${who} · ${time}\n\n${body}\n`)
   }
   return parts.join('\n')
 }
@@ -55,7 +57,7 @@ function escapeHtml(s: string): string {
 function renderMarkdownFragment(text: string): string {
   return renderToStaticMarkup(
     <ReactMarkdown remarkPlugins={exportRemark} rehypePlugins={exportRehype}>
-      {text}
+      {normalizeMathDelimiters(text)}
     </ReactMarkdown>,
   )
 }
