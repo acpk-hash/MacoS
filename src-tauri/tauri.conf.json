@@ -14,7 +14,9 @@
       "nsis"
     ],
     "resources": {
-      "../engine/target/release/agentboard-engine.exe": "agentboard-engine.exe"
+      "../engine/target/release/agentboard-engine.exe": "agentboard-engine.exe",
+      "../engine-pi/node.exe": "engine-pi/node.exe",
+      "../engine-pi/pi": "engine-pi/pi"
     },
     "icon": [
       "icons/32x32.png",

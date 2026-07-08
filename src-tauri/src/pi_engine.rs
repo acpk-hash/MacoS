@@ -37,7 +37,8 @@ use std::time::Duration;
 
 use serde::Serialize;
 use serde_json::{json, Value};
-use tauri::{AppHandle, Emitter};
+use tauri::path::BaseDirectory;
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::{mpsc, oneshot, watch, Mutex};
 
@@ -418,7 +419,7 @@ async fn spawn_pi(
     use std::process::Stdio;
     use tokio::process::Command;
 
-    let cli = resolve_pi_cli(&db)?;
+    let (node_program, cli) = resolve_pi_runtime(&db, &app)?;
     let (base_url, key, wire_api) = resolve_provider_creds(&db, &provider_id)?;
 
     // Build a temp agent dir with a generated models.json (no key on disk).
@@ -433,7 +434,7 @@ async fn spawn_pi(
         .await
         .map_err(|e| format!("写入 models.json 失败: {e}"))?;
 
-    let mut child = Command::new("node")
+    let mut child = Command::new(&node_program)
         .arg(&cli)
         .args([
             "--mode",
@@ -990,27 +991,64 @@ fn resolve_provider_creds(db: &Db, provider_id: &str) -> Result<(String, String,
     Ok((row.base_url, key, row.wire_api))
 }
 
-/// Locate the pi CLI entry (`dist/cli.js`).
+/// Resolve the (node program, pi cli.js) pair used to spawn the workbench engine.
 ///
-/// Order: `pi_cli_path` setting → global npm install → clear install hint.
-fn resolve_pi_cli(db: &Db) -> Result<PathBuf, String> {
+/// Order:
+/// 1. **Bundled engine** shipped inside the installer at resource
+///    `engine-pi/` (`engine-pi/node.exe` + `engine-pi/pi/dist/cli.js`). This is
+///    the self-contained runtime — the user needs no local Node or global pi.
+/// 2. `pi_cli_path` setting → run with the system `node` on PATH.
+/// 3. Global npm install of pi → run with the system `node` on PATH.
+///
+/// The bundled node is only used together with the bundled cli; the fallbacks
+/// use the bare `node` program (resolved via PATH by the OS).
+fn resolve_pi_runtime(db: &Db, app: &AppHandle) -> Result<(PathBuf, PathBuf), String> {
+    // 1) Bundled self-contained engine (installed app).
+    if let Some((node, cli)) = bundled_pi_runtime(app) {
+        return Ok((node, cli));
+    }
+
+    // 2) Explicit setting → system node.
     if let Ok(Some(p)) = db.settings_get("pi_cli_path") {
         let p = p.trim();
         if !p.is_empty() {
             let pb = PathBuf::from(p);
             if pb.exists() {
-                return Ok(pb);
+                return Ok((PathBuf::from("node"), pb));
             }
             return Err(format!("设置的 pi_cli_path 不存在: {p}"));
         }
     }
 
+    // 3) Global npm install → system node.
     for cand in global_pi_candidates() {
         if cand.exists() {
-            return Ok(cand);
+            return Ok((PathBuf::from("node"), cand));
         }
     }
-    Err("未找到 pi，请先安装：npm i -g @earendil-works/pi-coding-agent".to_string())
+    Err("未找到内置引擎，也未安装 pi。请重新安装应用，或运行：npm i -g @earendil-works/pi-coding-agent".to_string())
+}
+
+/// Locate the bundled `engine-pi` runtime under the Tauri resource dir.
+///
+/// Returns `Some((node.exe, cli.js))` only when **both** the bundled node and
+/// the bundled cli exist, so a partial/absent bundle transparently falls back
+/// to the local install path. `None` in dev / tests (no resource dir).
+fn bundled_pi_runtime(app: &AppHandle) -> Option<(PathBuf, PathBuf)> {
+    #[cfg(windows)]
+    let node_name = "engine-pi/node.exe";
+    #[cfg(not(windows))]
+    let node_name = "engine-pi/node";
+    let node = app.path().resolve(node_name, BaseDirectory::Resource).ok()?;
+    let cli = app
+        .path()
+        .resolve("engine-pi/pi/dist/cli.js", BaseDirectory::Resource)
+        .ok()?;
+    if node.exists() && cli.exists() {
+        Some((node, cli))
+    } else {
+        None
+    }
 }
 
 /// Candidate global-npm locations for `dist/cli.js`.
@@ -1183,7 +1221,13 @@ mod tests {
         let provider_id = resolve_provider_id(&db, None).expect("default provider");
         let (base_url, key, wire_api) =
             resolve_provider_creds(&db, &provider_id).expect("provider creds");
-        let cli = resolve_pi_cli(&db).expect("pi cli");
+        // AppHandle can't be built in a unit test, so resolve the cli directly
+        // from the global npm install (the production bundled path is exercised
+        // by real workbench_open runs, not this test).
+        let cli = global_pi_candidates()
+            .into_iter()
+            .find(|c| c.exists())
+            .expect("global pi install");
         let model = std::env::var("WB_LIVE_MODEL").unwrap_or_else(|_| "gpt-5.5".to_string());
         println!("[live] provider={provider_id} model={model} cli={}", cli.display());
 
