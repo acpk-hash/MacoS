@@ -5,6 +5,7 @@ import Logo from './Logo'
 const studioItems = [
   { to: '/studio/chat', label: '对话' },
   { to: '/studio/gen', label: '生成' },
+  { to: '/artifacts', label: '文档', title: '文档 / PPT · HTML 可视化编辑' },
 ]
 
 // "Agent" group. 工作台 (local pi workbench) is the prominent third feature,
