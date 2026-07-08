@@ -1,14 +1,17 @@
 // 统一工作区（G2b）— Trae/Cursor 式三栏 IDE：文件树 + Monaco 编辑器 + AI 对话。
 // 复用 workbenchStore 的 pi 引擎接线，文件系统/编辑器状态在 workspaceStore。
+// G2c：底部面板接入 SSH 远程，顶栏新增「扩展」入口（MCP 工具 + 技能）。
 import { useEffect, useRef, useState } from 'react'
 import { useWorkbenchStore, type WorkbenchStats } from '../stores/workbenchStore'
 import { useWorkspaceStore } from '../stores/workspaceStore'
+import { useSshStore } from '../stores/sshStore'
 import ModelPicker from '../components/ModelPicker'
 import Mascot from '../components/ui/Mascot'
 import FileTree from '../components/workbench/FileTree'
 import EditorPane from '../components/workbench/EditorPane'
 import ChatPanel from '../components/workbench/ChatPanel'
 import BottomPanel, { type BottomTab } from '../components/workbench/BottomPanel'
+import ExtensionsPanel from '../components/workbench/ExtensionsPanel'
 
 const isTauri =
   typeof window !== 'undefined' &&
@@ -106,6 +109,7 @@ export default function Workbench() {
   const [draft, setDraft] = useState('')
   const [bottomOpen, setBottomOpen] = useState(false)
   const [bottomTab, setBottomTab] = useState<BottomTab>('tasks')
+  const [extOpen, setExtOpen] = useState(false)
   const prevSig = useRef<Map<string, string>>(new Map())
 
   // 打开一个目录：同时接文件系统（树/编辑器）与 pi 引擎（AI 在该目录工作）。
@@ -134,6 +138,7 @@ export default function Workbench() {
     if (!isTauri) return
     loadModels()
     void loadRecent()
+    void useSshStore.getState().loadSaved()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // 复用（从沉淀页交接）：打开记录的目录 + 预填首个 prompt（不自动发送）。
@@ -229,6 +234,15 @@ export default function Workbench() {
           <span className="text-[11px] text-lavender animate-pulse flex-shrink-0">加载中…</span>
         )}
 
+        <button
+          onClick={() => setExtOpen(true)}
+          className="flex-shrink-0 flex items-center gap-1 text-[11px] text-ink-muted hover:text-ink border border-line rounded-btn px-2 py-1.5 transition-colors"
+          title="扩展中心：MCP 工具 + 技能"
+        >
+          <span aria-hidden="true">🧩</span>
+          <span className="hidden sm:inline">扩展</span>
+        </button>
+
         <ModelPicker
           models={aggModels}
           value={{ providerId: currentProviderId ?? '', modelId: currentModel }}
@@ -317,6 +331,13 @@ export default function Workbench() {
           />
         </>
       )}
+
+      {/* ── Extensions modal ────────────────────────────────────── */}
+      <ExtensionsPanel
+        open={extOpen}
+        onClose={() => setExtOpen(false)}
+        onUseSkill={(text) => setDraft(text)}
+      />
 
       {/* ── Toast ───────────────────────────────────────────────── */}
       {toast && (

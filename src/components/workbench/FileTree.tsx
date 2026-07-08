@@ -1,7 +1,9 @@
-// 左栏文件树（G2b）。ws_list_dir 懒加载 + 顶部搜索 + 右键增删改。
+// 左栏文件树（G2b/G2c）。ws_list_dir / ssh_list_dir 懒加载 + 顶部搜索 + 右键增删改。
 // AI 改动过的文件（workspaceStore.aiTouched）显示小圆点标记。
+// 顶部可切换「本地 / 已连远程主机」数据源（G2c）。
 import { useState } from 'react'
 import { useWorkspaceStore, type WsEntry } from '../../stores/workspaceStore'
+import { useSshStore } from '../../stores/sshStore'
 import StatusDot from '../ui/StatusDot'
 
 const HEAVY = new Set(['node_modules', '.git', 'target', 'dist', 'build', '.next', '.venv'])
@@ -135,6 +137,10 @@ export default function FileTree() {
   const openFile = useWorkspaceStore((s) => s.openFile)
   const createNode = useWorkspaceStore((s) => s.createNode)
   const listDir = useWorkspaceStore((s) => s.listDir)
+  const remote = useWorkspaceStore((s) => s.remote)
+  const openRemote = useWorkspaceStore((s) => s.openRemote)
+  const switchToLocal = useWorkspaceStore((s) => s.switchToLocal)
+  const conns = useSshStore((s) => s.conns)
   const [q, setQ] = useState('')
 
   const submitSearch = (e: React.FormEvent) => {
@@ -142,8 +148,37 @@ export default function FileTree() {
     void runSearch(q)
   }
 
+  const onSourceChange = (value: string) => {
+    if (value === 'local') {
+      void switchToLocal()
+      return
+    }
+    const c = conns.find((x) => x.conn_id === value)
+    if (c) void openRemote({ connId: c.conn_id, host: c.host, user: c.user, root: c.root })
+  }
+
   return (
     <div className="w-60 flex-shrink-0 flex flex-col h-full glass border-r border-line">
+      {/* 数据源切换（有远程连接时才显示） */}
+      {conns.length > 0 && (
+        <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-b border-line">
+          <StatusDot status={remote ? 'running' : 'done'} size={7} />
+          <select
+            value={remote?.connId ?? 'local'}
+            onChange={(e) => onSourceChange(e.target.value)}
+            title="切换文件树数据源：本地 / 远程主机"
+            className="flex-1 min-w-0 bg-black/25 border border-line rounded-input px-1.5 py-0.5 text-[11px] text-ink-muted focus:outline-none focus:border-line-strong"
+          >
+            <option value="local">本地</option>
+            {conns.map((c) => (
+              <option key={c.conn_id} value={c.conn_id}>
+                {c.user}@{c.host}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <div className="flex items-center gap-1 px-2.5 py-2 border-b border-line">
         <span className="text-[11px] text-ink-muted font-medium truncate flex-1" title={name ?? ''}>
           {name ?? '资源管理器'}
@@ -183,8 +218,9 @@ export default function FileTree() {
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="搜索文件 / 内容"
-            className="flex-1 bg-transparent text-[12px] text-ink placeholder:text-ink-dim focus:outline-none min-w-0"
+            placeholder={remote ? '远程暂不支持搜索' : '搜索文件 / 内容'}
+            disabled={!!remote}
+            className="flex-1 bg-transparent text-[12px] text-ink placeholder:text-ink-dim focus:outline-none min-w-0 disabled:opacity-60"
           />
           {searchQuery && (
             <button

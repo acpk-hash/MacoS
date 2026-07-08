@@ -34,6 +34,13 @@ keyring = { version = "3", features = ["windows-native"] }
 tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 rustls-pemfile = "2"
+# SSH remote (G2c): pure-Rust SSH + SFTP client — avoids OpenSSL/libssh2 system
+# deps on Windows. Credentials are held only in memory, never persisted/logged.
+russh = "0.45"
+russh-keys = "0.45"
+russh-sftp = "2"
+# russh's Handler trait is `#[async_trait]`, so impls must use it too.
+async-trait = "0.1"
 
 [dev-dependencies]
 tempfile = "3"

@@ -8,6 +8,7 @@ pub mod pi_engine;
 pub mod providers;
 pub mod relay;
 pub mod sediment;
+pub mod ssh_remote;
 pub mod studio;
 pub mod sync;
 pub mod wecom;
@@ -41,6 +42,7 @@ pub(crate) struct AppState {
     sync: sync::SyncManager,
     pi: pi_engine::PiEngine,
     ws: workspace_fs::WorkspaceState,
+    ssh: ssh_remote::SshState,
 }
 
 /// Mark the sync snapshot dirty (task/session rows changed). No-op if sync is
@@ -991,6 +993,7 @@ pub fn run() {
             sync: sync::SyncManager::new(),
             pi: pi_engine::PiEngine::new(),
             ws: workspace_fs::WorkspaceState::new(),
+            ssh: ssh_remote::SshState::new(),
         })
         .setup(|app| {
             // Seed a default provider from the legacy Codex relay config the
@@ -1123,6 +1126,16 @@ pub fn run() {
             workspace_fs::ws_delete,
             workspace_fs::ws_search,
             workspace_fs::ws_recent_folders,
+            ssh_remote::ssh_connect,
+            ssh_remote::ssh_list_dir,
+            ssh_remote::ssh_read_file,
+            ssh_remote::ssh_write_file,
+            ssh_remote::ssh_create,
+            ssh_remote::ssh_rename,
+            ssh_remote::ssh_delete,
+            ssh_remote::ssh_exec,
+            ssh_remote::ssh_disconnect,
+            ssh_remote::ssh_list_conns,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
