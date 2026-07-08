@@ -4,8 +4,8 @@
 //   彻底不依赖 CDN；`self.MonacoEnvironment.getWorker` 按 label 分发。
 // - `loader.config({ monaco })` 让 @monaco-editor/react 使用本地 import 的
 //   monaco 实例（否则默认会从 jsdelivr 拉取，离线不可用）。
-// - 定义与二次元玻璃主题协调的暗色主题 `agentboard-dark`（背景走 surface
-//   色系，光标粉色、字符串薄荷、关键字樱花），避免默认纯黑。
+// - 定义与 v0.7 蓝白科研主题协调的浅色主题 `agentboard-light`（白底、当前行
+//   浅蓝、关键字主色蓝、字符串绿），取代旧的暗色 `agentboard-dark`。
 //
 // 该文件应在编辑器组件挂载前 import 一次（EditorPane 顶部 import 触发）。
 import * as monaco from 'monaco-editor'
@@ -27,46 +27,46 @@ import tsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker'
   },
 }
 
-export const MONACO_THEME = 'agentboard-dark'
+export const MONACO_THEME = 'agentboard-light'
 
 monaco.editor.defineTheme(MONACO_THEME, {
-  base: 'vs-dark',
+  base: 'vs',
   inherit: true,
   rules: [
-    { token: 'comment', foreground: '6f6a8f', fontStyle: 'italic' },
-    { token: 'keyword', foreground: 'ff7fbf' },
-    { token: 'string', foreground: '7fe7c4' },
-    { token: 'number', foreground: 'ffd88f' },
-    { token: 'type', foreground: '7fb0ff' },
-    { token: 'function', foreground: 'b58fff' },
-    { token: 'variable', foreground: 'ece8fb' },
-    { token: 'delimiter', foreground: 'a49dc7' },
-    { token: 'tag', foreground: 'ff8b9a' },
-    { token: 'attribute.name', foreground: 'ffd88f' },
+    { token: 'comment', foreground: '94a3b8', fontStyle: 'italic' },
+    { token: 'keyword', foreground: '2563eb' },
+    { token: 'string', foreground: '16a34a' },
+    { token: 'number', foreground: 'd97706' },
+    { token: 'type', foreground: '0e7490' },
+    { token: 'function', foreground: '7c3aed' },
+    { token: 'variable', foreground: '1e293b' },
+    { token: 'delimiter', foreground: '475569' },
+    { token: 'tag', foreground: 'dc2626' },
+    { token: 'attribute.name', foreground: 'd97706' },
   ],
   colors: {
-    'editor.background': '#1a1728',
-    'editor.foreground': '#ece8fb',
-    'editorLineNumber.foreground': '#4a4463',
-    'editorLineNumber.activeForeground': '#a49dc7',
-    'editor.selectionBackground': '#3a2f5a',
-    'editor.inactiveSelectionBackground': '#2a2440',
-    'editor.lineHighlightBackground': '#221d36',
+    'editor.background': '#ffffff',
+    'editor.foreground': '#1e293b',
+    'editorLineNumber.foreground': '#cbd5e1',
+    'editorLineNumber.activeForeground': '#475569',
+    'editor.selectionBackground': '#dbeafe',
+    'editor.inactiveSelectionBackground': '#eff4ff',
+    'editor.lineHighlightBackground': '#f1f6ff',
     'editor.lineHighlightBorder': '#00000000',
-    'editorCursor.foreground': '#ff7fbf',
-    'editorWhitespace.foreground': '#2f2a44',
-    'editorIndentGuide.background1': '#272338',
-    'editorIndentGuide.activeBackground1': '#3a3352',
-    'editorGutter.background': '#1a1728',
-    'editorWidget.background': '#1e1b2e',
-    'editorWidget.border': '#272338',
-    'editorSuggestWidget.background': '#1e1b2e',
-    'editorSuggestWidget.selectedBackground': '#2f2a44',
-    'input.background': '#14121f',
-    'dropdown.background': '#1e1b2e',
-    'scrollbarSlider.background': '#b58fff2e',
-    'scrollbarSlider.hoverBackground': '#b58fff55',
-    'minimap.background': '#181524',
+    'editorCursor.foreground': '#2563eb',
+    'editorWhitespace.foreground': '#e2e8f0',
+    'editorIndentGuide.background1': '#eef2f7',
+    'editorIndentGuide.activeBackground1': '#cbd7e6',
+    'editorGutter.background': '#ffffff',
+    'editorWidget.background': '#ffffff',
+    'editorWidget.border': '#e2e8f0',
+    'editorSuggestWidget.background': '#ffffff',
+    'editorSuggestWidget.selectedBackground': '#eff4ff',
+    'input.background': '#f8fafc',
+    'dropdown.background': '#ffffff',
+    'scrollbarSlider.background': '#64748b40',
+    'scrollbarSlider.hoverBackground': '#64748b66',
+    'minimap.background': '#f8fafc',
   },
 })
 

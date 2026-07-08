@@ -263,10 +263,10 @@ function ProvidersSection() {
                 </button>
                 {confirmDelete === p.id ? (
                   <span className="flex items-center gap-2">
-                    <span className="text-red-400">确认?</span>
+                    <span className="text-red-600">确认?</span>
                     <button
                       onClick={() => handleDelete(p.id)}
-                      className="text-red-400 hover:text-red-300"
+                      className="text-red-600 hover:text-red-600"
                     >
                       删除
                     </button>
@@ -280,7 +280,7 @@ function ProvidersSection() {
                 ) : (
                   <button
                     onClick={() => setConfirmDelete(p.id)}
-                    className="text-ink-dim hover:text-red-400 transition-colors"
+                    className="text-ink-dim hover:text-red-600 transition-colors"
                   >
                     删除
                   </button>
@@ -291,8 +291,8 @@ function ProvidersSection() {
                 <p
                   className={`text-xs rounded px-2 py-1 break-words ${
                     t.success
-                      ? 'bg-green-900/30 text-green-300'
-                      : 'bg-red-900/30 text-red-300'
+                      ? 'bg-green-900/30 text-green-700'
+                      : 'bg-red-900/30 text-red-600'
                   }`}
                 >
                   {t.message}
@@ -309,7 +309,7 @@ function ProvidersSection() {
           <h4 className="text-xs font-semibold text-ink-muted">
             {editId ? '编辑服务商' : '添加服务商'}
           </h4>
-          {formError && <p className="text-xs text-red-400">{formError}</p>}
+          {formError && <p className="text-xs text-red-600">{formError}</p>}
           <div>
             <label className="block text-xs text-ink-dim mb-1">名称</label>
             <input
@@ -377,7 +377,7 @@ function ProvidersSection() {
             <button
               onClick={submit}
               disabled={busy}
-              className="px-3 py-1.5 text-xs bg-sakura hover:bg-sakura disabled:bg-elevated text-white rounded transition-colors"
+              className="px-3 py-1.5 text-xs bg-sakura hover:bg-sakura disabled:opacity-40 text-white rounded transition-colors"
             >
               {busy ? '保存中…' : '保存'}
             </button>
@@ -602,7 +602,7 @@ function ModelServiceSection() {
         <button
           onClick={handleSave}
           disabled={saving}
-          className="px-4 py-2 bg-sakura hover:bg-sakura disabled:bg-elevated
+          className="px-4 py-2 bg-sakura hover:bg-sakura disabled:opacity-40
                      text-white text-sm rounded-lg transition-colors"
         >
           {saving ? '保存中…' : '保存配置'}
@@ -621,7 +621,7 @@ function ModelServiceSection() {
       {saveResult && (
         <p
           className={`text-xs ${
-            saveResult.startsWith('保存失败') ? 'text-red-400' : 'text-green-400'
+            saveResult.startsWith('保存失败') ? 'text-red-600' : 'text-green-600'
           }`}
         >
           {saveResult}
@@ -633,8 +633,8 @@ function ModelServiceSection() {
         <div
           className={`text-xs rounded-lg p-3 font-mono whitespace-pre-wrap break-words ${
             testResult.success
-              ? 'bg-green-900/30 text-green-300'
-              : 'bg-red-900/30 text-red-300'
+              ? 'bg-green-900/30 text-green-700'
+              : 'bg-red-900/30 text-red-600'
           }`}
         >
           {testResult.message}
@@ -863,7 +863,7 @@ function EngineSection() {
                   {embeddedStatus.engine_bin_path}
                 </p>
               ) : (
-                <p className="text-xs text-red-400">
+                <p className="text-xs text-red-600">
                   未找到 agentboard-engine，请重新安装应用或在设置中指定路径。
                 </p>
               )}
@@ -1114,10 +1114,10 @@ function McpSection() {
                 <div className="flex-shrink-0">
                   {confirmDelete === s.name ? (
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-red-400">确认删除?</span>
+                      <span className="text-xs text-red-600">确认删除?</span>
                       <button
                         onClick={() => handleRemove(s.name)}
-                        className="text-xs text-red-400 hover:text-red-300"
+                        className="text-xs text-red-600 hover:text-red-600"
                       >
                         确认
                       </button>
@@ -1131,7 +1131,7 @@ function McpSection() {
                   ) : (
                     <button
                       onClick={() => setConfirmDelete(s.name)}
-                      className="text-xs text-ink-dim hover:text-red-400 transition-colors"
+                      className="text-xs text-ink-dim hover:text-red-600 transition-colors"
                     >
                       删除
                     </button>
@@ -1148,7 +1148,7 @@ function McpSection() {
         <div className="bg-surface border border-line rounded-lg p-3 space-y-3">
           <h4 className="text-xs font-semibold text-ink-muted">添加 MCP 服务器</h4>
           {formError && (
-            <p className="text-xs text-red-400">{formError}</p>
+            <p className="text-xs text-red-600">{formError}</p>
           )}
           <div className="space-y-2">
             <div>
@@ -1220,7 +1220,7 @@ function McpSection() {
             <button
               onClick={handleAdd}
               disabled={submitting}
-              className="px-3 py-1.5 text-xs bg-sakura hover:bg-sakura disabled:bg-elevated
+              className="px-3 py-1.5 text-xs bg-sakura hover:bg-sakura disabled:opacity-40
                          text-white rounded transition-colors"
             >
               {submitting ? '添加中…' : '添加'}
@@ -1451,7 +1451,7 @@ function FeishuSection() {
         <button
           onClick={sendTest}
           disabled={testing}
-          className="px-4 py-2 bg-sakura hover:bg-sakura disabled:bg-elevated text-white
+          className="px-4 py-2 bg-sakura hover:bg-sakura disabled:opacity-40 text-white
                      text-sm rounded-lg transition-colors"
         >
           {testing ? '发送中…' : '发送测试卡片'}
@@ -1459,7 +1459,7 @@ function FeishuSection() {
         {testResult && (
           <p
             className={`text-xs mt-2 ${
-              testResult.startsWith('成功') ? 'text-green-400' : 'text-red-400'
+              testResult.startsWith('成功') ? 'text-green-600' : 'text-red-600'
             }`}
           >
             {testResult}
@@ -1484,7 +1484,7 @@ function FeishuSection() {
                 <p
                   key={i}
                   className={`text-xs font-mono ${
-                    entry.includes('ERR') ? 'text-red-400' : 'text-green-400'
+                    entry.includes('ERR') ? 'text-red-600' : 'text-green-600'
                   }`}
                 >
                   {entry}
@@ -1548,9 +1548,9 @@ function FeishuSection() {
           <span
             className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium ${
               bridgeStatus.state === 'running'
-                ? 'bg-green-900/40 text-green-300'
+                ? 'bg-green-900/40 text-green-700'
                 : bridgeStatus.state === 'error'
-                  ? 'bg-red-900/40 text-red-300'
+                  ? 'bg-red-900/40 text-red-600'
                   : 'bg-surface-2 text-ink-dim'
             }`}
           >
@@ -1570,7 +1570,7 @@ function FeishuSection() {
                 : '已停止'}
           </span>
           {bridgeStatus.state === 'error' && bridgeStatus.message && (
-            <span className="text-xs text-red-400 truncate">{bridgeStatus.message}</span>
+            <span className="text-xs text-red-600 truncate">{bridgeStatus.message}</span>
           )}
         </div>
 
@@ -1579,7 +1579,7 @@ function FeishuSection() {
           <button
             onClick={handleBridgeStart}
             disabled={bridgeStarting || bridgeStopping || !nodeVersion}
-            className="px-3 py-1.5 bg-sakura hover:bg-sakura disabled:bg-elevated
+            className="px-3 py-1.5 bg-sakura hover:bg-sakura disabled:opacity-40
                        disabled:text-ink-dim text-white text-xs rounded-lg transition-colors"
             title={!nodeVersion ? '需要先安装 Node.js' : undefined}
           >
@@ -1619,7 +1619,7 @@ function FeishuSection() {
                     key={i}
                     className={`text-xs font-mono leading-relaxed ${
                       entry.includes('[ERR]') || entry.includes('[err]')
-                        ? 'text-red-400'
+                        ? 'text-red-600'
                         : entry.includes('[WARN]')
                           ? 'text-yellow-400'
                           : 'text-ink-muted'
@@ -1937,7 +1937,7 @@ function WecomSection() {
         <button
           onClick={sendTest}
           disabled={testing}
-          className="px-4 py-2 bg-sakura hover:bg-sakura disabled:bg-elevated text-white
+          className="px-4 py-2 bg-sakura hover:bg-sakura disabled:opacity-40 text-white
                      text-sm rounded-lg transition-colors"
         >
           {testing ? '发送中…' : '发送测试消息'}
@@ -1945,7 +1945,7 @@ function WecomSection() {
         {testResult && (
           <p
             className={`text-xs mt-2 ${
-              testResult.startsWith('成功') ? 'text-green-400' : 'text-red-400'
+              testResult.startsWith('成功') ? 'text-green-600' : 'text-red-600'
             }`}
           >
             {testResult}
@@ -1970,7 +1970,7 @@ function WecomSection() {
                 <p
                   key={i}
                   className={`text-xs font-mono ${
-                    entry.includes('ERR') ? 'text-red-400' : 'text-green-400'
+                    entry.includes('ERR') ? 'text-red-600' : 'text-green-600'
                   }`}
                 >
                   {entry}
@@ -2132,7 +2132,7 @@ function SyncSection() {
   return (
     <div className="space-y-5">
       {/* Data-scope notice */}
-      <div className="bg-sakura/30 border border-lavender/40 rounded-lg p-3">
+      <div className="bg-primary-tint border border-lavender/40 rounded-lg p-3">
         <p className="text-xs text-sky/90 leading-relaxed">
           同步任务、进度与对话内容到你的手机；对话正文会同步（API 密钥绝不上传，附件仅同步文本与文件名、大图不上传）。
         </p>
@@ -2181,7 +2181,7 @@ function SyncSection() {
             </div>
 
             {status.last_error && state !== 'connected' && (
-              <p className="text-xs text-red-400 break-words">{status.last_error}</p>
+              <p className="text-xs text-red-600 break-words">{status.last_error}</p>
             )}
           </div>
 
@@ -2227,7 +2227,7 @@ function SyncSection() {
           >
             {submitting ? '处理中…' : '退出登录'}
           </button>
-          {actionError && <p className="text-xs text-red-400">{actionError}</p>}
+          {actionError && <p className="text-xs text-red-600">{actionError}</p>}
         </div>
       ) : (
         // ── Logged out ───────────────────────────────────────────────────────
@@ -2270,7 +2270,7 @@ function SyncSection() {
             <button
               onClick={() => doAuth(true)}
               disabled={submitting}
-              className="px-4 py-2 bg-sakura hover:bg-sakura disabled:bg-elevated
+              className="px-4 py-2 bg-sakura hover:bg-sakura disabled:opacity-40
                          text-white text-sm rounded-lg transition-colors"
             >
               {submitting ? '处理中…' : '注册并登录'}
@@ -2284,7 +2284,7 @@ function SyncSection() {
               {submitting ? '处理中…' : '登录'}
             </button>
           </div>
-          {actionError && <p className="text-xs text-red-400 break-words">{actionError}</p>}
+          {actionError && <p className="text-xs text-red-600 break-words">{actionError}</p>}
         </div>
       )}
     </div>

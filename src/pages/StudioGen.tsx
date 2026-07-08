@@ -235,16 +235,16 @@ function MediaCard({
   if (row.status === 'failed') {
     return (
       <div className="relative aspect-square rounded-xl overflow-hidden border border-red-900/70 bg-red-950/30 flex flex-col items-center justify-center gap-2 p-3 text-center">
-        <span className="text-red-400 text-xs font-medium">生成失败</span>
+        <span className="text-red-600 text-xs font-medium">生成失败</span>
         <span
-          className="text-[11px] text-red-300/80 line-clamp-3 break-words"
+          className="text-[11px] text-red-600 line-clamp-3 break-words"
           title={row.error ?? ''}
         >
           {row.error ?? '未知错误'}
         </span>
         <button
           onClick={onRetry}
-          className="mt-1 px-2.5 py-1 rounded-lg bg-red-900/60 hover:bg-red-800 text-red-100 text-[11px] border border-red-800 transition-colors"
+          className="mt-1 px-2.5 py-1 rounded-lg bg-red-900/60 hover:bg-red-800 text-red-100 text-[11px] border border-red-200 transition-colors"
         >
           重试
         </button>
@@ -323,8 +323,8 @@ function IconBtn({
       className={[
         'w-7 h-7 flex items-center justify-center rounded-lg text-sm border backdrop-blur transition-colors',
         danger
-          ? 'bg-black/50 border-line text-ink hover:bg-red-700 hover:border-red-600'
-          : 'bg-black/50 border-line text-ink hover:bg-elevated',
+          ? 'bg-black/50 border-white/20 text-white hover:bg-red-700 hover:border-red-600'
+          : 'bg-black/50 border-white/20 text-white hover:bg-white/20',
       ].join(' ')}
     >
       {children}

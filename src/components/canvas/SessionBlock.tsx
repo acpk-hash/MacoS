@@ -16,9 +16,9 @@ function statusText(status: NodeStatus): string {
 }
 
 function statusPill(status: NodeStatus): string {
-  if (status === 'running') return 'bg-sakura/30 text-sky'
-  if (status === 'failed') return 'bg-red-600/30 text-red-300'
-  return 'bg-green-600/30 text-green-300'
+  if (status === 'running') return 'bg-primary-tint text-sky'
+  if (status === 'failed') return 'bg-red-100 text-red-600'
+  return 'bg-green-100 text-green-700'
 }
 
 function fmtTime(ms: number): string {
@@ -30,9 +30,9 @@ function fmtTime(ms: number): string {
 }
 
 const KIND_META: Record<FlowStep['stepKind'], { label: string; color: string }> = {
-  reply: { label: '回复', color: 'text-sky-300' },
-  command: { label: '命令', color: 'text-emerald-300' },
-  file: { label: '文件', color: 'text-purple-300' },
+  reply: { label: '回复', color: 'text-sky-600' },
+  command: { label: '命令', color: 'text-emerald-700' },
+  file: { label: '文件', color: 'text-purple-700' },
 }
 
 function StepCard({
@@ -55,7 +55,7 @@ function StepCard({
       <button
         onClick={onToggle}
         className={`w-full text-left rounded-lg border bg-surface hover:bg-surface-2/70 transition-colors px-3 py-2 ${
-          step.status === 'failed' ? 'border-red-600/50' : 'border-line'
+          step.status === 'failed' ? 'border-red-300' : 'border-line'
         }`}
       >
         <div className="flex items-center gap-2">
@@ -64,8 +64,8 @@ function StepCard({
             <span
               className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
                 step.exitCode === 0
-                  ? 'bg-green-600/30 text-green-300'
-                  : 'bg-red-600/30 text-red-300'
+                  ? 'bg-green-100 text-green-700'
+                  : 'bg-red-100 text-red-600'
               }`}
             >
               exit {step.exitCode}
@@ -73,8 +73,8 @@ function StepCard({
           )}
           {step.stepKind === 'file' && (
             <span className="text-[10px] font-mono">
-              <span className="text-green-400">+{step.added ?? 0}</span>{' '}
-              <span className="text-red-400">-{step.removed ?? 0}</span>
+              <span className="text-green-600">+{step.added ?? 0}</span>{' '}
+              <span className="text-red-600">-{step.removed ?? 0}</span>
             </span>
           )}
           <span className="ml-auto text-[10px] text-ink-dim">{fmtTime(step.ts)}</span>
@@ -156,7 +156,7 @@ export default function SessionBlock({
         <span className="text-[12px] font-semibold text-ink">
           会话 #{sess.index + 1}
         </span>
-        <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-600/30 text-indigo-300 font-mono">
+        <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 font-mono">
           {sess.engine}
         </span>
         <span className={`text-[10px] px-1.5 py-0.5 rounded ${statusPill(sess.status)}`}>
@@ -166,7 +166,7 @@ export default function SessionBlock({
       </div>
 
       {sess.status === 'failed' && sess.errorText && (
-        <div className="px-3 py-2 text-[11px] text-red-400 whitespace-pre-wrap break-all border-b border-line">
+        <div className="px-3 py-2 text-[11px] text-red-600 whitespace-pre-wrap break-all border-b border-line">
           {sess.errorText}
         </div>
       )}

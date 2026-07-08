@@ -1,4 +1,4 @@
-// Chip / Tag — pastel 全圆标签。tone 决定霓光配色。
+// Chip / Tag — 浅蓝底标签。tone 决定语义配色（浅底徽章，非光晕）。
 import type { ReactNode } from 'react'
 
 export type ChipTone =
@@ -9,15 +9,28 @@ export type ChipTone =
   | 'gold'
   | 'coral'
   | 'neutral'
+  | 'primary'
+  | 'running'
+  | 'done'
+  | 'awaiting'
+  | 'failed'
+  | 'todo'
 
+// 浅色徽章：极浅底 + 语义文字 + 细边。旧 tone 名映射到 v0.7 语义色。
 const tones: Record<ChipTone, string> = {
-  sakura: 'bg-sakura/15 text-sakura border-sakura/25',
-  lavender: 'bg-lavender/15 text-lavender border-lavender/25',
-  sky: 'bg-sky/15 text-sky border-sky/25',
-  mint: 'bg-mint/15 text-mint border-mint/25',
-  gold: 'bg-gold/15 text-gold border-gold/25',
-  coral: 'bg-coral/15 text-coral border-coral/25',
-  neutral: 'bg-white/6 text-ink-muted border-line',
+  primary: 'bg-primary-tint text-primary border-[#c7dbff]',
+  running: 'bg-primary-tint text-primary border-[#c7dbff]',
+  sakura: 'bg-primary-tint text-primary border-[#c7dbff]',
+  lavender: 'bg-primary-tint text-primary border-[#c7dbff]',
+  sky: 'bg-primary-tint text-primary border-[#c7dbff]',
+  done: 'bg-[#ecfdf5] text-done border-[#bbf7d0]',
+  mint: 'bg-[#ecfdf5] text-done border-[#bbf7d0]',
+  awaiting: 'bg-[#fffbeb] text-awaiting border-[#fde68a]',
+  gold: 'bg-[#fffbeb] text-awaiting border-[#fde68a]',
+  failed: 'bg-[#fef2f2] text-failed border-[#fecaca]',
+  coral: 'bg-[#fef2f2] text-failed border-[#fecaca]',
+  todo: 'bg-surface-2 text-todo border-line',
+  neutral: 'bg-surface-2 text-ink-muted border-line',
 }
 
 export interface ChipProps {

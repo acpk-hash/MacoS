@@ -55,7 +55,7 @@ export default function BottomPanel({
     >
       {label}
       {count != null && count > 0 && (
-        <span className="text-[10px] px-1.5 rounded-chip bg-white/8 text-ink-dim">{count}</span>
+        <span className="text-[10px] px-1.5 rounded-chip bg-surface-2 text-ink-dim">{count}</span>
       )}
     </button>
   )

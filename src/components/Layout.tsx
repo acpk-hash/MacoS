@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import Mascot from './ui/Mascot'
+import Logo from './Logo'
 
 // "工作台" group (direct-API studio) — unchanged.
 const studioItems = [
@@ -29,8 +29,8 @@ const linkClass = ({ isActive }: { isActive: boolean }) =>
   [
     'group flex flex-col items-center justify-center h-10 rounded-btn text-xs font-medium transition-all duration-150',
     isActive
-      ? 'text-white bg-grad-primary shadow-glow-primary'
-      : 'text-ink-muted hover:bg-white/8 hover:text-ink',
+      ? 'text-primary bg-primary-tint font-semibold'
+      : 'text-ink-muted hover:bg-surface-2 hover:text-ink',
   ].join(' ')
 
 type NavItem = { to: string; label: string; hint?: string; title?: string }
@@ -60,13 +60,13 @@ export default function Layout() {
   return (
     <div className="flex h-screen text-ink">
       {/* Left sidebar */}
-      <aside className="w-16 flex flex-col items-center py-4 gap-4 glass border-r border-line flex-shrink-0 z-10">
-        {/* Logo — 吉祥物 + 渐变字 */}
+      <aside className="w-16 flex flex-col items-center py-4 gap-4 bg-surface border-r border-line flex-shrink-0 z-10">
+        {/* Logo — 欧拉 φ 标志 + 品牌字 */}
         <div className="flex flex-col items-center gap-1">
-          <Mascot mood="idle" size={34} still title="AgentBoard" />
+          <Logo size={34} />
           <div className="flex flex-col items-center leading-none">
-            <span className="text-[11px] font-extrabold text-gradient leading-none">Agent</span>
-            <span className="text-[11px] font-extrabold text-gradient leading-none">Board</span>
+            <span className="text-[11px] font-extrabold text-primary leading-none">Agent</span>
+            <span className="text-[11px] font-extrabold text-primary leading-none">Board</span>
           </div>
         </div>
 

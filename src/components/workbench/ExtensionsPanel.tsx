@@ -129,7 +129,7 @@ export default function ExtensionsPanel({
       onClick={() => setTab(id)}
       className={[
         'px-3 py-1.5 rounded-btn text-[12px] transition-colors',
-        tab === id ? 'bg-white/10 text-ink' : 'text-ink-muted hover:text-ink',
+        tab === id ? 'bg-[#e9eef5] text-ink' : 'text-ink-muted hover:text-ink',
       ].join(' ')}
     >
       {label}
@@ -207,25 +207,25 @@ export default function ExtensionsPanel({
               {showAdd ? (
                 <div className="glass rounded-card border border-line p-3 space-y-2">
                   <input
-                    className="w-full bg-black/25 border border-line rounded-input px-2 py-1 text-[12px] text-ink placeholder:text-ink-dim focus:outline-none"
+                    className="w-full bg-surface-2 border border-line rounded-input px-2 py-1 text-[12px] text-ink placeholder:text-ink-dim focus:outline-none"
                     placeholder="名称 my-mcp"
                     value={form.name}
                     onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                   />
                   <input
-                    className="w-full bg-black/25 border border-line rounded-input px-2 py-1 text-[12px] text-ink placeholder:text-ink-dim focus:outline-none"
+                    className="w-full bg-surface-2 border border-line rounded-input px-2 py-1 text-[12px] text-ink placeholder:text-ink-dim focus:outline-none"
                     placeholder="命令 npx"
                     value={form.command}
                     onChange={(e) => setForm((f) => ({ ...f, command: e.target.value }))}
                   />
                   <input
-                    className="w-full bg-black/25 border border-line rounded-input px-2 py-1 text-[12px] text-ink placeholder:text-ink-dim focus:outline-none"
+                    className="w-full bg-surface-2 border border-line rounded-input px-2 py-1 text-[12px] text-ink placeholder:text-ink-dim focus:outline-none"
                     placeholder="参数（空格分隔）"
                     value={form.argsText}
                     onChange={(e) => setForm((f) => ({ ...f, argsText: e.target.value }))}
                   />
                   <textarea
-                    className="w-full bg-black/25 border border-line rounded-input px-2 py-1 text-[12px] text-ink placeholder:text-ink-dim focus:outline-none resize-none"
+                    className="w-full bg-surface-2 border border-line rounded-input px-2 py-1 text-[12px] text-ink placeholder:text-ink-dim focus:outline-none resize-none"
                     rows={2}
                     placeholder="环境变量（每行 KEY=VALUE）"
                     value={form.envText}
@@ -274,7 +274,7 @@ export default function ExtensionsPanel({
                     >
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-[13px] text-ink font-medium truncate">{sk.name}</span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-chip bg-white/8 text-ink-dim font-mono flex-shrink-0">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-chip bg-surface-2 text-ink-dim font-mono flex-shrink-0">
                           {sk.source}
                         </span>
                       </div>
@@ -286,7 +286,7 @@ export default function ExtensionsPanel({
                           onUseSkill(`请使用技能「${sk.name}」：${sk.description || sk.name}`)
                           onClose()
                         }}
-                        className="mt-2 self-start text-[11px] px-2.5 py-1 rounded-md bg-white/8 hover:bg-white/12 border border-line text-ink transition-colors"
+                        className="mt-2 self-start text-[11px] px-2.5 py-1 rounded-md bg-surface-2 hover:bg-[#e9eef5] border border-line text-ink transition-colors"
                       >
                         在工作台使用
                       </button>

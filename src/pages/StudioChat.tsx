@@ -381,7 +381,7 @@ const MessageItem = React.memo(function MessageItem({
     <div className="group flex flex-col items-start w-full">
       <div className="w-full">
         {isError ? (
-          <div className="bg-red-950/50 border border-red-900 rounded-lg px-4 py-2.5 text-red-300 text-sm break-words">
+          <div className="bg-red-950/50 border border-red-900 rounded-lg px-4 py-2.5 text-red-600 text-sm break-words">
             {msg.content || '请求出错'}
           </div>
         ) : msg.content === '' && streaming ? (
@@ -558,7 +558,7 @@ function SessionSidebar({
                       setMenuId(null)
                       setConfirmDelete(s)
                     }}
-                    className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-elevated transition-colors"
+                    className="w-full text-left px-3 py-1.5 text-xs text-red-600 hover:bg-elevated transition-colors"
                   >
                     删除
                   </button>

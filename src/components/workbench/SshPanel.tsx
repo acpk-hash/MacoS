@@ -86,7 +86,7 @@ export default function SshPanel() {
   }
 
   const inputCls =
-    'w-full bg-black/25 border border-line rounded-input px-2 py-1 text-[12px] text-ink placeholder:text-ink-dim focus:outline-none focus:border-line-strong min-w-0'
+    'w-full bg-surface-2 border border-line rounded-input px-2 py-1 text-[12px] text-ink placeholder:text-ink-dim focus:outline-none focus:border-line-strong min-w-0'
 
   return (
     <div className="flex gap-3 h-full min-h-0 text-[12px]">
@@ -249,7 +249,7 @@ export default function SshPanel() {
             {savedHosts.map((h) => (
               <div
                 key={`${h.user}@${h.host}:${h.port}`}
-                className="flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-white/5"
+                className="flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-surface-2"
               >
                 <button
                   onClick={() => {
@@ -294,7 +294,7 @@ export default function SshPanel() {
             <select
               value={termConnId ?? ''}
               onChange={(e) => setTermConn(e.target.value)}
-              className="bg-black/25 border border-line rounded-input px-1.5 py-0.5 text-[11px] text-ink-muted focus:outline-none max-w-[180px]"
+              className="bg-surface-2 border border-line rounded-input px-1.5 py-0.5 text-[11px] text-ink-muted focus:outline-none max-w-[180px]"
             >
               {conns.map((c) => (
                 <option key={c.conn_id} value={c.conn_id}>
@@ -308,7 +308,7 @@ export default function SshPanel() {
           {termRunning && <span className="text-[11px] text-lavender animate-pulse">运行中…</span>}
         </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto rounded-card bg-black/30 border border-line p-2 font-mono text-[12px] leading-relaxed">
+        <div className="flex-1 min-h-0 overflow-y-auto rounded-card bg-surface-2 border border-line p-2 font-mono text-[12px] leading-relaxed">
           {termLines.length === 0 ? (
             <p className="text-ink-dim text-center mt-4">
               {conns.length === 0 ? '先在左侧连接一个主机' : '在下方输入命令并回车'}
@@ -344,7 +344,7 @@ export default function SshPanel() {
           <button
             type="submit"
             disabled={!termConnId || termRunning || !cmd.trim()}
-            className="px-3 py-1 rounded-btn bg-white/8 hover:bg-white/12 border border-line text-[12px] text-ink disabled:opacity-40"
+            className="px-3 py-1 rounded-btn bg-surface-2 hover:bg-[#e9eef5] border border-line text-[12px] text-ink disabled:opacity-40"
           >
             运行
           </button>

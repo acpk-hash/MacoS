@@ -1,4 +1,4 @@
-// Button — 二次元主题按钮。variant: primary(渐变发光) / ghost / danger / soft。
+// Button — 蓝白科研主题按钮。variant: primary(实蓝) / ghost / soft / danger。
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
 
 type Variant = 'primary' | 'ghost' | 'danger' | 'soft'
@@ -11,7 +11,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const base =
-  'inline-flex items-center justify-center gap-1.5 font-medium rounded-btn transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none whitespace-nowrap'
+  'inline-flex items-center justify-center gap-1.5 font-medium rounded-btn transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none primary-ring whitespace-nowrap'
 
 const sizes: Record<Size, string> = {
   sm: 'text-xs px-2.5 py-1.5',
@@ -20,13 +20,13 @@ const sizes: Record<Size, string> = {
 
 const variants: Record<Variant, string> = {
   primary:
-    'text-white bg-grad-primary shadow-glow-primary hover:-translate-y-px hover:shadow-[0_6px_26px_rgba(255,127,191,0.4)]',
+    'text-white bg-primary shadow-card hover:bg-primary-hover',
   ghost:
-    'text-ink-muted bg-white/5 border border-line hover:text-ink hover:bg-white/10 hover:border-line-strong',
+    'text-ink-muted bg-surface border border-line hover:text-ink hover:bg-surface-2 hover:border-line-strong',
   soft:
-    'text-lavender bg-lavender/15 border border-lavender/25 hover:bg-lavender/25 hover:text-ink',
+    'text-primary bg-primary-tint border border-[#c7dbff] hover:bg-[#e0e9ff]',
   danger:
-    'text-coral bg-coral/12 border border-coral/25 hover:bg-coral/25 hover:text-white',
+    'text-failed bg-[#fef2f2] border border-[#fecaca] hover:bg-[#fee2e2]',
 }
 
 export default function Button({

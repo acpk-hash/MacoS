@@ -56,9 +56,9 @@ function statusLabel(s: string): string {
 }
 
 function statusClass(s: string): string {
-  if (s === 'failed') return 'bg-red-600/25 text-red-300'
+  if (s === 'failed') return 'bg-red-100 text-red-600'
   if (s === 'running' || s === 'active') return 'bg-sakura/25 text-sky'
-  if (s === 'awaiting_review') return 'bg-amber-600/25 text-amber-300'
+  if (s === 'awaiting_review') return 'bg-amber-100 text-amber-600'
   return 'bg-elevated/60 text-ink-muted'
 }
 
@@ -68,7 +68,7 @@ function KindBadge({ kind }: { kind: RunKind }) {
     <span
       className={[
         'text-[10px] px-1.5 py-0.5 rounded font-medium flex-shrink-0',
-        isBoard ? 'bg-indigo-600/30 text-indigo-300' : 'bg-emerald-600/30 text-emerald-300',
+        isBoard ? 'bg-indigo-100 text-indigo-700' : 'bg-emerald-100 text-emerald-700',
       ].join(' ')}
     >
       {isBoard ? '看板' : '工作台'}
@@ -127,7 +127,7 @@ function RunCard({
         <div className="flex-1" />
         <button
           onClick={onDelete}
-          className="text-[11px] px-2.5 py-1 rounded-md text-ink-dim hover:text-red-300 hover:bg-red-950/40 transition-colors"
+          className="text-[11px] px-2.5 py-1 rounded-md text-ink-dim hover:text-red-600 hover:bg-red-950/40 transition-colors"
           title="从沉淀库中删除该运行记录"
         >
           删除
@@ -231,7 +231,7 @@ function DetailOverlay({
         </div>
         <div className="flex-1 overflow-y-auto px-4 py-4">
           {loading && <div className="text-[12px] text-ink-dim">加载中…</div>}
-          {error && <div className="text-[12px] text-red-400">{error}</div>}
+          {error && <div className="text-[12px] text-red-600">{error}</div>}
           {!loading && !error && detail && detail.kind === 'workbench' && (
             <WorkbenchDetail detail={detail} />
           )}
@@ -257,7 +257,7 @@ function SkillCard({ skill, onUse }: { skill: SkillInfo; onUse: () => void }) {
           className={[
             'text-[10px] px-1.5 py-0.5 rounded font-mono flex-shrink-0',
             skill.source === 'pi'
-              ? 'bg-sky-600/25 text-sky-300'
+              ? 'bg-sky-100 text-sky-600'
               : 'bg-violet-600/25 text-violet-300',
           ].join(' ')}
         >
@@ -427,7 +427,7 @@ export default function Sediment() {
           </div>
 
           <div className="flex-1 overflow-y-auto px-4 py-4">
-            {runsError && <div className="mb-3 text-[12px] text-red-400">{runsError}</div>}
+            {runsError && <div className="mb-3 text-[12px] text-red-600">{runsError}</div>}
             {runsLoading && runs.length === 0 ? (
               <div className="text-[12px] text-ink-dim">加载中…</div>
             ) : runs.length === 0 ? (
@@ -455,7 +455,7 @@ export default function Sediment() {
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto px-4 py-4">
-          {skillsError && <div className="mb-3 text-[12px] text-red-400">{skillsError}</div>}
+          {skillsError && <div className="mb-3 text-[12px] text-red-600">{skillsError}</div>}
           {skillsLoading && skills.length === 0 ? (
             <div className="text-[12px] text-ink-dim">扫描中…</div>
           ) : skills.length === 0 ? (

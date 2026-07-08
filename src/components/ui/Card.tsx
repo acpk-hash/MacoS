@@ -1,9 +1,9 @@
-// Card / GlassPanel — 玻璃拟态容器。
+// Card / Panel — 蓝白科研容器：白底 + 细描边 + 柔和阴影（非玻璃霓光）。
 import type { HTMLAttributes, ReactNode } from 'react'
 
 export interface CardProps extends HTMLAttributes<HTMLDivElement> {
   children: ReactNode
-  /** 悬浮上浮 + 加深光晕（可点击卡片用）。 */
+  /** 悬浮上浮 + 加深阴影（可点击卡片用）。 */
   hover?: boolean
 }
 
@@ -11,9 +11,9 @@ export function Card({ children, hover = false, className = '', ...rest }: CardP
   return (
     <div
       className={[
-        'glass rounded-card',
+        'bg-surface border border-line rounded-card shadow-card',
         hover
-          ? 'transition-all duration-150 hover:-translate-y-0.5 hover:border-line-strong hover:shadow-glass'
+          ? 'transition-all duration-150 hover:-translate-y-0.5 hover:border-line-strong hover:shadow-pop'
           : '',
         className,
       ].join(' ')}
@@ -24,10 +24,10 @@ export function Card({ children, hover = false, className = '', ...rest }: CardP
   )
 }
 
-/** GlassPanel — 更强的玻璃层，用于弹层/侧栏/大面板。 */
+/** GlassPanel — 悬浮层/弹层：白底 + 强阴影。 */
 export function GlassPanel({ children, className = '', ...rest }: HTMLAttributes<HTMLDivElement> & { children: ReactNode }) {
   return (
-    <div className={`glass-strong rounded-pop ${className}`} {...rest}>
+    <div className={`bg-elevated border border-line rounded-pop shadow-pop ${className}`} {...rest}>
       {children}
     </div>
   )

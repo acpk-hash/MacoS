@@ -17,7 +17,7 @@ function TabButton({ tab, active }: { tab: OpenTab; active: boolean }) {
       title={tab.relPath}
       className={[
         'group flex items-center gap-1.5 pl-3 pr-2 h-9 border-r border-line cursor-pointer flex-shrink-0 max-w-[200px]',
-        active ? 'bg-[#1a1728] text-ink' : 'bg-transparent text-ink-muted hover:bg-white/5',
+        active ? 'bg-surface text-primary font-medium' : 'bg-transparent text-ink-muted hover:bg-surface-2',
       ].join(' ')}
     >
       {tab.aiModified && <span className="w-1.5 h-1.5 rounded-full bg-mint flex-shrink-0" />}
@@ -27,7 +27,7 @@ function TabButton({ tab, active }: { tab: OpenTab; active: boolean }) {
           e.stopPropagation()
           closeTab(tab.relPath)
         }}
-        className="ml-0.5 w-4 h-4 flex items-center justify-center rounded text-ink-dim hover:text-coral hover:bg-white/10 flex-shrink-0"
+        className="ml-0.5 w-4 h-4 flex items-center justify-center rounded text-ink-dim hover:text-coral hover:bg-[#e9eef5] flex-shrink-0"
       >
         {dirty ? <span className="w-1.5 h-1.5 rounded-full bg-gold group-hover:hidden" /> : null}
         <span className={dirty ? 'hidden group-hover:inline' : ''}>✕</span>
@@ -54,7 +54,7 @@ export default function EditorPane() {
   }
 
   return (
-    <div className="flex-1 min-w-0 flex flex-col h-full bg-[#1a1728]">
+    <div className="flex-1 min-w-0 flex flex-col h-full bg-surface">
       {/* Tab bar */}
       <div className="flex items-stretch h-9 border-b border-line overflow-x-auto flex-shrink-0 bg-surface/40">
         {tabs.length === 0 ? (

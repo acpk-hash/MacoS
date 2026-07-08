@@ -20,7 +20,7 @@ const REHYPE_PLUGINS = [
 
 const mdComponents: Components = {
   pre: ({ children }) => (
-    <pre className="my-2 overflow-x-auto rounded-lg border border-line bg-black/30 p-2.5 text-[12.5px] leading-relaxed">
+    <pre className="my-2 overflow-x-auto rounded-lg border border-line bg-surface-2 p-2.5 text-[12.5px] leading-relaxed">
       {children}
     </pre>
   ),
@@ -29,7 +29,7 @@ const mdComponents: Components = {
     const isBlock = /language-/.test(className || '')
     if (!isBlock) {
       return (
-        <code className="px-1.5 py-0.5 rounded bg-white/8 text-[0.85em] font-mono text-mint">
+        <code className="px-1.5 py-0.5 rounded bg-surface-2 text-[0.85em] font-mono text-mint">
           {children}
         </code>
       )
@@ -59,7 +59,7 @@ const mdComponents: Components = {
     </div>
   ),
   th: ({ children }) => (
-    <th className="border border-line px-2 py-1 bg-white/5 text-left font-medium">{children}</th>
+    <th className="border border-line px-2 py-1 bg-surface-2 text-left font-medium">{children}</th>
   ),
   td: ({ children }) => <td className="border border-line px-2 py-1">{children}</td>,
 }
@@ -129,7 +129,7 @@ function ToolShell({
 }) {
   return (
     <div className="my-2 rounded-card border border-line bg-surface/60 overflow-hidden">
-      <div className="flex items-center gap-2 px-2.5 py-1.5 bg-white/[0.03] border-b border-line">
+      <div className="flex items-center gap-2 px-2.5 py-1.5 bg-surface-2 border-b border-line">
         <span className={`text-[12px] ${tone}`} aria-hidden="true">
           {icon}
         </span>
@@ -284,7 +284,7 @@ export const EntryItem = React.memo(function EntryItem({ entry }: { entry: Workb
         <div className="flex justify-end mt-4">
           <div className="max-w-[85%] rounded-card rounded-tr-sm bg-grad-primary text-white px-3 py-2 text-[13.5px] whitespace-pre-wrap break-words shadow-glow-primary">
             {entry.steer && (
-              <span className="mr-1.5 text-[10px] px-1.5 py-0.5 rounded-chip bg-black/25 align-middle">
+              <span className="mr-1.5 text-[10px] px-1.5 py-0.5 rounded-chip bg-white/20 align-middle">
                 插话
               </span>
             )}
@@ -354,7 +354,7 @@ function ProgressBar({
       </span>
       <button
         onClick={onStop}
-        className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-btn bg-white/5 hover:bg-coral/15 border border-line hover:border-coral/30 text-[11px] text-ink-muted hover:text-coral transition-colors"
+        className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-btn bg-surface-2 hover:bg-coral/15 border border-line hover:border-coral/30 text-[11px] text-ink-muted hover:text-coral transition-colors"
         title="停止当前任务"
       >
         <span className="w-2.5 h-2.5 bg-current rounded-[2px]" />

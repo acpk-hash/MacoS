@@ -203,7 +203,7 @@ export default function Composer({
                 <span className="max-w-[140px] truncate">{a.name}</span>
                 <button
                   onClick={() => removeAttachment(i)}
-                  className="ml-1 text-ink-dim hover:text-red-400 transition-colors"
+                  className="ml-1 text-ink-dim hover:text-red-600 transition-colors"
                   title="移除"
                 >
                   ✕

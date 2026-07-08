@@ -77,7 +77,7 @@ function Row({ entry, depth }: { entry: WsEntry; depth: number }) {
         title={entry.rel_path}
         className={[
           'w-full flex items-center gap-1 py-[3px] pr-2 text-left transition-colors group rounded-md',
-          active ? 'bg-lavender/15 text-ink' : 'hover:bg-white/6 text-ink-muted',
+          active ? 'bg-lavender/15 text-ink' : 'hover:bg-surface-2 text-ink-muted',
         ].join(' ')}
         style={{ paddingLeft: 6 + depth * 12 }}
       >
@@ -167,7 +167,7 @@ export default function FileTree() {
             value={remote?.connId ?? 'local'}
             onChange={(e) => onSourceChange(e.target.value)}
             title="切换文件树数据源：本地 / 远程主机"
-            className="flex-1 min-w-0 bg-black/25 border border-line rounded-input px-1.5 py-0.5 text-[11px] text-ink-muted focus:outline-none focus:border-line-strong"
+            className="flex-1 min-w-0 bg-surface-2 border border-line rounded-input px-1.5 py-0.5 text-[11px] text-ink-muted focus:outline-none focus:border-line-strong"
           >
             <option value="local">本地</option>
             {conns.map((c) => (
@@ -213,7 +213,7 @@ export default function FileTree() {
       </div>
 
       <form onSubmit={submitSearch} className="px-2 py-2 border-b border-line">
-        <div className="flex items-center gap-1 rounded-input bg-black/25 border border-line px-2 py-1">
+        <div className="flex items-center gap-1 rounded-input bg-surface-2 border border-line px-2 py-1">
           <span className="text-[11px] text-ink-dim">🔍</span>
           <input
             value={q}
@@ -251,7 +251,7 @@ export default function FileTree() {
                   void openFile(h.rel_path, h.rel_path.split('/').pop() ?? h.rel_path)
                 }
                 title={h.rel_path}
-                className="w-full text-left px-2.5 py-1 hover:bg-white/6 transition-colors"
+                className="w-full text-left px-2.5 py-1 hover:bg-surface-2 transition-colors"
               >
                 <div className="text-[12px] text-ink-muted truncate">
                   {h.rel_path.split('/').pop()}

@@ -43,7 +43,7 @@ function TokenBadge({ tokens }: { tokens: WorkbenchStats }) {
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
-      <div className="flex items-center gap-1.5 px-2 py-1 rounded-btn bg-white/5 border border-line text-[11px] text-ink-muted font-mono cursor-default">
+      <div className="flex items-center gap-1.5 px-2 py-1 rounded-btn bg-surface-2 border border-line text-[11px] text-ink-muted font-mono cursor-default">
         <span className="text-lavender">Σ</span>
         <span>{fmt(tokens.total)}</span>
         <span className={tone}>{pct.toFixed(0)}%</span>
@@ -197,7 +197,7 @@ export default function Workbench() {
         <button
           onClick={() => void pickDir()}
           disabled={wsOpening}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-btn bg-white/5 hover:bg-white/10 border border-line hover:border-line-strong text-[12px] text-ink transition-colors disabled:opacity-40 max-w-[240px]"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-btn bg-surface-2 hover:bg-[#e9eef5] border border-line hover:border-line-strong text-[12px] text-ink transition-colors disabled:opacity-40 max-w-[240px]"
           title={root ?? '选择工作目录'}
         >
           <span aria-hidden="true">📁</span>
@@ -211,7 +211,7 @@ export default function Workbench() {
               if (e.target.value) void openDir(e.target.value)
             }}
             title="最近打开"
-            className="flex-shrink-0 bg-white/5 border border-line rounded-btn px-2 py-1.5 text-[11px] text-ink-muted focus:outline-none focus:border-line-strong max-w-[160px]"
+            className="flex-shrink-0 bg-surface-2 border border-line rounded-btn px-2 py-1.5 text-[11px] text-ink-muted focus:outline-none focus:border-line-strong max-w-[160px]"
           >
             <option value="">最近…</option>
             {recent.map((p) => (
@@ -250,7 +250,7 @@ export default function Workbench() {
             if (sessionId) void switchModel(v.providerId, v.modelId)
             else setModelSel(v.providerId, v.modelId)
           }}
-          className="flex-shrink-0 bg-white/5 border border-line rounded-btn px-2 py-1.5 text-[11px] text-ink focus:outline-none focus:border-line-strong max-w-[180px]"
+          className="flex-shrink-0 bg-surface-2 border border-line rounded-btn px-2 py-1.5 text-[11px] text-ink focus:outline-none focus:border-line-strong max-w-[180px]"
           title="选择模型（切换会新开会话）"
         />
 

@@ -433,7 +433,7 @@ export default function ImageAnnotator({
                 className={[
                   'px-2 py-1 rounded-md text-xs border transition-colors',
                   brushSize === b.v
-                    ? 'bg-pink-600 text-white border-pink-500'
+                    ? 'bg-primary text-white border-primary'
                     : 'bg-surface-2 text-ink-muted border-line hover:bg-elevated',
                 ].join(' ')}
               >
@@ -465,7 +465,7 @@ export default function ImageAnnotator({
         onClick={(e) => e.stopPropagation()}
       >
         {loadError ? (
-          <div className="text-red-400 text-sm">{loadError}</div>
+          <div className="text-red-600 text-sm">{loadError}</div>
         ) : (
           <canvas
             ref={canvasRef}

@@ -3,35 +3,37 @@
 @tailwind utilities;
 
 /* ══════════════════════════════════════════════════════════════════════════
-   v0.6 二次元设计系统（Sakura Dream）— 基础层
-   色值以 docs/v0.6-design-system-anime.md 为准。
+   v0.7 蓝白科研设计系统（Research / Academic）— 基础层
+   色值以 docs/v0.7-design-system-research.md 为准。浅色唯一，无暗色切换。
    ══════════════════════════════════════════════════════════════════════════ */
 
 :root {
-  --bg: #14121f;
-  --surface: #1e1b2e;
-  --surface-2: #272338;
-  --elevated: #2f2a44;
-  --border: rgba(255, 255, 255, 0.08);
-  --border-strong: rgba(180, 150, 255, 0.22);
+  --bg: #f7f9fc;
+  --surface: #ffffff;
+  --surface-2: #f1f4f9;
+  --elevated: #ffffff;
+  --border: #e2e8f0;
+  --border-strong: #cbd7e6;
 
-  --sakura: #ff7fbf;
-  --lavender: #b58fff;
-  --sky: #7fb0ff;
-  --mint: #7fe7c4;
-  --gold: #ffd88f;
-  --coral: #ff8b9a;
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --primary-tint: #eff4ff;
+  --primary-ring: rgba(37, 99, 235, 0.35);
 
-  --text: #ece8fb;
-  --text-muted: #a49dc7;
-  --text-dim: #6f6a8f;
+  --running: #2563eb;
+  --done: #16a34a;
+  --awaiting: #d97706;
+  --failed: #dc2626;
+  --todo: #64748b;
 
-  --grad-primary: linear-gradient(135deg, #ff7fbf 0%, #b58fff 50%, #7fb0ff 100%);
-  /* 大背景弥散光：顶部粉、底部蓝，极低透明度叠在 --bg 上 */
-  --grad-soft:
-    radial-gradient(120% 80% at 15% -10%, rgba(255, 127, 191, 0.12) 0%, transparent 55%),
-    radial-gradient(120% 90% at 100% 0%, rgba(181, 143, 255, 0.1) 0%, transparent 55%),
-    radial-gradient(140% 100% at 50% 120%, rgba(127, 176, 255, 0.1) 0%, transparent 60%);
+  --text: #1e293b;
+  --text-muted: #475569;
+  --text-dim: #94a3b8;
+
+  --grad-primary: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+  /* 卡片/弹层柔和阴影（非发光） */
+  --shadow-card: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-pop: 0 8px 24px rgba(15, 23, 42, 0.12);
 }
 
 *,
@@ -51,104 +53,92 @@ body,
 }
 
 body {
-  font-family: 'M PLUS Rounded 1c', 'Varela Round', ui-rounded, 'PingFang SC',
-    'Microsoft YaHei', system-ui, sans-serif;
+  font-family: 'Inter', 'Source Han Sans SC', 'PingFang SC', 'Microsoft YaHei',
+    system-ui, sans-serif;
   color: var(--text);
   background-color: var(--bg);
-  /* 弥散霓光 + 极淡星点纹理（透明度 < 5%） */
-  background-image: var(--grad-soft),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60'%3E%3Ccircle cx='8' cy='12' r='0.7' fill='%23ffffff' opacity='0.04'/%3E%3Ccircle cx='40' cy='30' r='0.6' fill='%23ffffff' opacity='0.035'/%3E%3Ccircle cx='24' cy='48' r='0.5' fill='%23ffffff' opacity='0.03'/%3E%3C/svg%3E");
+  /* 极淡点阵网格（opacity < 3%）增科研感，不用弥散霓光 */
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Ccircle cx='2' cy='2' r='0.7' fill='%232563eb' opacity='0.05'/%3E%3C/svg%3E");
   background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
+  font-feature-settings: 'tnum';
 }
 
-/* ── 玻璃拟态工具类 ─────────────────────────────────────────────────────── */
+/* ── 面板/卡片工具类（浅色，柔和阴影，非玻璃霓光） ─────────────────────────── */
 @layer components {
   .glass {
-    background: rgba(30, 27, 46, 0.72);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
+    background: var(--surface);
     border: 1px solid var(--border);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    box-shadow: var(--shadow-card);
   }
   .glass-strong {
-    background: rgba(39, 35, 56, 0.82);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid var(--border-strong);
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35),
-      inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    background: var(--elevated);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-pop);
+  }
+  .card-soft {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-card);
   }
 }
 
-/* ── 发光工具类 ─────────────────────────────────────────────────────────── */
+/* ── 工具类 ─────────────────────────────────────────────────────────────── */
 @layer utilities {
-  .glow-primary {
-    box-shadow: 0 4px 20px rgba(255, 127, 191, 0.28);
-  }
-  .glow-sky {
-    box-shadow: 0 0 10px rgba(127, 176, 255, 0.45);
-  }
-  .glow-mint {
-    box-shadow: 0 0 10px rgba(127, 231, 196, 0.45);
-  }
-  .glow-gold {
-    box-shadow: 0 0 10px rgba(255, 216, 143, 0.45);
-  }
-  .glow-coral {
-    box-shadow: 0 0 10px rgba(255, 139, 154, 0.45);
-  }
+  /* 旧 glow-* 名 -> 浅色下退化为柔和阴影 */
+  .glow-primary,
+  .glow-sky,
+  .glow-mint,
+  .glow-gold,
+  .glow-coral,
   .glow-lavender {
-    box-shadow: 0 0 10px rgba(181, 143, 255, 0.45);
+    box-shadow: var(--shadow-card);
   }
 
-  /* 渐变文字（hero / 大标题 / logo） */
+  /* 聚焦环（主色） */
+  .primary-ring:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--primary-ring);
+  }
+
+  /* 旧 text-gradient -> 科研风纯主色（不再用渐变文字） */
   .text-gradient {
-    background: var(--grad-primary);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-    color: transparent;
+    color: var(--primary);
+    -webkit-text-fill-color: currentColor;
   }
 
-  /* 渐变描边（用于高亮项/进度条底） */
+  /* 高亮描边 -> 主色细边 + 白底 */
   .border-gradient {
-    border: 1px solid transparent;
-    background:
-      linear-gradient(var(--surface), var(--surface)) padding-box,
-      var(--grad-primary) border-box;
+    border: 1px solid var(--primary);
+    background: var(--surface);
   }
 
-  /* 极淡渐变分隔线 */
+  /* 分隔线 -> 实色细线 */
   .divider-soft {
     height: 1px;
-    background: linear-gradient(
-      90deg,
-      transparent,
-      rgba(181, 143, 255, 0.25),
-      transparent
-    );
+    background: var(--border);
     border: 0;
   }
 }
 
-/* ── 柔和滚动条 ─────────────────────────────────────────────────────────── */
+/* ── 柔和滚动条（浅色） ─────────────────────────────────────────────────── */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(181, 143, 255, 0.28) transparent;
+  scrollbar-color: rgba(100, 116, 139, 0.35) transparent;
 }
 *::-webkit-scrollbar {
   width: 9px;
   height: 9px;
 }
 *::-webkit-scrollbar-thumb {
-  background: rgba(181, 143, 255, 0.24);
+  background: rgba(100, 116, 139, 0.3);
   border-radius: 999px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: rgba(181, 143, 255, 0.4);
+  background: rgba(100, 116, 139, 0.5);
   background-clip: padding-box;
 }
 
@@ -163,20 +153,20 @@ body {
   }
 }
 
-/* ── Workflow canvas (React Flow) — 二次元配色覆盖 ───────────────────────── */
+/* ── Workflow canvas (React Flow) — 蓝白配色覆盖 ─────────────────────────── */
 
 @keyframes canvasBreathe {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(127, 176, 255, 0.5);
+    box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.28);
   }
   50% {
-    box-shadow: 0 0 14px 4px rgba(127, 176, 255, 0.5);
+    box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.18);
   }
 }
 
 .canvas-glow {
-  animation: canvasBreathe 1.6s ease-in-out infinite;
+  animation: canvasBreathe 1.8s ease-in-out infinite;
 }
 
 .react-flow__node {
@@ -185,28 +175,28 @@ body {
 }
 
 .react-flow__edge-path {
-  stroke: #4a4463;
+  stroke: #cbd7e6;
   stroke-width: 1.5;
 }
 .react-flow__edge.animated .react-flow__edge-path {
-  stroke: #7fb0ff;
+  stroke: #2563eb;
 }
 
 .react-flow__node.selected > div {
-  outline: 2px solid #b58fff;
+  outline: 2px solid #2563eb;
   outline-offset: 2px;
 }
 
 .react-flow__controls-button {
-  background: #272338;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  color: #ece8fb;
-  fill: #ece8fb;
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+  color: #475569;
+  fill: #475569;
 }
 .react-flow__controls-button:hover {
-  background: #2f2a44;
+  background: #f1f4f9;
 }
 .react-flow__attribution {
   background: transparent;
-  color: #6f6a8f;
+  color: #94a3b8;
 }
