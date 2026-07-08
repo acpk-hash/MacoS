@@ -7,6 +7,7 @@ pub mod mcp;
 pub mod pi_engine;
 pub mod providers;
 pub mod relay;
+pub mod research;
 pub mod sediment;
 pub mod ssh_remote;
 pub mod studio;
@@ -1117,6 +1118,17 @@ pub fn run() {
             sediment_skills,
             sediment_reuse,
             sediment_delete,
+            research::research_roots,
+            research::research_agents,
+            research::research_agent_read,
+            research::research_agent_write,
+            research::research_skills,
+            research::research_skill_read,
+            research::research_skill_write,
+            research::research_pipelines,
+            research::research_dashboard,
+            research::research_run_output_read,
+            research::research_run_pipeline,
             workspace_fs::ws_open_folder,
             workspace_fs::ws_list_dir,
             workspace_fs::ws_read_file,
