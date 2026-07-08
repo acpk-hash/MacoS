@@ -23,6 +23,11 @@ const sedimentItems = [
   { to: '/sediment', label: '沉淀', title: '沉淀 · 运行历史 / 技能库' },
 ]
 
+// "科研" group (H5): integrates local agent管理 / skills管理.
+const researchItems = [
+  { to: '/research', label: '科研', title: '科研 · Agent/Skill 库 · 流水线 · 仪表盘' },
+]
+
 // Bottom utility links.
 const navItems = [{ to: '/settings', label: '设置' }]
 
@@ -91,6 +96,14 @@ export default function Layout() {
         <nav className="flex flex-col gap-1 w-full px-2">
           <GroupTitle>沉淀</GroupTitle>
           {sedimentItems.map((item) => (
+            <NavEntry key={item.to} item={item} />
+          ))}
+        </nav>
+
+        {/* 科研 group */}
+        <nav className="flex flex-col gap-1 w-full px-2">
+          <GroupTitle>科研</GroupTitle>
+          {researchItems.map((item) => (
             <NavEntry key={item.to} item={item} />
           ))}
         </nav>

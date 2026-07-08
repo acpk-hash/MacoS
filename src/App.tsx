@@ -9,6 +9,7 @@ import Canvas from './pages/Canvas'
 import Workbench from './pages/Workbench'
 import Sediment from './pages/Sediment'
 import Artifacts from './pages/Artifacts'
+import Research from './pages/Research'
 
 export default function App() {
   return (
@@ -23,7 +24,8 @@ export default function App() {
           <Route path="artifacts" element={<Artifacts />} />
           <Route path="workbench" element={<Workbench />} />
         <Route path="sediment" element={<Sediment />} />
-          <Route path="canvas" element={<Canvas />} />
+          <Route path="research" element={<Research />} />
+        <Route path="canvas" element={<Canvas />} />
           <Route path="settings" element={<Settings />} />
         </Route>
       </Routes>
