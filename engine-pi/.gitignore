@@ -1,0 +1,5 @@
+# The bundled engine runtime is large (~240 MB) and must NOT be committed.
+# It is prepared per build machine by scripts/prepare-engine-pi.ps1 and packed
+# into the installer by Tauri (bundle.resources -> engine-pi/**).
+node.exe
+pi/
