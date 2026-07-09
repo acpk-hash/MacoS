@@ -5,336 +5,363 @@
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AgentBoard — 本地运行的 Agent 任务工作台</title>
-<!-- 字体：Inter（清晰无衬线 UI 字体）。使用 fonts.loli.net（Google Fonts 国内镜像，中国大陆可访问），失败时浏览器自动回退到 PingFang SC / 思源黑体 / 微软雅黑等系统字体。 -->
 <link rel="preconnect" href="https://fonts.loli.net">
-<link href="https://fonts.loli.net/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.loli.net/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
 :root {
-  --bg: #f7f9fc;
-  --surface: #ffffff;
-  --surface-2: #f1f4f9;
-  --elevated: #ffffff;
-  --border: #e2e8f0;
-  --border-strong: #cbd7e6;
-  --primary: #2563eb;
-  --primary-hover: #1d4ed8;
-  --primary-tint: #eff4ff;
-  --primary-ring: rgba(37,99,235,0.35);
-  --ok: #16a34a;
-  --warn: #d97706;
-  --text: #1e293b;
-  --text-muted: #475569;
-  --text-dim: #94a3b8;
-  --shadow-card: 0 1px 3px rgba(15,23,42,0.06), 0 1px 2px rgba(15,23,42,0.04);
-  --shadow-hover: 0 6px 18px rgba(15,23,42,0.10), 0 2px 6px rgba(15,23,42,0.06);
-  --round-card: 12px;
-  --round-btn: 8px;
+  --bg: #0b1020;
+  --surface: #131b2f;
+  --surface-warm: #182343;
+  --border: #293653;
+  --border-soft: #1e2a43;
+  --accent: #60a5fa;
+  --accent-hover: #3b82f6;
+  --accent-active: #2563eb;
+  --fg: #f8fafc;
+  --fg-2: #cbd5e1;
+  --muted: #8ea0b8;
+  --success: #22c55e;
+  --warn: #fbbf24;
+  --danger: #fb7185;
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 20px;
+  --r-pill: 9999px;
+  --shadow-raised: 0 24px 72px rgba(0,0,0,.36);
+  --focus: 0 0 0 4px rgba(96,165,250,.28);
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
 }
-
 html { scroll-behavior: smooth; }
-
 body {
   background: var(--bg);
-  color: var(--text);
+  color: var(--fg);
   font-family: "Inter", "PingFang SC", "Source Han Sans SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
-  font-size: 16px;
+  font-size: 15px;
   line-height: 1.7;
   min-height: 100vh;
   position: relative;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
 }
-
 body::before {
   content: "";
   position: fixed;
   inset: 0;
   z-index: -1;
-  background-image: radial-gradient(rgba(37,99,235,0.5) 1px, transparent 1px);
-  background-size: 26px 26px;
-  opacity: 0.025;
   pointer-events: none;
+  background:
+    radial-gradient(920px 520px at 50% -180px, rgba(96,165,250,0.16), transparent 70%),
+    radial-gradient(700px 420px at 88% -60px, rgba(96,165,250,0.08), transparent 72%);
 }
-
-a { color: var(--primary); text-decoration: none; transition: color 0.15s; }
-a:hover { color: var(--primary-hover); text-decoration: underline; }
-
+a { color: var(--accent); text-decoration: none; transition: color 160ms var(--ease); }
+a:hover { color: #93c5fd; }
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 32px; }
+.eyebrow {
+  font-size: 12px;
+  font-weight: 750;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-family: var(--mono);
+  margin-bottom: 14px;
+}
 header {
-  border-bottom: 1px solid var(--border);
-  padding: 0 2rem;
-  backdrop-filter: blur(10px);
-  background: rgba(247,249,252,0.85);
+  border-bottom: 1px solid var(--border-soft);
+  background: rgba(11,16,32,0.72);
+  backdrop-filter: blur(12px);
   position: sticky;
   top: 0;
   z-index: 20;
 }
 .header-inner {
-  max-width: 980px;
+  max-width: 1080px;
   margin: 0 auto;
+  padding: 0 32px;
   display: flex;
   align-items: center;
-  height: 64px;
-  gap: 0.7rem;
+  height: 66px;
+  gap: 12px;
 }
 .logo-mark {
   width: 32px;
   height: 32px;
-  border-radius: 8px;
+  border-radius: var(--r-sm);
   display: block;
   flex-shrink: 0;
-  box-shadow: 0 2px 6px rgba(37,99,235,0.28);
+  box-shadow: 0 6px 18px rgba(96,165,250,0.30);
 }
 .logo-text {
-  font-size: 1.15rem;
+  font-size: 17px;
   font-weight: 700;
   letter-spacing: -0.01em;
-  color: var(--text);
+  color: var(--fg);
 }
-.logo-ver {
-  font-size: 0.72rem;
+.ver-chip {
+  font-family: var(--mono);
+  font-size: 12px;
   font-weight: 600;
-  background: var(--primary-tint);
-  border: 1px solid var(--border-strong);
-  border-radius: 999px;
-  padding: 2px 10px;
-  color: var(--primary);
+  background: rgba(96,165,250,0.10);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  padding: 3px 11px;
+  color: var(--accent);
   margin-left: auto;
 }
-
-.hero {
-  max-width: 980px;
-  margin: 0 auto;
-  padding: 4.5rem 2rem 3.5rem;
-  text-align: center;
-}
-.hero-logo {
-  width: 76px;
-  height: 76px;
-  margin: 0 auto 1.9rem;
-  display: block;
-  border-radius: 18px;
-  box-shadow: var(--shadow-hover);
+.hero { padding: 96px 0 68px; }
+.hero-grid {
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  gap: 56px;
+  align-items: center;
 }
 .hero h1 {
-  font-size: clamp(2.1rem, 5.5vw, 3rem);
-  font-weight: 700;
+  font-size: clamp(40px, 6vw, 64px);
+  font-weight: 800;
   letter-spacing: -0.02em;
-  line-height: 1.22;
-  margin-bottom: 1.15rem;
-  color: var(--text);
+  line-height: 1.05;
+  color: var(--fg);
+  margin: 4px 0 22px;
 }
-.hero h1 em { font-style: normal; color: var(--primary); }
-.hero .tagline {
-  font-size: 1.12rem;
-  color: var(--text-muted);
-  max-width: 560px;
-  margin: 0 auto 2.5rem;
-  line-height: 1.8;
+.hero h1 em { font-style: normal; color: var(--accent); }
+.hero .lead {
+  font-size: 20px;
+  color: var(--muted);
+  line-height: 1.65;
+  max-width: 540px;
+  margin-bottom: 32px;
 }
-
-.features {
-  max-width: 980px;
-  margin: 0 auto;
-  padding: 0 2rem 5rem;
+.cta-row { display: flex; flex-wrap: wrap; gap: 14px; }
+.hero-panel {
+  background: linear-gradient(180deg, var(--surface-warm), var(--surface));
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-raised);
+  padding: 24px;
+}
+.panel-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 16px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.panel-dot { width: 10px; height: 10px; border-radius: 50%; }
+.panel-title {
+  margin-left: 6px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+.metric-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 1.25rem;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.metric {
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-md);
+  padding: 14px 16px;
+}
+.metric .num {
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--fg);
+  line-height: 1.1;
+}
+.metric .num.accent { color: var(--accent); }
+.metric .label { font-size: 13px; color: var(--muted); margin-top: 2px; }
+.chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  font-size: 12.5px;
+  color: var(--fg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  padding: 5px 12px;
+  background: rgba(255,255,255,0.02);
+}
+.chip::before { content: "\25CF"; color: var(--accent); font-size: 8px; margin-right: 6px; vertical-align: 2px; }
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 22px;
+  border-radius: var(--r-md);
+  font-size: 15px;
+  font-weight: 750;
+  font-family: inherit;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 180ms var(--ease), border-color 180ms var(--ease), box-shadow 180ms var(--ease), transform 130ms var(--ease), color 180ms var(--ease);
+  text-decoration: none;
+}
+.btn-primary {
+  background: var(--accent);
+  color: #06122b;
+  box-shadow: 0 8px 24px rgba(96,165,250,0.28);
+}
+.btn-primary:hover { background: var(--accent-hover); color: #06122b; transform: translateY(-1px); }
+.btn-primary:active { background: var(--accent-active); }
+.btn-primary:focus-visible { outline: none; box-shadow: var(--focus); }
+.btn-secondary {
+  background: var(--surface);
+  color: var(--fg);
+  border-color: var(--border);
+}
+.btn-secondary:hover { border-color: var(--accent); color: var(--fg); transform: translateY(-1px); }
+.btn-secondary:focus-visible { outline: none; box-shadow: var(--focus); }
+.section { padding: 68px 0; }
+.section-head { margin-bottom: 40px; }
+.section-head h2 {
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  color: var(--fg);
+}
+.section-head p { color: var(--muted); font-size: 16px; margin-top: 10px; max-width: 620px; }
+.features {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
 }
 .card {
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--round-card);
-  padding: 1.75rem;
-  box-shadow: var(--shadow-card);
-  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-md);
+  padding: 22px;
+  transition: transform 180ms var(--ease), box-shadow 180ms var(--ease), border-color 180ms var(--ease);
 }
 .card:hover {
-  transform: translateY(-3px);
-  border-color: var(--border-strong);
-  box-shadow: var(--shadow-hover);
+  transform: translateY(-4px);
+  border-color: var(--accent);
+  box-shadow: var(--shadow-raised);
 }
 .card-icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 8px;
+  width: 42px;
+  height: 42px;
+  border-radius: var(--r-sm);
   display: grid;
   place-items: center;
-  margin-bottom: 1rem;
-  font-size: 1.3rem;
-  background: var(--primary-tint);
+  margin-bottom: 14px;
+  font-size: 20px;
+  color: var(--accent);
+  background: rgba(96,165,250,0.10);
   border: 1px solid var(--border);
 }
 .card h3 {
-  font-size: 1.05rem;
-  font-weight: 600;
-  margin-bottom: 0.5rem;
-  color: var(--text);
-}
-.card p {
-  font-size: 0.9rem;
-  color: var(--text-muted);
-  line-height: 1.7;
-}
-
-.download-section {
-  position: relative;
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
-}
-.download-inner {
-  max-width: 980px;
-  margin: 0 auto;
-  padding: 4rem 2rem;
-}
-.download-inner h2 {
-  font-size: 1.7rem;
+  font-size: 16px;
   font-weight: 700;
+  margin-bottom: 8px;
+  color: var(--fg);
   letter-spacing: -0.01em;
-  margin-bottom: 0.5rem;
-  color: var(--text);
 }
-.download-inner h2 em { font-style: normal; color: var(--primary); }
-.download-inner .sub {
-  color: var(--text-muted);
-  font-size: 0.92rem;
-  margin-bottom: 2.25rem;
+.card p { font-size: 13.5px; color: var(--muted); line-height: 1.68; }
+.download-section {
+  border-top: 1px solid var(--border-soft);
+  border-bottom: 1px solid var(--border-soft);
+  background: linear-gradient(180deg, rgba(24,35,67,0.35), transparent);
 }
 .download-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 1.25rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
 }
 .dl-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--round-card);
-  padding: 1.6rem;
-  box-shadow: var(--shadow-card);
-  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  border-radius: var(--r-md);
+  padding: 24px;
+  transition: transform 180ms var(--ease), box-shadow 180ms var(--ease), border-color 180ms var(--ease);
 }
 .dl-card:hover {
-  transform: translateY(-3px);
-  border-color: var(--border-strong);
-  box-shadow: var(--shadow-hover);
+  transform: translateY(-4px);
+  border-color: var(--accent);
+  box-shadow: var(--shadow-raised);
 }
 .dl-card .platform {
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.10em;
   text-transform: uppercase;
-  color: var(--primary);
-  margin-bottom: 0.6rem;
+  color: var(--accent);
+  margin-bottom: 10px;
 }
 .dl-card .dl-title {
-  font-size: 1.08rem;
-  font-weight: 600;
-  color: var(--text);
-  margin-bottom: 0.3rem;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--fg);
+  margin-bottom: 12px;
+  letter-spacing: -0.01em;
+}
+.dl-specs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.spec {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--fg-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-pill);
+  padding: 4px 10px;
+  background: rgba(255,255,255,0.02);
 }
 .dl-card .dl-meta {
-  font-size: 0.82rem;
-  color: var(--text-muted);
-  margin-bottom: 1.2rem;
-  line-height: 1.6;
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 18px;
+  line-height: 1.7;
 }
-.btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.65rem 1.35rem;
-  border-radius: var(--round-btn);
-  font-size: 0.92rem;
-  font-weight: 600;
-  font-family: inherit;
-  cursor: pointer;
-  border: none;
-  transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
-  text-decoration: none;
-}
-.btn-primary {
-  background: var(--primary);
-  color: #ffffff;
-  box-shadow: 0 1px 2px rgba(15,23,42,0.08);
-}
-.btn-primary:hover {
-  background: var(--primary-hover);
-  color: #ffffff;
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-hover);
-  text-decoration: none;
-}
-.btn-primary:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px var(--primary-ring);
-}
-.btn-disabled {
-  background: var(--surface-2);
-  color: var(--text-dim);
-  cursor: not-allowed;
-  pointer-events: none;
-}
-.coming-soon-tag {
-  display: inline-block;
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  background: #fff7ed;
-  color: var(--warn);
-  border: 1px solid #fed7aa;
-  border-radius: 999px;
-  padding: 2px 9px;
-  margin-left: 0.5rem;
-  vertical-align: middle;
-}
-
-.notice {
-  max-width: 980px;
-  margin: 2.5rem auto 0;
-  padding: 0 2rem;
-}
+.dl-card .dl-meta .sha { font-family: var(--mono); font-size: 12px; }
 .notice-box {
-  border: 1px solid #fde8c8;
-  background: #fffaf1;
-  border-radius: var(--round-card);
-  padding: 1.1rem 1.35rem;
+  border: 1px solid rgba(251,191,36,0.35);
+  background: rgba(251,191,36,0.08);
+  border-radius: var(--r-md);
+  padding: 16px 20px;
   display: flex;
-  gap: 0.75rem;
+  gap: 12px;
   align-items: flex-start;
+  margin-top: 32px;
 }
-.notice-icon { font-size: 1.05rem; flex-shrink: 0; padding-top: 1px; }
-.notice-text { font-size: 0.86rem; color: #92600b; line-height: 1.7; }
+.notice-icon { font-size: 16px; flex-shrink: 0; padding-top: 2px; }
+.notice-text { font-size: 13.5px; color: var(--fg-2); line-height: 1.7; }
 .notice-text strong { color: var(--warn); }
-
 footer {
-  max-width: 980px;
-  margin: 3rem auto 0;
-  padding: 2rem 2rem 2.5rem;
-  border-top: 1px solid var(--border);
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 40px 32px 48px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
-  gap: 1rem;
-  font-size: 0.84rem;
-  color: var(--text-dim);
+  gap: 16px;
+  font-size: 13.5px;
+  color: var(--muted);
 }
-.footer-links { display: flex; gap: 1.5rem; }
-.footer-links a { color: var(--text-muted); }
-.footer-links a:hover { color: var(--primary); }
-
+.footer-links { display: flex; gap: 24px; }
+.footer-links a { color: var(--fg-2); }
+.footer-links a:hover { color: var(--accent); }
+@media (max-width: 820px) {
+  .wrap, .header-inner, footer { padding-left: 24px; padding-right: 24px; }
+  .hero { padding: 68px 0 48px; }
+  .hero-grid { grid-template-columns: 1fr; gap: 40px; }
+  .hero .lead { max-width: none; }
+  .section { padding: 48px 0; }
+  .features { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .download-grid { grid-template-columns: 1fr; }
+}
 @media (max-width: 560px) {
-  header { padding: 0 1.25rem; }
-  .hero { padding: 3rem 1.25rem 2.5rem; }
-  .hero-logo { width: 64px; height: 64px; }
-  .features { padding: 0 1.25rem 3.5rem; }
-  .download-inner { padding: 3rem 1.25rem; }
-  .notice { padding: 0 1.25rem; }
-  footer { padding: 2rem 1.25rem 2.5rem; flex-direction: column; text-align: center; }
+  .wrap, .header-inner, footer { padding-left: 18px; padding-right: 18px; }
+  .features { grid-template-columns: 1fr; }
+  .cta-row .btn { flex: 1 1 100%; }
+  footer { flex-direction: column; text-align: center; }
 }
-
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   * { transition: none !important; }
@@ -342,14 +369,13 @@ footer {
 </style>
 </head>
 <body>
-
 <header>
   <div class="header-inner">
     <svg class="logo-mark" viewBox="0 0 40 40" fill="none" role="img" aria-label="AgentBoard">
       <defs>
         <linearGradient id="hLogoGrad" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
-          <stop stop-color="#2563eb"/>
-          <stop offset="1" stop-color="#3b82f6"/>
+          <stop stop-color="#60a5fa"/>
+          <stop offset="1" stop-color="#2563eb"/>
         </linearGradient>
       </defs>
       <rect width="40" height="40" rx="9" fill="url(#hLogoGrad)"/>
@@ -357,110 +383,148 @@ footer {
       <line x1="20" y1="7" x2="20" y2="33" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
     </svg>
     <span class="logo-text">AgentBoard</span>
-    <span class="logo-ver">v0.7.0 Beta</span>
+    <span class="ver-chip">v0.7.0 Beta</span>
   </div>
 </header>
-
 <section class="hero">
-  <svg class="hero-logo" viewBox="0 0 40 40" fill="none" role="img" aria-label="AgentBoard logo">
-    <defs>
-      <linearGradient id="heroLogoGrad" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
-        <stop stop-color="#2563eb"/>
-        <stop offset="1" stop-color="#3b82f6"/>
-      </linearGradient>
-    </defs>
-    <rect width="40" height="40" rx="9" fill="url(#heroLogoGrad)"/>
-    <ellipse cx="20" cy="20" rx="7.4" ry="9.6" stroke="#ffffff" stroke-width="3" fill="none"/>
-    <line x1="20" y1="7" x2="20" y2="33" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-  </svg>
-  <h1>把 AI Agent 装进<em>看板</em><br>本地运行，数据不出机</h1>
-  <p class="tagline">AgentBoard 是一个本地优先的 Agent 任务工作台——像管理项目卡片一样管理你的 AI 任务，实时看到每一步文件修改。</p>
-</section>
-
-<section class="features">
-  <div class="card">
-    <div class="card-icon">⚡</div>
-    <h3>类 Codex 聊天工作区</h3>
-    <p>与 Agent 对话的同时，实时预览每个文件的创建、修改与删除——再也不用猜 Agent 在做什么。</p>
-  </div>
-  <div class="card">
-    <div class="card-icon">📋</div>
-    <h3>看板管理多任务</h3>
-    <p>用列与卡片组织多个并行任务，状态一目了然。切换任务无需关闭当前上下文。</p>
-  </div>
-  <div class="card">
-    <div class="card-icon">💬</div>
-    <h3>直连 API 对话</h3>
-    <p>内置 ChatGPT 级聊天界面：流式输出、图片与文件附件、多会话管理、模型随时切换，配置一次即可使用。</p>
-  </div>
-  <div class="card">
-    <div class="card-icon">🎨</div>
-    <h3>图像生成工作台</h3>
-    <p>输入描述即出图，画廊网格管理全部作品，一键另存到本地。视频生成模式已就绪，模型开通即可用。</p>
-  </div>
-  <div class="card">
-    <div class="card-icon">🛠️</div>
-    <h3>Trae 式代码工作区</h3>
-    <p>选一个文件夹即刻开工：左侧文件树、中间 Monaco 编辑器、右侧 AI 对话直接改文件并展示 inline diff。可连 SSH 远程编辑、挂载 MCP 工具与技能，Claude-Code 风格进度条实时显示 token 消耗。</p>
-  </div>
-  <div class="card">
-    <div class="card-icon">🧮</div>
-    <h3>超越网页版的对话</h3>
-    <p>数学公式渲染、代码高亮、真实可点的搜索链接；结果一键导出为 Markdown 或自包含 HTML，离线也能看。</p>
-  </div>
-  <div class="card">
-    <div class="card-icon">🔌</div>
-    <h3>多服务商随心切换</h3>
-    <p>配置任意 OpenAI 兼容服务商与自己的 API Key，下拉即切模型、切账号；密钥仅存本机凭据管理器，永不上传。</p>
-  </div>
-  <div class="card">
-    <div class="card-icon">🗂️</div>
-    <h3>运行沉淀可回溯</h3>
-    <p>做过的每一次 agent 运行、用过的技能都沉淀在本地，可检索、可回放、一键复用，token 与文件改动尽收眼底。</p>
-  </div>
-  <div class="card">
-    <div class="card-icon">⚙️</div>
-    <h3>内置 Agent 引擎</h3>
-    <p>自研引擎随安装包开箱即用，无需再装任何命令行工具；回复逐字流式输出，比子进程模式更快更稳。</p>
-  </div>
-  <div class="card">
-    <div class="card-icon">📑</div>
-    <h3>PPT/文档可视化</h3>
-    <p>用一句话让 AI 生成 PPT 或文档的 HTML，右侧实时预览，点文字就地修改、导出成品——像在设计稿上直接改。</p>
-  </div>
-  <div class="card">
-    <div class="card-icon">φ</div>
-    <h3>科研工作台</h3>
-    <p>内置论文科研的 Agent 库与技能库，可浏览、编辑、一键跑流水线，执行仪表盘追踪每一次运行与产物。</p>
-  </div>
-  <div class="card">
-    <div class="card-icon">∑</div>
-    <h3>公式与内置引擎</h3>
-    <p>数学公式 LaTeX 渲染（四种写法全支持）；Agent 引擎随安装包自带，装完即用，无需再装任何命令行工具。</p>
-  </div>
-  <div class="card">
-    <div class="card-icon">📱</div>
-    <h3>手机实时同步</h3>
-    <p>注册一个账号，手机 App 实时看到电脑上的任务进度与对话内容；躺在沙发上派发新任务、一键验收，通道全程加密。</p>
-  </div>
-  <div class="card">
-    <div class="card-icon">🔒</div>
-    <h3>数据可控</h3>
-    <p>任务历史、文件快照全在本机；手机同步只传必要内容，API 密钥永不上传，同步默认关闭。</p>
+  <div class="wrap hero-grid">
+    <div class="hero-copy">
+      <div class="eyebrow">Local-first Agent Workstation</div>
+      <h1>把 AI Agent 装进<br><em>本地工作台</em></h1>
+      <p class="lead">AgentBoard 是一个本地优先的 Agent 任务工作台——像管理项目卡片一样管理你的 AI 任务，实时看到每一步文件修改，数据不出机。</p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="/downloads/AgentBoard_0.7.0_x64-setup.exe">
+          <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M7.5 2v8m0 0L4.5 7m3 3 3-3M2 12h11" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          下载 Windows 版
+        </a>
+        <a class="btn btn-secondary" href="#features">查看全部功能</a>
+      </div>
+    </div>
+    <div class="hero-panel">
+      <div class="panel-bar">
+        <span class="panel-dot" style="background:#fb7185"></span>
+        <span class="panel-dot" style="background:#fbbf24"></span>
+        <span class="panel-dot" style="background:#22c55e"></span>
+        <span class="panel-title">agentboard · run</span>
+      </div>
+      <div class="metric-grid">
+        <div class="metric">
+          <div class="num accent">100%</div>
+          <div class="label">本地运行</div>
+        </div>
+        <div class="metric">
+          <div class="num">内置</div>
+          <div class="label">Agent 引擎</div>
+        </div>
+        <div class="metric">
+          <div class="num">多模态</div>
+          <div class="label">聊天 · 图像 · 代码</div>
+        </div>
+        <div class="metric">
+          <div class="num accent">实时</div>
+          <div class="label">手机同步</div>
+        </div>
+      </div>
+      <div class="chip-row">
+        <span class="chip">看板多任务</span>
+        <span class="chip">inline diff</span>
+        <span class="chip">MCP 工具</span>
+        <span class="chip">密钥仅存本机</span>
+      </div>
+    </div>
   </div>
 </section>
-
-<div class="download-section">
-  <div class="download-inner">
-    <h2>下载<em>安装包</em></h2>
-    <p class="sub">桌面 v0.7.0 · 安卓 v1.0.0 · Beta · 免费使用</p>
+<section class="section" id="features">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Capabilities</div>
+      <h2>核心能力</h2>
+      <p>一套本地工作台，覆盖对话、看板、代码、图像与科研——每一次运行都可见、可控、可回溯。</p>
+    </div>
+    <div class="features">
+      <div class="card">
+        <div class="card-icon">⚡</div>
+        <h3>类 Codex 聊天工作区</h3>
+        <p>与 Agent 对话的同时，实时预览每个文件的创建、修改与删除——再也不用猜 Agent 在做什么。</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">📋</div>
+        <h3>看板管理多任务</h3>
+        <p>用列与卡片组织多个并行任务，状态一目了然。切换任务无需关闭当前上下文。</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">💬</div>
+        <h3>直连 API 对话</h3>
+        <p>内置 ChatGPT 级聊天界面：流式输出、图片与文件附件、多会话管理、模型随时切换，配置一次即可使用。</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🎨</div>
+        <h3>图像生成工作台</h3>
+        <p>输入描述即出图，画廊网格管理全部作品，一键另存到本地。视频生成模式已就绪，模型开通即可用。</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🛠️</div>
+        <h3>Trae 式代码工作区</h3>
+        <p>文件树 + Monaco 编辑器 + AI 对话直接改文件并展示 inline diff；可连 SSH 远程编辑、挂载 MCP 工具与技能，进度条实时显示 token 消耗。</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🧮</div>
+        <h3>超越网页版的对话</h3>
+        <p>数学公式渲染、代码高亮、真实可点的搜索链接；结果一键导出为 Markdown 或自包含 HTML，离线也能看。</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🔌</div>
+        <h3>多服务商随心切换</h3>
+        <p>配置任意 OpenAI 兼容服务商与自己的 API Key，下拉即切模型、切账号；密钥仅存本机凭据管理器，永不上传。</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">⚙️</div>
+        <h3>内置 Agent 引擎</h3>
+        <p>自研引擎随安装包开箱即用，无需再装任何命令行工具；回复逐字流式输出，比子进程模式更快更稳。</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">📑</div>
+        <h3>PPT/文档可视化</h3>
+        <p>用一句话让 AI 生成 PPT 或文档的 HTML，右侧实时预览，点文字就地修改、导出成品——像在设计稿上直接改。</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">φ</div>
+        <h3>科研工作台</h3>
+        <p>内置论文科研的 Agent 库与技能库，可浏览、编辑、一键跑流水线，执行仪表盘追踪每一次运行与产物。</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">📱</div>
+        <h3>手机实时同步</h3>
+        <p>注册一个账号，手机 App 实时看到电脑上的任务进度与对话内容；躺在沙发上派发新任务、一键验收，通道全程加密。</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🔒</div>
+        <h3>数据可控</h3>
+        <p>任务历史、文件快照全在本机；手机同步只传必要内容，API 密钥永不上传，同步默认关闭。</p>
+      </div>
+    </div>
+  </div>
+</section>
+<section class="download-section">
+  <div class="wrap section">
+    <div class="section-head">
+      <div class="eyebrow">Download</div>
+      <h2>下载安装包</h2>
+      <p>桌面 v0.7.0 · 安卓 v1.0.0 · Beta · 免费使用。</p>
+    </div>
     <div class="download-grid">
       <div class="dl-card">
         <div class="platform">Windows</div>
         <div class="dl-title">AgentBoard for Windows</div>
+        <div class="dl-specs">
+          <span class="spec">v0.7.0</span>
+          <span class="spec">x64</span>
+          <span class="spec">.exe</span>
+          <span class="spec">≈300MB</span>
+        </div>
         <div class="dl-meta">
-          v0.7.0 · x64 · .exe 安装包（内置引擎，约 300MB）<br>
-          SHA256 校验值见同目录 <a href="/downloads/AgentBoard_0.7.0_x64-setup.exe.sha256">.sha256 文件</a>
+          内置引擎的完整安装包，装完即用。<br>
+          <span class="sha">SHA256</span> 校验值见同目录 <a class="sha" href="/downloads/AgentBoard_0.7.0_x64-setup.exe.sha256">.sha256 文件</a>
         </div>
         <a class="btn btn-primary" href="/downloads/AgentBoard_0.7.0_x64-setup.exe">
           <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M7.5 2v8m0 0L4.5 7m3 3 3-3M2 12h11" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -470,9 +534,14 @@ footer {
       <div class="dl-card">
         <div class="platform">Android</div>
         <div class="dl-title">AgentBoard for Android</div>
+        <div class="dl-specs">
+          <span class="spec">v1.0.0</span>
+          <span class="spec">Android 7.0+</span>
+          <span class="spec">签名 APK</span>
+        </div>
         <div class="dl-meta">
-          v1.0.0 · Android 7.0+ · 签名 APK<br>
-          与桌面端登录同一账号即可实时同步 · <a href="/downloads/AgentBoard_1.0.0.apk.sha256">SHA256</a>
+          与桌面端登录同一账号即可实时同步。<br>
+          <a class="sha" href="/downloads/AgentBoard_1.0.0.apk.sha256">SHA256</a> 校验值见同目录 .sha256 文件
         </div>
         <a class="btn btn-primary" href="/downloads/AgentBoard_1.0.0.apk">
           <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M7.5 2v8m0 0L4.5 7m3 3 3-3M2 12h11" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -480,9 +549,6 @@ footer {
         </a>
       </div>
     </div>
-  </div>
-
-  <div class="notice">
     <div class="notice-box">
       <span class="notice-icon">⚠️</span>
       <span class="notice-text">
@@ -491,8 +557,7 @@ footer {
       </span>
     </div>
   </div>
-</div>
-
+</section>
 <footer>
   <span>© 2025 AgentBoard · 本地优先 · 开源即将上线</span>
   <div class="footer-links">
@@ -500,6 +565,5 @@ footer {
     <a href="/THIRD-PARTY-NOTICES.txt">第三方声明</a>
   </div>
 </footer>
-
 </body>
 </html>
