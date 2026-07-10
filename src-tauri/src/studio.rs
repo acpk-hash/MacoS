@@ -11,7 +11,7 @@
 //!   - { type: "media_failed",  id, error }
 
 use crate::db::{ChatMessageRow, ChatSessionRow, GenMediaRow};
-use crate::relay::{self, RelayCreds};
+use crate::relay;
 use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -31,9 +31,10 @@ pub struct StudioState {
     models_cache: Mutex<Option<(Instant, Vec<String>)>>,
     video_cache: Mutex<Option<bool>>,
     cancels: Mutex<HashMap<String, CancellationToken>>,
-    /// Aggregated multi-provider model list cache (see `providers::providers_models`).
+    /// Per-provider model/status cache (see `providers::providers_models_status`;
+    /// the aggregated `providers_models` list is derived from it).
     pub(crate) providers_models_cache:
-        Mutex<Option<(Instant, Vec<crate::providers::AggModel>)>>,
+        Mutex<Option<(Instant, Vec<crate::providers::ProviderModels>)>>,
 }
 
 impl StudioState {
@@ -91,7 +92,7 @@ pub(crate) async fn studio_models(
             }
         }
     }
-    let creds = RelayCreds::load()?;
+    let creds = crate::providers::resolve_creds(&state.db, None)?;
     let models = relay::list_models(&creds).await?;
     *state.studio.models_cache.lock().unwrap() = Some((Instant::now(), models.clone()));
     Ok(models)
@@ -108,7 +109,7 @@ pub(crate) async fn studio_capabilities(
             return Ok(Capabilities { video: v });
         }
     }
-    let creds = RelayCreds::load()?;
+    let creds = crate::providers::resolve_creds(&state.db, None)?;
     let video = relay::probe_video(&creds).await.unwrap_or(false);
     *state.studio.video_cache.lock().unwrap() = Some(video);
     Ok(Capabilities { video })
@@ -423,6 +424,7 @@ pub(crate) async fn image_edit(
     prompt: String,
     mask_data_url: Option<String>,
     annotated_data_url: Option<String>,
+    provider_id: Option<String>,
     state: State<'_, crate::AppState>,
     app: AppHandle,
 ) -> Result<String, String> {
@@ -467,7 +469,7 @@ pub(crate) async fn image_edit(
         .map_err(|e| e.to_string())?;
     emit(&app, json!({ "type": "media_running", "id": id }));
 
-    let creds = match RelayCreds::load() {
+    let creds = match crate::providers::resolve_creds(db.as_ref(), provider_id.as_deref()) {
         Ok(c) => c,
         Err(e) => {
             let _ = db.gen_media_mark_failed(&id, &e);

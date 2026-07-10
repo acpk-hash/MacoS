@@ -997,12 +997,9 @@ pub fn run() {
             ssh: ssh_remote::SshState::new(),
         })
         .setup(|app| {
-            // Seed a default provider from the legacy Codex relay config the
-            // first time (migrates the auth.json key into the credential store).
-            {
-                let st = app.state::<AppState>();
-                providers::ensure_seeded(&st.db);
-            }
+            // NOTE: no provider seeding from ~/.codex here. The providers table
+            // is user-managed only — auto-seeding a relay snapshot used to
+            // plant a dead default provider that shadowed later user config.
 
             // Start the sync client task (loads persisted account/switch state;
             // connects only if enabled && logged in).
@@ -1104,6 +1101,7 @@ pub fn run() {
             providers::provider_delete,
             providers::provider_test,
             providers::providers_models,
+            providers::providers_models_status,
             workbench_open,
             workbench_prompt,
             workbench_steer,

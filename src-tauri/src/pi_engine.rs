@@ -634,6 +634,13 @@ async fn handle_pi_line(line: &str, ctx: &mut ReaderCtx) {
     match ty {
         "response" => handle_response(&ev, ctx).await,
         "agent_start" => ctx.emit(WorkbenchEvent::TurnStarted),
+        "turn_end" => {
+            // pi reports provider failures (401, network, ...) only here:
+            // message.stopReason == "error" + message.errorMessage (raw text).
+            if let Some(msg) = turn_end_error(&ev) {
+                ctx.emit(WorkbenchEvent::Error { message: msg });
+            }
+        }
         "agent_end" => {
             // `willRetry` means the turn isn't really done yet.
             let will_retry = ev
@@ -841,6 +848,26 @@ async fn handle_response(ev: &Value, ctx: &mut ReaderCtx) {
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
+
+/// Extract a user-facing error from a pi `turn_end` event, if the turn failed.
+///
+/// Verified against pi 0.80.x: a failed turn ends with
+/// `{"type":"turn_end","message":{"stopReason":"error","errorMessage":"401 status code (no body)", ...}}`.
+/// Returns `None` for normal completions (`stopReason` = "stop"/"toolUse"/...)
+/// and for aborts (the user already knows they cancelled).
+fn turn_end_error(ev: &Value) -> Option<String> {
+    let msg = ev.get("message")?;
+    if msg.get("stopReason").and_then(|v| v.as_str()) != Some("error") {
+        return None;
+    }
+    let detail = msg
+        .get("errorMessage")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("未返回错误详情");
+    Some(format!("模型调用失败: {detail}"))
+}
 
 /// Parse a `get_session_stats` `data` object into `WorkbenchStats` + pi session id.
 fn parse_stats(data: &Value) -> (WorkbenchStats, Option<String>) {
@@ -1159,6 +1186,32 @@ mod tests {
     }
 
     #[test]
+    fn turn_end_error_surfaces_stop_reason_error() {
+        let ev = json!({
+            "type": "turn_end",
+            "message": { "role": "assistant", "stopReason": "error",
+                         "errorMessage": "401 status code (no body)" }
+        });
+        let msg = turn_end_error(&ev).expect("error turn must surface");
+        assert!(msg.contains("401"), "raw provider error kept: {msg}");
+        assert!(msg.contains("模型调用失败"));
+
+        // Missing errorMessage still produces a generic error.
+        let ev2 = json!({ "type": "turn_end", "message": { "stopReason": "error" } });
+        let msg2 = turn_end_error(&ev2).unwrap();
+        assert!(msg2.contains("未返回错误详情"));
+    }
+
+    #[test]
+    fn turn_end_error_ignores_normal_and_aborted_turns() {
+        for stop in ["stop", "toolUse", "aborted", "length"] {
+            let ev = json!({ "type": "turn_end", "message": { "stopReason": stop } });
+            assert!(turn_end_error(&ev).is_none(), "stopReason={stop} is not an error");
+        }
+        assert!(turn_end_error(&json!({ "type": "turn_end" })).is_none());
+    }
+
+    #[test]
     fn parse_stats_extracts_tokens_and_context() {
         let data = json!({
             "sessionId": "sid-123",
@@ -1216,8 +1269,6 @@ mod tests {
         use tokio::process::Command;
 
         let db = Db::open().expect("open db");
-        // Mirror production startup so the default provider exists.
-        crate::providers::ensure_seeded(&db);
         let provider_id = resolve_provider_id(&db, None).expect("default provider");
         let (base_url, key, wire_api) =
             resolve_provider_creds(&db, &provider_id).expect("provider creds");

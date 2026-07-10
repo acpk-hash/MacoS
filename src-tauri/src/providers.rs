@@ -7,6 +7,11 @@
 //!   - per-provider model listing + connectivity tests
 //!   - aggregation of every enabled provider's models for the studio pickers
 //!
+//! The providers table is the **single source of truth** for credentials.
+//! There is deliberately no fallback to the legacy `~/.codex` config: that
+//! hidden second credential source used to shadow the user's real settings
+//! (a dead relay seeded at install time masked every fix the user made).
+//!
 //! Security model
 //! --------------
 //! The API key is written to the Windows Credential Manager (keyring service
@@ -29,6 +34,10 @@ const DEFAULT_PROVIDER_KEY: &str = "default_provider_id";
 
 /// Aggregated-models cache TTL.
 const MODELS_TTL: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// User-facing hint when no usable provider is configured at all.
+const NO_PROVIDER_HINT: &str =
+    "未配置可用的服务商：请在 设置 → 服务商 中添加服务并填写 API Key";
 
 // -- Frontend-facing types ---------------------------------------------------
 
@@ -54,6 +63,31 @@ pub struct AggModel {
     pub provider_id: String,
     pub provider_label: String,
     pub model_id: String,
+    /// Usage class: `"chat"` | `"image"` | `"video"`. Non-usable ids
+    /// (embeddings / audio / review bots) never appear here.
+    pub kind: String,
+}
+
+/// One model id with its usage classification.
+#[derive(Debug, Clone, Serialize)]
+pub struct ProviderModelEntry {
+    pub id: String,
+    /// `"chat"` | `"image"` | `"video"` | `"other"` (non-conversational).
+    pub kind: String,
+}
+
+/// Per-provider model listing **with status**. A failing provider is reported
+/// (HTTP code + response snippet) instead of being silently skipped, so the
+/// frontend can show exactly which provider is broken and why.
+#[derive(Debug, Clone, Serialize)]
+pub struct ProviderModels {
+    pub provider_id: String,
+    pub provider_label: String,
+    /// True when the model list was fetched successfully.
+    pub ok: bool,
+    pub models: Vec<ProviderModelEntry>,
+    /// Error description when `ok == false` (never contains the API key).
+    pub error: Option<String>,
 }
 
 // -- Keyring (OS credential store) -------------------------------------------
@@ -104,20 +138,37 @@ fn creds_for_provider(db: &Db, provider_id: &str) -> Result<RelayCreds, String> 
 
 /// Resolve credentials for a chat/image call. Resolution order:
 ///   1. an explicit `provider_id` (the picker's selection)
-///   2. the configured default provider
-///   3. the legacy `~/.codex` config + auth.json (backward compatibility)
+///   2. the configured default provider — only when it is **enabled and has a
+///      key**; otherwise a descriptive error is returned.
+///
+/// There is intentionally NO legacy `~/.codex` fallback: the providers table
+/// is the single source of truth, and errors surface instead of being masked
+/// by a stale second credential source.
 pub fn resolve_creds(db: &Db, provider_id: Option<&str>) -> Result<RelayCreds, String> {
     if let Some(pid) = provider_id.filter(|p| !p.trim().is_empty()) {
         return creds_for_provider(db, pid);
     }
-    if let Ok(Some(def)) = db.settings_get(DEFAULT_PROVIDER_KEY) {
-        if !def.trim().is_empty() {
-            if let Ok(c) = creds_for_provider(db, &def) {
-                return Ok(c);
-            }
-        }
+    let def = db
+        .settings_get(DEFAULT_PROVIDER_KEY)
+        .ok()
+        .flatten()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| NO_PROVIDER_HINT.to_string())?;
+    let row = db
+        .provider_get(&def)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| NO_PROVIDER_HINT.to_string())?;
+    if !row.enabled {
+        return Err(format!(
+            "默认服务商「{}」已被禁用，请在设置中启用它或更换默认服务商",
+            row.label
+        ));
     }
-    RelayCreds::load()
+    let key = key_get(&row.id)?
+        .filter(|k| !k.trim().is_empty())
+        .ok_or_else(|| format!("默认服务商「{}」未设置 API Key，请在设置中填写", row.label))?;
+    Ok(RelayCreds::new(row.base_url, key, row.wire_api))
 }
 
 /// Invalidate the aggregated-models cache (after any provider mutation).
@@ -133,56 +184,39 @@ fn ensure_default(db: &Db, candidate: &str) {
     }
 }
 
-// -- One-time seeding (migrate the legacy Codex relay into a provider) --------
+// -- Model classification ------------------------------------------------------
 
-/// Read `OPENAI_API_KEY` from auth.json (empty when absent/unparseable).
-fn read_auth_key(auth_path: &std::path::Path) -> Option<String> {
-    let content = std::fs::read_to_string(auth_path).ok()?;
-    let v: serde_json::Value = serde_json::from_str(&content).ok()?;
-    v.get("OPENAI_API_KEY")
-        .and_then(|k| k.as_str())
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-}
-
-/// Seed a built-in default provider from the existing Codex relay config the
-/// first time the providers table is empty. This preserves the working v0.4
-/// setup: the base_url is read from `~/.codex/config.toml` (never hardcoded) and
-/// the key is migrated from `auth.json` into the credential store.
-///
-/// Idempotent and best-effort: any failure leaves the app usable via the legacy
-/// fallback path.
-pub fn ensure_seeded(db: &Db) {
-    let empty = db.providers_list().map(|v| v.is_empty()).unwrap_or(false);
-    if !empty {
-        return;
+/// Classify a model id by usage. Conservative denylist: only ids that are
+/// clearly non-conversational (embeddings, audio, review bots, ...) are marked
+/// `"other"`; image/video generators get their own class so the media pages
+/// can still offer them; everything else is `"chat"`.
+pub(crate) fn classify_model(id: &str) -> &'static str {
+    let l = id.to_ascii_lowercase();
+    const NON_CHAT: [&str; 8] = [
+        "auto-review",
+        "embedding",
+        "embed-",
+        "whisper",
+        "tts",
+        "rerank",
+        "moderation",
+        "transcribe",
+    ];
+    if NON_CHAT.iter().any(|m| l.contains(m)) {
+        return "other";
     }
-
-    let config_path = crate::mcp::codex_config_path();
-    let auth_path = engine_config::auth_json_path();
-    let base_url = engine_config::engine_config_get(&config_path, &auth_path)
-        .map(|i| i.base_url)
-        .unwrap_or_default();
-    if base_url.trim().is_empty() {
-        // Nothing configured yet — the user will add a provider manually.
-        return;
+    if l.contains("sora") || l.contains("video") || l.contains("veo-") {
+        return "video";
     }
-
-    let id = "default";
-    // Pin wire_api = "chat": the studio chat has always used /v1/chat/completions
-    // against this relay successfully, so keep that proven path for the default.
-    if db
-        .provider_upsert(id, "默认中继", base_url.trim(), "chat", true)
-        .is_err()
+    if l.contains("image")
+        || l.contains("dall-e")
+        || l.contains("dalle")
+        || l.contains("flux")
+        || l.contains("midjourney")
     {
-        return;
+        return "image";
     }
-    if let Some(k) = read_auth_key(&auth_path) {
-        if key_set(id, &k).is_ok() {
-            let _ = db.provider_set_has_key(id, true);
-        }
-    }
-    let _ = db.settings_set(DEFAULT_PROVIDER_KEY, id);
+    "chat"
 }
 
 // -- Helpers ------------------------------------------------------------------
@@ -202,6 +236,86 @@ fn to_info(row: ProviderRow, default_id: &Option<String>) -> ProviderInfo {
         has_key: row.has_key,
         key_mask: mask,
     }
+}
+
+/// Fetch the model list of every *enabled* provider, reporting per-provider
+/// success/failure instead of silently dropping the failures.
+async fn collect_providers_models(db: &Db) -> Result<Vec<ProviderModels>, String> {
+    let rows = db.providers_list().map_err(|e| e.to_string())?;
+    let mut out: Vec<ProviderModels> = Vec::new();
+    for row in rows.into_iter().filter(|r| r.enabled) {
+        let mut status = ProviderModels {
+            provider_id: row.id.clone(),
+            provider_label: row.label.clone(),
+            ok: false,
+            models: Vec::new(),
+            error: None,
+        };
+        let key = match key_get(&row.id) {
+            Ok(Some(k)) if !k.trim().is_empty() => k,
+            Ok(_) => {
+                status.error = Some("未设置 API Key".to_string());
+                out.push(status);
+                continue;
+            }
+            Err(e) => {
+                status.error = Some(e);
+                out.push(status);
+                continue;
+            }
+        };
+        let creds = RelayCreds::new(row.base_url.clone(), key, row.wire_api.clone());
+        match relay::list_models(&creds).await {
+            Ok(models) => {
+                status.ok = true;
+                status.models = models
+                    .into_iter()
+                    .map(|id| ProviderModelEntry {
+                        kind: classify_model(&id).to_string(),
+                        id,
+                    })
+                    .collect();
+            }
+            Err(e) => status.error = Some(e),
+        }
+        out.push(status);
+    }
+    Ok(out)
+}
+
+/// Flatten per-provider statuses into the aggregated picker list, dropping
+/// providers that failed and model ids classified as non-usable (`"other"`).
+fn agg_from_status(status: &[ProviderModels]) -> Vec<AggModel> {
+    let mut out = Vec::new();
+    for p in status.iter().filter(|p| p.ok) {
+        for m in p.models.iter().filter(|m| m.kind != "other") {
+            out.push(AggModel {
+                provider_id: p.provider_id.clone(),
+                provider_label: p.provider_label.clone(),
+                model_id: m.id.clone(),
+                kind: m.kind.clone(),
+            });
+        }
+    }
+    out
+}
+
+/// Cached wrapper around [`collect_providers_models`] (TTL `MODELS_TTL`;
+/// invalidated on every provider mutation).
+async fn providers_models_cached(
+    state: &crate::AppState,
+) -> Result<Vec<ProviderModels>, String> {
+    {
+        let guard = state.studio.providers_models_cache.lock().unwrap();
+        if let Some((at, status)) = guard.as_ref() {
+            if at.elapsed() < MODELS_TTL {
+                return Ok(status.clone());
+            }
+        }
+    }
+    let out = collect_providers_models(&state.db).await?;
+    *state.studio.providers_models_cache.lock().unwrap() = Some((Instant::now(), out.clone()));
+    Ok(out)
 }
 
 // -- Tauri commands -----------------------------------------------------------
@@ -324,43 +438,25 @@ pub(crate) async fn provider_test(
     })
 }
 
-/// Aggregate the models of every *enabled* provider that has a key. Cached in
-/// memory for `MODELS_TTL`. Providers that error out are skipped (best-effort),
-/// so one broken provider never hides the others.
+/// Aggregate the usable models of every *enabled* provider that has a key
+/// (cached for `MODELS_TTL`). Failed providers contribute no models here —
+/// use [`providers_models_status`] to see which providers failed and why.
 #[tauri::command]
 pub(crate) async fn providers_models(
     state: State<'_, crate::AppState>,
 ) -> Result<Vec<AggModel>, String> {
-    {
-        let guard = state.studio.providers_models_cache.lock().unwrap();
-        if let Some((at, models)) = guard.as_ref() {
-            if at.elapsed() < MODELS_TTL {
-                return Ok(models.clone());
-            }
-        }
-    }
+    let status = providers_models_cached(&state).await?;
+    Ok(agg_from_status(&status))
+}
 
-    let rows = state.db.providers_list().map_err(|e| e.to_string())?;
-    let mut out: Vec<AggModel> = Vec::new();
-    for row in rows.into_iter().filter(|r| r.enabled) {
-        let key = match key_get(&row.id) {
-            Ok(Some(k)) if !k.trim().is_empty() => k,
-            _ => continue,
-        };
-        let creds = RelayCreds::new(row.base_url.clone(), key, row.wire_api.clone());
-        if let Ok(models) = relay::list_models(&creds).await {
-            for m in models {
-                out.push(AggModel {
-                    provider_id: row.id.clone(),
-                    provider_label: row.label.clone(),
-                    model_id: m,
-                });
-            }
-        }
-    }
-
-    *state.studio.providers_models_cache.lock().unwrap() = Some((Instant::now(), out.clone()));
-    Ok(out)
+/// Per-provider model listing **with status** — success means a classified
+/// model list, failure carries the actual error (HTTP code + response
+/// snippet). Shares the cache with [`providers_models`].
+#[tauri::command]
+pub(crate) async fn providers_models_status(
+    state: State<'_, crate::AppState>,
+) -> Result<Vec<ProviderModels>, String> {
+    providers_models_cached(&state).await
 }
 
 // -- Unit tests --------------------------------------------------------------
@@ -416,7 +512,49 @@ mod tests {
         assert_eq!(creds.base_url, "https://explicit.example.com");
         assert_eq!(creds.wire_api, "chat");
 
+        // Same provider as the configured default also resolves.
+        db.settings_set(DEFAULT_PROVIDER_KEY, &pid).unwrap();
+        let creds = resolve_creds(&db, None).expect("default provider resolves");
+        assert_eq!(creds.base_url, "https://explicit.example.com");
+
         key_delete(&pid).ok();
+    }
+
+    /// No explicit provider + no default configured means a descriptive error,
+    /// NOT a silent fallback to `~/.codex` (the legacy fallback is gone).
+    #[test]
+    fn resolve_creds_without_default_errors_no_legacy_fallback() {
+        let db = Db::open_in_memory().unwrap();
+        let err = resolve_creds(&db, None).unwrap_err();
+        assert!(
+            err.contains("服务商"),
+            "should ask the user to configure a provider: {err}"
+        );
+    }
+
+    /// A disabled default provider is rejected with a descriptive error rather
+    /// than silently shadowed by another credential source.
+    #[test]
+    fn resolve_creds_disabled_default_errors() {
+        let db = Db::open_in_memory().unwrap();
+        db.provider_upsert("dis", "已停用中继", "https://x.com", "chat", false)
+            .unwrap();
+        db.settings_set(DEFAULT_PROVIDER_KEY, "dis").unwrap();
+        let err = resolve_creds(&db, None).unwrap_err();
+        assert!(err.contains("禁用"), "should mention it is disabled: {err}");
+    }
+
+    /// An enabled default provider without a key errors descriptively.
+    #[test]
+    fn resolve_creds_default_without_key_errors() {
+        let _guard = KEYRING_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let db = Db::open_in_memory().unwrap();
+        let pid = format!("nk-{}", uuid::Uuid::new_v4());
+        db.provider_upsert(&pid, "NoKey", "https://x.com", "chat", true)
+            .unwrap();
+        db.settings_set(DEFAULT_PROVIDER_KEY, &pid).unwrap();
+        let err = resolve_creds(&db, None).unwrap_err();
+        assert!(err.contains("API Key"), "should mention the missing key: {err}");
     }
 
     #[test]
@@ -429,22 +567,151 @@ mod tests {
         assert!(err.contains("API Key"), "should complain about missing key: {err}");
     }
 
-    /// Live: build provider creds from the real `~/.codex` relay config (the
-    /// existing aiboys relay) and pull its model list. Read-only; touches no DB
-    /// or credential store. Run with:
-    /// `cargo test -- --ignored live_aiboys_provider_models --nocapture`
+    #[test]
+    fn classify_model_denylist_and_kinds() {
+        // Chat models must never be misclassified.
+        assert_eq!(classify_model("gpt-5.5"), "chat");
+        assert_eq!(classify_model("claude-sonnet-4-5"), "chat");
+        assert_eq!(classify_model("deepseek-v3"), "chat");
+        assert_eq!(classify_model("o3-mini"), "chat");
+        // Junk observed in the wild.
+        assert_eq!(classify_model("codex-auto-review"), "other");
+        assert_eq!(classify_model("text-embedding-3-large"), "other");
+        assert_eq!(classify_model("whisper-1"), "other");
+        assert_eq!(classify_model("gpt-4o-mini-tts"), "other");
+        assert_eq!(classify_model("omni-moderation-latest"), "other");
+        // Media generators keep their own class (still usable on media pages).
+        assert_eq!(classify_model("gpt-image-2"), "image");
+        assert_eq!(classify_model("dall-e-3"), "image");
+        assert_eq!(classify_model("flux-1.1-pro"), "image");
+        assert_eq!(classify_model("sora-2"), "video");
+    }
+
+    #[test]
+    fn agg_from_status_drops_failures_and_junk() {
+        let status = vec![
+            ProviderModels {
+                provider_id: "ok".into(),
+                provider_label: "OK 中继".into(),
+                ok: true,
+                models: vec![
+                    ProviderModelEntry { id: "gpt-5.5".into(), kind: "chat".into() },
+                    ProviderModelEntry { id: "gpt-image-2".into(), kind: "image".into() },
+                    ProviderModelEntry { id: "codex-auto-review".into(), kind: "other".into() },
+                ],
+                error: None,
+            },
+            ProviderModels {
+                provider_id: "dead".into(),
+                provider_label: "死中继".into(),
+                ok: false,
+                models: vec![],
+                error: Some("模型列表 HTTP 401: unauthorized".into()),
+            },
+        ];
+        let agg = agg_from_status(&status);
+        assert_eq!(agg.len(), 2, "junk id and dead provider dropped");
+        assert!(agg.iter().all(|m| m.provider_id == "ok"));
+        assert!(agg.iter().any(|m| m.model_id == "gpt-5.5" && m.kind == "chat"));
+        assert!(agg.iter().any(|m| m.model_id == "gpt-image-2" && m.kind == "image"));
+    }
+
+    /// A provider whose key is missing shows up as an explicit failure in the
+    /// status list instead of vanishing (the old "silent skip → empty list").
+    #[tokio::test]
+    async fn collect_reports_missing_key_as_error() {
+        let db = Db::open_in_memory().unwrap();
+        db.provider_upsert("nk", "无Key服务", "https://x.example.com", "chat", true)
+            .unwrap();
+        let status = collect_providers_models(&db).await.unwrap();
+        assert_eq!(status.len(), 1);
+        assert!(!status[0].ok);
+        assert!(status[0].error.as_deref().unwrap().contains("API Key"));
+        assert!(status[0].models.is_empty());
+    }
+
+    // -- Live tests (network; run with -- --ignored --nocapture) --------------
+    //
+    // Credentials come from env vars so no secret ever lands in the repo:
+    //   AB_LIVE_BASE_URL  e.g. https://relay.example.com/v1
+    //   AB_LIVE_KEY       the real API key
+
+    fn live_env() -> Option<(String, String)> {
+        let base = std::env::var("AB_LIVE_BASE_URL").ok()?;
+        let key = std::env::var("AB_LIVE_KEY").ok()?;
+        Some((base, key))
+    }
+
+    /// Live: register a real provider, fetch its models through the status
+    /// path, then run a short chat round-trip on the first chat model.
     #[tokio::test]
     #[ignore]
-    async fn live_aiboys_provider_models() {
-        let config = crate::mcp::codex_config_path();
-        let auth = engine_config::auth_json_path();
-        let base = engine_config::engine_config_get(&config, &auth)
-            .expect("read config")
-            .base_url;
-        let key = read_auth_key(&auth).expect("auth.json OPENAI_API_KEY present");
+    async fn live_provider_models_and_chat() {
+        let _guard = KEYRING_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let (base, key) = live_env().expect("set AB_LIVE_BASE_URL / AB_LIVE_KEY");
+        let db = Db::open_in_memory().unwrap();
+        let pid = format!("live-{}", uuid::Uuid::new_v4());
+        db.provider_upsert(&pid, "Live中继", &base, "chat", true).unwrap();
+        key_set(&pid, &key).unwrap();
+
+        let status = collect_providers_models(&db).await.unwrap();
+        key_delete(&pid).ok();
+        assert_eq!(status.len(), 1);
+        let s = &status[0];
+        println!(
+            "[live] ok={} err={:?} models={:?}",
+            s.ok,
+            s.error,
+            s.models
+                .iter()
+                .map(|m| format!("{}({})", m.id, m.kind))
+                .collect::<Vec<_>>()
+        );
+        assert!(s.ok, "provider should list models: {:?}", s.error);
+        assert!(!s.models.is_empty(), "expected at least one model");
+
+        let chat_model = s
+            .models
+            .iter()
+            .find(|m| m.kind == "chat")
+            .expect("at least one chat model")
+            .id
+            .clone();
         let creds = RelayCreds::new(base, key, "chat".into());
-        let models = relay::list_models(&creds).await.expect("list_models");
-        println!("[live providers] pulled {} models", models.len());
-        assert!(!models.is_empty(), "aiboys relay should return models");
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let outcome = relay::chat_stream(
+            &creds,
+            &chat_model,
+            vec![serde_json::json!({ "role": "user", "content": "Reply with exactly: OK" })],
+            cancel,
+            |_| {},
+        )
+        .await
+        .expect("chat_stream should succeed");
+        println!("[live] chat model={chat_model} reply={:?}", outcome.text);
+        assert!(!outcome.text.trim().is_empty(), "expected a non-empty reply");
+    }
+
+    /// Live: a bad key must produce an explicit per-provider error (HTTP code
+    /// visible), never a silent empty list.
+    #[tokio::test]
+    #[ignore]
+    async fn live_bad_key_yields_explicit_error() {
+        let _guard = KEYRING_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let (base, _) = live_env().expect("set AB_LIVE_BASE_URL / AB_LIVE_KEY");
+        let db = Db::open_in_memory().unwrap();
+        let pid = format!("bad-{}", uuid::Uuid::new_v4());
+        db.provider_upsert(&pid, "坏Key中继", &base, "chat", true).unwrap();
+        key_set(&pid, "sk-definitely-invalid-key-0000").unwrap();
+
+        let status = collect_providers_models(&db).await.unwrap();
+        key_delete(&pid).ok();
+        assert_eq!(status.len(), 1);
+        let s = &status[0];
+        println!("[live-bad] ok={} err={:?}", s.ok, s.error);
+        assert!(!s.ok, "bad key must fail");
+        let err = s.error.as_deref().unwrap_or_default();
+        assert!(err.contains("HTTP"), "error should carry the HTTP status: {err}");
+        assert!(!err.contains("sk-definitely"), "key must never leak into errors");
     }
 }
