@@ -10,6 +10,7 @@ import 'highlight.js/styles/github-dark.css'
 import 'katex/dist/katex.min.css'
 import { useWorkbenchStore, type WorkbenchEntry } from '../../stores/workbenchStore'
 import ChecklistPanel from './ChecklistPanel'
+import ProviderGuideCard from '../ProviderGuideCard'
 import Composer from '../Composer'
 import type { Attachment } from '../../stores/studioStore'
 import { normalizeMathDelimiters } from '../../lib/mathDelimiters'
@@ -375,6 +376,8 @@ export default function ChatPanel({
 }) {
   const sessionId = useWorkbenchStore((s) => s.sessionId)
   const opening = useWorkbenchStore((s) => s.opening)
+  const modelsLoaded = useWorkbenchStore((s) => s.modelsLoaded)
+  const aggModels = useWorkbenchStore((s) => s.aggModels)
   const running = useWorkbenchStore((s) => s.running)
   const entries = useWorkbenchStore((s) => s.entries)
   const checklist = useWorkbenchStore((s) => s.checklist)
@@ -412,6 +415,8 @@ export default function ChatPanel({
     window.setTimeout(() => node.classList.remove('cl-flash'), 900)
   }
 
+  const noModels = modelsLoaded && aggModels.length === 0
+
   const showToast = (msg: string) => useWorkbenchStore.setState({ notice: msg })
   const onSend = (content: string) => {
     setAutoScroll(true)
@@ -434,11 +439,21 @@ export default function ChatPanel({
       <div className="relative flex-1 min-h-0">
         <div ref={scrollRef} onScroll={handleScroll} className="absolute inset-0 overflow-y-auto px-3 py-3">
           {entries.length === 0 ? (
-            <div className="text-ink-dim text-[12.5px] text-center mt-10 leading-6 px-2 select-none">
-              交代一个任务，AI 会直接在当前目录改代码、跑命令、写文件。
-              <br />
-              例如「修复 build 报错」或「给这个组件加暗色主题」。
-            </div>
+            noModels ? (
+              <div className="mt-8 px-1">
+                <ProviderGuideCard
+                  compact
+                  title="还没有配置模型服务"
+                  hint="AI 对话需要先添加一个 OpenAI 兼容服务商（Base URL + API Key）。"
+                />
+              </div>
+            ) : (
+              <div className="text-ink-dim text-[12.5px] text-center mt-10 leading-6 px-2 select-none">
+                交代一个任务，AI 会直接在当前目录改代码、跑命令、写文件。
+                <br />
+                例如「修复 build 报错」或「给这个组件加暗色主题」。
+              </div>
+            )
           ) : (
             <>
               <ChecklistPanel checklist={checklist} onJump={jumpToEntry} />
@@ -486,8 +501,12 @@ export default function ChatPanel({
         footerHint={null}
         maxWidthClass="max-w-full"
         placeholder={
-          !sessionId
-            ? '内置引擎启动中…'
+          noModels
+            ? '未配置模型服务——请到「设置」添加服务商'
+            : !sessionId
+            ? opening
+              ? '内置引擎启动中…'
+              : '会话未启动——请重新打开文件夹'
             : running
             ? '输入插话内容，Enter 发送（会打断当前任务）'
             : '交代一个任务，Enter 发送'

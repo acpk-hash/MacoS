@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -23,6 +23,7 @@ import {
 } from '../lib/exportChat'
 import Composer from '../components/Composer'
 import ModelPicker from '../components/ModelPicker'
+import ProviderGuideCard from '../components/ProviderGuideCard'
 import { Mascot } from '../components/ui'
 
 // ── Environment guard ─────────────────────────────────────────────────────────
@@ -636,6 +637,7 @@ export default function StudioChat() {
     activeSessionId,
     messages,
     aggModels,
+    modelsLoaded,
     currentModel,
     currentProviderId,
     streaming,
@@ -661,6 +663,14 @@ export default function StudioChat() {
   const toastTimer = useRef<number | null>(null)
 
   const isStreaming = activeSessionId ? !!streaming[activeSessionId] : false
+
+  // 聊天下拉只列 kind=="chat" 的模型（图像/视频模型不混入）。
+  const chatModels = useMemo(
+    () => aggModels.filter((m) => m.kind === 'chat'),
+    [aggModels],
+  )
+  // 已加载完成但一个可用 chat 模型都没有（未配服务商或全部失败）。
+  const noModels = modelsLoaded && chatModels.length === 0
 
   const showToast = (msg: string) => {
     setToast(msg)
@@ -737,9 +747,11 @@ export default function StudioChat() {
   const activeSession = sessions.find((s) => s.id === activeSessionId)
   const hasMessages = messages.length > 0
 
-  const composerPlaceholder = !currentModel
-    ? '正在加载模型…'
-    : '给 AI 发送消息，Enter 发送 / Shift+Enter 换行'
+  const composerPlaceholder = noModels
+    ? '无可用模型——请先到「设置 → 模型服务商」添加服务商'
+    : !currentModel
+      ? '正在加载模型…'
+      : '给 AI 发送消息，Enter 发送 / Shift+Enter 换行'
 
   return (
     <div className="flex h-full">
@@ -787,20 +799,30 @@ export default function StudioChat() {
 
           <div className="flex-1" />
 
-          {/* Model selector (grouped by provider) */}
+          {/* Model selector (grouped by provider, chat models only) */}
           <ModelPicker
-            models={aggModels}
+            models={chatModels}
             value={{ providerId: currentProviderId ?? '', modelId: currentModel }}
             onChange={(v) => setModelSel(v.providerId, v.modelId)}
             className="flex-shrink-0 bg-surface-2 border border-line rounded-lg px-2.5 py-1.5 text-xs text-ink focus:outline-none focus:border-lavender transition-colors max-w-[220px]"
             title="选择模型"
+            emptyLabel={noModels ? '无可用模型' : '加载中…'}
           />
         </div>
 
         {/* Messages / empty state */}
         {!hasMessages ? (
           <div className="flex-1 flex flex-col min-h-0">
-            <EmptyState onPick={(t) => setDraft(t)} />
+            {noModels ? (
+              <div className="flex-1 flex items-center justify-center px-4">
+                <ProviderGuideCard
+                  title="还没有配置模型服务"
+                  hint="添加一个 OpenAI 兼容服务商（Base URL + API Key）即可开始对话。API Key 仅保存在本机凭据管理器，不会上传。"
+                />
+              </div>
+            ) : (
+              <EmptyState onPick={(t) => setDraft(t)} />
+            )}
             <Composer
               draft={draft}
               setDraft={setDraft}

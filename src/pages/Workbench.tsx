@@ -6,6 +6,7 @@ import { useWorkbenchStore, type WorkbenchStats } from '../stores/workbenchStore
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import { useSshStore } from '../stores/sshStore'
 import ModelPicker from '../components/ModelPicker'
+import ProviderGuideCard from '../components/ProviderGuideCard'
 import Mascot from '../components/ui/Mascot'
 import FileTree from '../components/workbench/FileTree'
 import EditorPane from '../components/workbench/EditorPane'
@@ -252,6 +253,7 @@ export default function Workbench() {
           }}
           className="flex-shrink-0 bg-surface-2 border border-line rounded-btn px-2 py-1.5 text-[11px] text-ink focus:outline-none focus:border-line-strong max-w-[180px]"
           title="选择模型（切换会新开会话）"
+          emptyLabel={noProviders ? '无可用模型' : '加载中…'}
         />
 
         <TokenBadge tokens={tokens} />
@@ -292,9 +294,13 @@ export default function Workbench() {
             打开文件夹
           </button>
           {noProviders && (
-            <p className="text-[11px] text-gold/80 mt-3">
-              尚未配置服务商，可浏览/编辑文件，但 AI 对话需先到「设置」添加 API Key。
-            </p>
+            <div className="mt-5 w-full max-w-md">
+              <ProviderGuideCard
+                compact
+                title="还没有配置模型服务"
+                hint="可以先浏览/编辑文件；AI 对话需要先添加一个 OpenAI 兼容服务商（Base URL + API Key）。"
+              />
+            </div>
           )}
           {recent.length > 0 && (
             <div className="mt-8 w-full max-w-md">

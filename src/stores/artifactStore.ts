@@ -24,6 +24,7 @@ async function tauriInvoke<T>(
 }
 
 interface RawAggModel {
+  kind: string
   provider_id: string
   provider_label: string
   model_id: string
@@ -99,11 +100,15 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
     if (!isTauri) return
     try {
       const raw = await tauriInvoke<RawAggModel[]>('providers_models')
-      const aggModels: AggModel[] = raw.map((m) => ({
-        providerId: m.provider_id,
-        providerLabel: m.provider_label,
-        modelId: m.model_id,
-      }))
+      // 文档生成走对话模型，只保留 kind=="chat"。
+      const aggModels: AggModel[] = raw
+        .filter((m) => (m.kind ?? 'chat') === 'chat')
+        .map((m) => ({
+          providerId: m.provider_id,
+          providerLabel: m.provider_label,
+          modelId: m.model_id,
+          kind: m.kind ?? 'chat',
+        }))
       set((s) => {
         const keep =
           !!s.currentModel && aggModels.some((m) => m.modelId === s.currentModel)

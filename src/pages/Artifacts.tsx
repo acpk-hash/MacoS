@@ -48,6 +48,7 @@ function buildPreviewDoc(html: string, mode: Mode): string {
 export default function Artifacts() {
   const {
     aggModels,
+    modelsLoaded,
     currentModel,
     currentProviderId,
     turns,
@@ -234,6 +235,11 @@ export default function Artifacts() {
             onChange={(v) => setModelSel(v.providerId, v.modelId)}
             className="w-full bg-surface border border-line rounded-lg px-2 py-1.5 text-xs text-ink focus:outline-none focus:border-primary transition-colors"
             title="选择模型"
+            emptyLabel={
+              modelsLoaded && aggModels.length === 0
+                ? '无可用模型——请到设置添加服务商'
+                : '加载中…'
+            }
           />
           <textarea
             value={draft}

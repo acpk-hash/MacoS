@@ -1,7 +1,8 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import {
   useProviderStore,
   type ProviderInfo,
+  type ProviderModelsStatus,
   type ProviderTestResult,
 } from '../stores/providerStore'
 
@@ -71,8 +72,19 @@ const WIRE_API_OPTIONS = ['responses', 'chat']
 const PROVIDER_WIRE_API_OPTIONS = ['chat', 'responses']
 
 function ProvidersSection() {
-  const { providers, loadProviders, upsert, setKey, remove, test } =
-    useProviderStore()
+  const {
+    providers,
+    loaded,
+    status,
+    statusLoading,
+    statusLoaded,
+    loadProviders,
+    loadStatus,
+    upsert,
+    setKey,
+    remove,
+    test,
+  } = useProviderStore()
   const [showForm, setShowForm] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [form, setForm] = useState({
@@ -90,7 +102,20 @@ function ProvidersSection() {
 
   useEffect(() => {
     loadProviders()
-  }, [loadProviders])
+    loadStatus()
+  }, [loadProviders, loadStatus])
+
+  // 首次运行（没有任何服务商）时自动展开添加表单，省一次点击。
+  useEffect(() => {
+    if (loaded && providers.length === 0) setShowForm(true)
+  }, [loaded, providers.length])
+
+  /** provider_id -> 健康状态（模型数 / 错误原文）。仅覆盖已启用的服务商。 */
+  const statusById = useMemo(() => {
+    const m: Record<string, ProviderModelsStatus> = {}
+    for (const st of status) m[st.provider_id] = st
+    return m
+  }, [status])
 
   const resetForm = () => {
     setForm({ label: '', base_url: '', wire_api: 'chat', key: '' })
@@ -111,13 +136,31 @@ function ProvidersSection() {
     setShowForm(true)
   }
 
-  const submit = async () => {
+  const runTest = async (id: string) => {
+    setTests((t) => ({ ...t, [id]: 'loading' }))
+    try {
+      const res = await test(id)
+      setTests((t) => ({ ...t, [id]: res }))
+    } catch (e) {
+      setTests((t) => ({
+        ...t,
+        [id]: { success: false, message: String(e), elapsed_ms: 0 },
+      }))
+    }
+  }
+
+  /** 保存表单；testAfter 时保存后立即连通测试并刷新健康状态。 */
+  const submit = async (testAfter: boolean) => {
     if (!form.label.trim()) {
       setFormError('请填写服务商名称')
       return
     }
     if (!form.base_url.trim()) {
       setFormError('请填写 Base URL')
+      return
+    }
+    if (!editId && testAfter && !form.key.trim()) {
+      setFormError('测试连接需要先填写 API Key')
       return
     }
     setBusy(true)
@@ -135,6 +178,9 @@ function ProvidersSection() {
         await setKey(id, form.key.trim())
       }
       resetForm()
+      if (id && testAfter) await runTest(id)
+      // 后端在服务商变更时会失效模型缓存，这里刷新即拿到最新健康状态。
+      void loadStatus()
     } catch (e) {
       setFormError(String(e))
     } finally {
@@ -151,21 +197,9 @@ function ProvidersSection() {
         wire_api: p.wire_api,
         enabled: !p.enabled,
       })
+      void loadStatus()
     } catch (e) {
       console.error('toggle provider failed:', e)
-    }
-  }
-
-  const runTest = async (id: string) => {
-    setTests((t) => ({ ...t, [id]: 'loading' }))
-    try {
-      const res = await test(id)
-      setTests((t) => ({ ...t, [id]: res }))
-    } catch (e) {
-      setTests((t) => ({
-        ...t,
-        [id]: { success: false, message: String(e), elapsed_ms: 0 },
-      }))
     }
   }
 
@@ -183,23 +217,38 @@ function ProvidersSection() {
 
   return (
     <div className="glass rounded-card p-4 space-y-4">
-      <h3 className="text-xs font-semibold text-ink-muted uppercase tracking-wider">
-        模型服务商
-      </h3>
+      <div className="flex items-center justify-between">
+        <h3 className="text-xs font-semibold text-ink-muted uppercase tracking-wider">
+          模型服务商
+        </h3>
+        <button
+          onClick={() => void loadStatus()}
+          disabled={statusLoading}
+          className="text-xs text-sky hover:text-sky disabled:text-ink-dim transition-colors"
+        >
+          {statusLoading ? '检查中…' : '刷新状态'}
+        </button>
+      </div>
       <p className="text-xs text-ink-dim -mt-2 leading-relaxed">
-        配置多个 OpenAI 兼容服务商，聊天/生成页的模型下拉将聚合所有已启用服务商的模型。
+        配置多个 OpenAI 兼容服务商，聊天/生成/工作台的模型下拉将聚合所有已启用服务商的模型。
         <span className="text-ink-muted">
           API Key 仅保存在本机凭据管理器，不会上传。
         </span>
       </p>
 
+      {/* First-run guide */}
+      {loaded && providers.length === 0 && (
+        <div className="bg-surface-2/60 border border-line rounded-lg px-3 py-2.5 text-xs text-ink-muted leading-relaxed">
+          还没有配置模型服务——添加一个 OpenAI 兼容服务商（Base URL + API
+          Key）即可开始，下方表单已为你展开。
+        </div>
+      )}
+
       {/* Provider cards */}
       <div className="space-y-2">
-        {providers.length === 0 && (
-          <p className="text-xs text-ink-dim italic">暂无服务商，点击下方添加</p>
-        )}
         {providers.map((p) => {
           const t = tests[p.id]
+          const st = statusById[p.id]
           return (
             <div
               key={p.id}
@@ -247,13 +296,49 @@ function ProvidersSection() {
                 </button>
               </div>
 
+              {/* Health status (from providers_models_status) */}
+              {!p.enabled ? (
+                <p className="text-xs text-ink-dim">已禁用（不参与模型聚合）</p>
+              ) : st ? (
+                st.ok ? (
+                  <p
+                    className="text-xs text-green-600"
+                    title={st.models.map((m) => m.id).join(', ')}
+                  >
+                    ✓ {st.models.length} 个可用模型
+                  </p>
+                ) : (
+                  <div className="bg-red-900/20 border border-red-900/40 rounded px-2 py-1.5 space-y-1.5">
+                    <p className="text-xs text-red-600 break-words">
+                      ✗ 无法使用：{st.error ?? '未知错误'}
+                    </p>
+                    <div className="flex items-center gap-3 text-xs">
+                      <button
+                        onClick={() => startEdit(p)}
+                        className="text-sky hover:text-sky transition-colors"
+                      >
+                        更新 Key
+                      </button>
+                      <button
+                        onClick={() => setConfirmDelete(p.id)}
+                        className="text-red-600 hover:text-red-600 transition-colors"
+                      >
+                        删除
+                      </button>
+                    </div>
+                  </div>
+                )
+              ) : statusLoading || !statusLoaded ? (
+                <p className="text-xs text-ink-dim">健康检查中…</p>
+              ) : null}
+
               <div className="flex items-center gap-3 text-xs">
                 <button
                   onClick={() => runTest(p.id)}
                   disabled={t === 'loading'}
                   className="text-sky hover:text-sky disabled:text-ink-dim transition-colors"
                 >
-                  {t === 'loading' ? '测试中…' : '测试'}
+                  {t === 'loading' ? '测试中…' : '测试连接'}
                 </button>
                 <button
                   onClick={() => startEdit(p)}
@@ -328,7 +413,7 @@ function ProvidersSection() {
               onChange={(e) =>
                 setForm((f) => ({ ...f, base_url: e.target.value }))
               }
-              placeholder="https://api.openai.com"
+              placeholder="https://api.xxx.com/v1"
               className={inputCls}
             />
           </div>
@@ -343,7 +428,7 @@ function ProvidersSection() {
             >
               {PROVIDER_WIRE_API_OPTIONS.map((opt) => (
                 <option key={opt} value={opt}>
-                  {opt}
+                  {opt === 'chat' ? 'chat（默认，兼容性最好）' : opt}
                 </option>
               ))}
             </select>
@@ -375,11 +460,18 @@ function ProvidersSection() {
               取消
             </button>
             <button
-              onClick={submit}
+              onClick={() => void submit(false)}
+              disabled={busy}
+              className="px-3 py-1.5 text-xs bg-elevated hover:bg-elevated disabled:opacity-40 text-ink rounded transition-colors"
+            >
+              {busy ? '保存中…' : '仅保存'}
+            </button>
+            <button
+              onClick={() => void submit(true)}
               disabled={busy}
               className="px-3 py-1.5 text-xs bg-sakura hover:bg-sakura disabled:opacity-40 text-white rounded transition-colors"
             >
-              {busy ? '保存中…' : '保存'}
+              {busy ? '保存中…' : '保存并测试连接'}
             </button>
           </div>
         </div>
@@ -481,11 +573,13 @@ function ModelServiceSection() {
   return (
     <div className="glass rounded-card p-4 space-y-4">
       <h3 className="text-xs font-semibold text-ink-muted uppercase tracking-wider">
-        模型服务
+        Codex CLI 引擎配置（高级）
       </h3>
       <p className="text-xs text-ink-dim -mt-2">
-        写入 <code className="text-ink-muted">~/.codex/config.toml</code> 和{' '}
+        仅用于任务派发的 Codex CLI 引擎：写入{' '}
+        <code className="text-ink-muted">~/.codex/config.toml</code> 和{' '}
         <code className="text-ink-muted">auth.json</code>；修改对新会话生效，写入前自动备份。
+        聊天/生成/工作台请使用上方「模型服务商」。
       </p>
 
       <div className="space-y-3">

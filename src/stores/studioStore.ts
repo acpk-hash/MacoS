@@ -49,6 +49,8 @@ export interface AggModel {
   providerId: string
   providerLabel: string
   modelId: string
+  /** Usage class from the backend: "chat" | "image" | "video". */
+  kind: string
 }
 
 /** Raw shape from the providers_models command (snake_case from serde). */
@@ -56,6 +58,7 @@ interface RawAggModel {
   provider_id: string
   provider_label: string
   model_id: string
+  kind: string
 }
 
 /** A composer attachment sent to chat_send. */
@@ -229,12 +232,15 @@ export const useStudioStore = create<StudioStore>((set, get) => ({
         providerId: m.provider_id,
         providerLabel: m.provider_label,
         modelId: m.model_id,
+        kind: m.kind ?? 'chat',
       }))
       const models = Array.from(new Set(aggModels.map((m) => m.modelId)))
       set((s) => {
+        // 聊天默认模型只能从 kind=="chat" 里选，避免把图像/视频模型混进聊天。
+        const chatModels = aggModels.filter((m) => m.kind === 'chat')
         const keep =
-          !!s.currentModel && aggModels.some((m) => m.modelId === s.currentModel)
-        const first = aggModels[0]
+          !!s.currentModel && chatModels.some((m) => m.modelId === s.currentModel)
+        const first = chatModels[0]
         return {
           aggModels,
           models,
@@ -271,7 +277,7 @@ export const useStudioStore = create<StudioStore>((set, get) => ({
       const remembered = get().sessionModel[id] ?? session?.model
       set((s) => {
         const match = remembered
-          ? s.aggModels.find((m) => m.modelId === remembered)
+          ? s.aggModels.find((m) => m.kind === 'chat' && m.modelId === remembered)
           : undefined
         return {
           messages,

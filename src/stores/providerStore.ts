@@ -22,6 +22,24 @@ export interface ProviderTestResult {
   elapsed_ms: number
 }
 
+/** One model id with its usage classification (mirrors Rust ProviderModelEntry). */
+export interface ProviderModelEntry {
+  id: string
+  /** "chat" | "image" | "video" | "other" */
+  kind: string
+}
+
+/** Per-provider model listing with health status (mirrors Rust ProviderModels,
+ *  returned by the `providers_models_status` command). */
+export interface ProviderModelsStatus {
+  provider_id: string
+  provider_label: string
+  ok: boolean
+  models: ProviderModelEntry[]
+  /** Error description when `ok == false`（如 "HTTP 401 INVALID_API_KEY"）。 */
+  error: string | null
+}
+
 // ── Tauri guard ───────────────────────────────────────────────────────────────
 
 const isTauri =
@@ -41,7 +59,14 @@ async function tauriInvoke<T>(
 interface ProviderStore {
   providers: ProviderInfo[]
   loaded: boolean
+  /** Per-provider health（模型数 / 错误原文），来自 providers_models_status。 */
+  status: ProviderModelsStatus[]
+  statusLoading: boolean
+  statusLoaded: boolean
   loadProviders: () => Promise<void>
+  /** Refresh per-provider health. Backend cache is invalidated on every
+   *  provider mutation, so calling this after upsert/setKey/delete is fresh. */
+  loadStatus: () => Promise<void>
   /** Create (no id) or update a provider's metadata. Returns the id, or null on error. */
   upsert: (p: {
     id?: string
@@ -59,6 +84,9 @@ interface ProviderStore {
 export const useProviderStore = create<ProviderStore>((set, get) => ({
   providers: [],
   loaded: false,
+  status: [],
+  statusLoading: false,
+  statusLoaded: false,
 
   loadProviders: async () => {
     if (!isTauri) return
@@ -68,6 +96,20 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
     } catch (e) {
       console.warn('[providerStore] loadProviders failed:', e)
       set({ loaded: true })
+    }
+  },
+
+  loadStatus: async () => {
+    if (!isTauri) return
+    set({ statusLoading: true })
+    try {
+      const status = await tauriInvoke<ProviderModelsStatus[]>(
+        'providers_models_status',
+      )
+      set({ status, statusLoading: false, statusLoaded: true })
+    } catch (e) {
+      console.warn('[providerStore] loadStatus failed:', e)
+      set({ statusLoading: false, statusLoaded: true })
     }
   },
 
@@ -99,6 +141,7 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
     if (!isTauri) return
     await tauriInvoke<void>('provider_delete', { id })
     await get().loadProviders()
+    void get().loadStatus()
   },
 
   test: async (id) => {

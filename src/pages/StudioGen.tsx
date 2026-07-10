@@ -9,6 +9,7 @@ import {
 import Composer from '../components/Composer'
 import ImageAnnotator from '../components/ImageAnnotator'
 import ModelPicker from '../components/ModelPicker'
+import ProviderGuideCard from '../components/ProviderGuideCard'
 import { Mascot } from '../components/ui'
 
 // ── Environment guard ─────────────────────────────────────────────────────────
@@ -29,10 +30,10 @@ const EXAMPLE_IMAGE_PROMPTS = [
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/** Image models are relay ids that contain "image" (e.g. gpt-image-2). Filters
- *  the aggregated multi-provider list, preserving provider ownership. */
+/** Image models by backend classification (AggModel.kind == "image"),
+ *  preserving provider ownership. */
 function imageModelsOf(models: AggModel[]): AggModel[] {
-  return models.filter((m) => m.modelId.toLowerCase().includes('image'))
+  return models.filter((m) => m.kind === 'image')
 }
 
 /** Extract the `size` recorded in a media row's params_json. */
@@ -506,6 +507,7 @@ function VideoLockedState() {
 export default function StudioGen() {
   const {
     aggModels,
+    modelsLoaded,
     media,
     mediaLoaded,
     capabilities,
@@ -534,6 +536,8 @@ export default function StudioGen() {
 
   const imageModels = useMemo(() => imageModelsOf(aggModels), [aggModels])
   const videoEnabled = !!capabilities?.video
+  // 已加载完成但没有任何服务商 / 可用模型（首启或全部失败）。
+  const noProviders = modelsLoaded && aggModels.length === 0
 
   /** Select an image model together with its owning provider. */
   const selectImageModel = (providerId: string, modelId: string) => {
@@ -722,6 +726,13 @@ export default function StudioGen() {
       <div className="flex-1 min-h-0 flex flex-col">
         {mode === 'video' && !videoEnabled ? (
           <VideoLockedState />
+        ) : mode === 'image' && noProviders ? (
+          <div className="flex-1 flex items-center justify-center px-4">
+            <ProviderGuideCard
+              title="还没有配置模型服务"
+              hint="添加一个 OpenAI 兼容服务商（Base URL + API Key）后，这里就能用图像模型开始创作。"
+            />
+          </div>
         ) : showImageEmpty ? (
           <ImageEmptyState onPick={(t) => setDraft(t)} />
         ) : showImageGrid || showVideoGrid ? (
@@ -761,7 +772,11 @@ export default function StudioGen() {
         placeholder={
           mode === 'video'
             ? '视频生成暂未开通，切换到图像模式开始创作'
-            : '描述你想生成的图像，Enter 生成 / Shift+Enter 换行'
+            : noProviders
+              ? '未配置模型服务——请先到「设置」添加服务商'
+              : modelsLoaded && imageModels.length === 0
+                ? '当前服务商没有可用的图像模型'
+                : '描述你想生成的图像，Enter 生成 / Shift+Enter 换行'
         }
         footerHint={
           mode === 'image'
