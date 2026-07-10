@@ -5,6 +5,7 @@
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AgentBoard — 本地运行的 Agent 任务工作台</title>
+<meta name="description" content="AgentBoard 是一个本地优先、开源引擎的 AI Agent 工作台：内置引擎开箱即用，多模态、数据不出机，桌面与手机实时同步。">
 <link rel="preconnect" href="https://fonts.loli.net">
 <link href="https://fonts.loli.net/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
 <style>
@@ -67,6 +68,8 @@ a:hover { color: #93c5fd; }
   font-family: var(--mono);
   margin-bottom: 14px;
 }
+
+/* ---------- header / nav ---------- */
 header {
   border-bottom: 1px solid var(--border-soft);
   background: rgba(11,16,32,0.72);
@@ -107,9 +110,31 @@ header {
   border-radius: var(--r-pill);
   padding: 3px 11px;
   color: var(--accent);
-  margin-left: auto;
 }
-.hero { padding: 96px 0 68px; }
+.nav-links { margin-left: auto; display: flex; align-items: center; gap: 26px; }
+.nav-links a.nav-link {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg-2);
+}
+.nav-links a.nav-link:hover { color: var(--accent); }
+.nav-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 0 16px;
+  border-radius: var(--r-sm);
+  background: var(--accent);
+  color: #06122b;
+  font-size: 14px;
+  font-weight: 750;
+  box-shadow: 0 6px 18px rgba(96,165,250,0.24);
+}
+.nav-cta:hover { background: var(--accent-hover); color: #06122b; }
+
+/* ---------- hero ---------- */
+.hero { padding: 92px 0 66px; }
 .hero-grid {
   display: grid;
   grid-template-columns: 1.05fr 0.95fr;
@@ -117,10 +142,10 @@ header {
   align-items: center;
 }
 .hero h1 {
-  font-size: clamp(40px, 6vw, 64px);
+  font-size: clamp(38px, 5.6vw, 60px);
   font-weight: 800;
   letter-spacing: -0.02em;
-  line-height: 1.05;
+  line-height: 1.06;
   color: var(--fg);
   margin: 4px 0 22px;
 }
@@ -133,59 +158,9 @@ header {
   margin-bottom: 32px;
 }
 .cta-row { display: flex; flex-wrap: wrap; gap: 14px; }
-.hero-panel {
-  background: linear-gradient(180deg, var(--surface-warm), var(--surface));
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  box-shadow: var(--shadow-raised);
-  padding: 24px;
-}
-.panel-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding-bottom: 16px;
-  margin-bottom: 18px;
-  border-bottom: 1px solid var(--border-soft);
-}
-.panel-dot { width: 10px; height: 10px; border-radius: 50%; }
-.panel-title {
-  margin-left: 6px;
-  font-family: var(--mono);
-  font-size: 12px;
-  color: var(--muted);
-}
-.metric-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-bottom: 18px;
-}
-.metric {
-  background: var(--surface);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--r-md);
-  padding: 14px 16px;
-}
-.metric .num {
-  font-size: 30px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  color: var(--fg);
-  line-height: 1.1;
-}
-.metric .num.accent { color: var(--accent); }
-.metric .label { font-size: 13px; color: var(--muted); margin-top: 2px; }
-.chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
-.chip {
-  font-size: 12.5px;
-  color: var(--fg-2);
-  border: 1px solid var(--border);
-  border-radius: var(--r-pill);
-  padding: 5px 12px;
-  background: rgba(255,255,255,0.02);
-}
-.chip::before { content: "\25CF"; color: var(--accent); font-size: 8px; margin-right: 6px; vertical-align: 2px; }
+.hero-note { margin-top: 18px; font-size: 13px; color: var(--muted); font-family: var(--mono); }
+
+/* ---------- buttons ---------- */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -217,16 +192,216 @@ header {
 }
 .btn-secondary:hover { border-color: var(--accent); color: var(--fg); transform: translateY(-1px); }
 .btn-secondary:focus-visible { outline: none; box-shadow: var(--focus); }
-.section { padding: 68px 0; }
+
+/* ---------- product preview panel ---------- */
+.preview {
+  background: linear-gradient(180deg, var(--surface-warm), var(--surface));
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-raised);
+  overflow: hidden;
+}
+.preview-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--border-soft);
+  background: rgba(255,255,255,0.02);
+}
+.p-dot { width: 11px; height: 11px; border-radius: 50%; }
+.preview-title {
+  margin-left: 6px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+.preview-body {
+  display: grid;
+  grid-template-columns: 122px 1fr 132px;
+  min-height: 268px;
+}
+.p-tree {
+  border-right: 1px solid var(--border-soft);
+  padding: 12px 10px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--fg-2);
+}
+.p-tree .row { padding: 2px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.p-tree .dir { color: var(--muted); }
+.p-tree .active { color: var(--accent); }
+.p-main { padding: 14px 15px; border-right: 1px solid var(--border-soft); }
+.p-bubble {
+  font-size: 12.5px;
+  color: var(--fg-2);
+  background: rgba(96,165,250,0.08);
+  border: 1px solid var(--border-soft);
+  border-radius: 10px 10px 10px 2px;
+  padding: 8px 11px;
+  margin-bottom: 12px;
+}
+.p-code {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.85;
+  color: var(--fg-2);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border-soft);
+  background: rgba(0,0,0,0.22);
+  padding: 10px 12px;
+  overflow: hidden;
+}
+.p-code .add { color: var(--success); background: rgba(34,197,94,0.10); display: block; }
+.p-code .del { color: var(--danger); background: rgba(251,113,133,0.10); display: block; text-decoration: line-through; opacity: .8; }
+.p-code .kw { color: var(--accent); }
+.p-side { padding: 13px 12px; }
+.p-side .h {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.p-check { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--fg-2); margin-bottom: 9px; }
+.p-check .box {
+  width: 15px; height: 15px; border-radius: 4px; flex-shrink: 0;
+  display: grid; place-items: center;
+  border: 1px solid var(--border);
+}
+.p-check .box.done { background: var(--success); border-color: var(--success); color: #06210f; }
+.p-check .box.run { border-color: var(--accent); color: var(--accent); }
+.p-check.pending { color: var(--muted); }
+.p-token { margin-top: 12px; font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
+.p-bar { height: 5px; border-radius: 99px; background: rgba(255,255,255,0.06); margin-top: 5px; overflow: hidden; }
+.p-bar > span { display: block; height: 100%; width: 66%; background: linear-gradient(90deg, var(--accent), var(--accent-active)); border-radius: 99px; }
+
+/* ---------- sections ---------- */
+.section { padding: 66px 0; }
 .section-head { margin-bottom: 40px; }
+.section-head.center { text-align: center; }
+.section-head.center p { margin-left: auto; margin-right: auto; }
 .section-head h2 {
   font-size: 32px;
   font-weight: 800;
   letter-spacing: -0.02em;
-  line-height: 1.1;
+  line-height: 1.12;
   color: var(--fg);
 }
-.section-head p { color: var(--muted); font-size: 16px; margin-top: 10px; max-width: 620px; }
+.section-head p { color: var(--muted); font-size: 16px; margin-top: 10px; max-width: 640px; }
+.alt { background: linear-gradient(180deg, rgba(24,35,67,0.28), transparent); border-top: 1px solid var(--border-soft); }
+
+/* ---------- 3-col why ---------- */
+.trio {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0,1fr));
+  gap: 16px;
+}
+.pillar {
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-md);
+  padding: 26px 24px;
+  transition: transform 180ms var(--ease), border-color 180ms var(--ease), box-shadow 180ms var(--ease);
+}
+.pillar:hover { transform: translateY(-4px); border-color: var(--accent); box-shadow: var(--shadow-raised); }
+.pillar .p-ico {
+  width: 46px; height: 46px; border-radius: var(--r-sm);
+  display: grid; place-items: center; font-size: 22px; margin-bottom: 16px;
+  color: var(--accent); background: rgba(96,165,250,0.10); border: 1px solid var(--border);
+}
+.pillar h3 { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; margin-bottom: 10px; color: var(--fg); }
+.pillar p { font-size: 14px; color: var(--muted); line-height: 1.72; }
+
+/* ---------- workflow steps ---------- */
+.steps { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 14px; }
+.step {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-md);
+  padding: 22px 20px 20px;
+  transition: transform 180ms var(--ease), border-color 180ms var(--ease), box-shadow 180ms var(--ease);
+}
+.step:hover { transform: translateY(-4px); border-color: var(--accent); box-shadow: var(--shadow-raised); }
+.step .num { font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--accent); letter-spacing: 0.08em; }
+.step h3 { font-size: 15.5px; font-weight: 700; margin: 10px 0 8px; color: var(--fg); letter-spacing: -0.01em; }
+.step p { font-size: 13px; color: var(--muted); line-height: 1.68; }
+.step-viz {
+  margin-top: 14px; height: 58px; border-radius: var(--r-sm);
+  border: 1px solid var(--border-soft); background: rgba(0,0,0,0.18);
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 0 10px; overflow: hidden;
+}
+.viz-line { height: 6px; border-radius: 99px; background: rgba(255,255,255,0.08); }
+.viz-line.a { width: 34%; background: rgba(96,165,250,0.55); }
+.viz-line.b { width: 22%; }
+.viz-line.c { width: 44%; }
+.viz-diff { display: flex; flex-direction: column; gap: 3px; width: 100%; }
+.viz-diff span { height: 6px; border-radius: 3px; }
+.viz-diff .add { background: rgba(34,197,94,0.5); width: 70%; }
+.viz-diff .del { background: rgba(251,113,133,0.5); width: 50%; }
+.viz-diff .neu { background: rgba(255,255,255,0.09); width: 85%; }
+.viz-ck { display: flex; flex-direction: column; gap: 5px; width: 100%; }
+.viz-ck i { display: flex; align-items: center; gap: 6px; font-style: normal; font-size: 10px; color: var(--muted); }
+.viz-ck b { width: 11px; height: 11px; border-radius: 3px; background: var(--success); display: inline-block; }
+.viz-dev { display: flex; align-items: center; gap: 8px; }
+.viz-dev .scr { width: 26px; height: 34px; border-radius: 5px; border: 1.5px solid var(--accent); }
+.viz-dev .arw { color: var(--muted); font-size: 14px; }
+.viz-dev .phn { width: 18px; height: 32px; border-radius: 4px; border: 1.5px solid var(--success); }
+
+/* ---------- capability tabs ---------- */
+.tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 26px; }
+.tab {
+  font-size: 13.5px; font-weight: 650; font-family: inherit; cursor: pointer;
+  color: var(--fg-2); background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-pill); padding: 8px 16px;
+  transition: color 160ms var(--ease), border-color 160ms var(--ease), background 160ms var(--ease);
+}
+.tab:hover { border-color: var(--accent); color: var(--fg); }
+.tab[aria-selected="true"] { background: rgba(96,165,250,0.12); border-color: var(--accent); color: var(--accent); }
+.tab:focus-visible { outline: none; box-shadow: var(--focus); }
+.tab-panels { position: relative; }
+.tab-panel { display: none; }
+.tab-panel.active { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: center; }
+.tab-copy h3 { font-size: 22px; font-weight: 750; letter-spacing: -0.01em; margin-bottom: 12px; color: var(--fg); }
+.tab-copy p { font-size: 15px; color: var(--muted); line-height: 1.74; margin-bottom: 14px; }
+.tab-copy ul { list-style: none; display: grid; gap: 8px; }
+.tab-copy li { font-size: 13.5px; color: var(--fg-2); display: flex; gap: 9px; align-items: flex-start; }
+.tab-copy li::before { content: "\2713"; color: var(--success); font-weight: 700; flex-shrink: 0; }
+.tab-visual {
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  background: linear-gradient(180deg, var(--surface-warm), var(--surface));
+  min-height: 210px; padding: 20px;
+  font-family: var(--mono); font-size: 12px; color: var(--fg-2);
+  display: flex; flex-direction: column; gap: 9px; justify-content: center;
+}
+.tab-visual .vk { color: var(--accent); }
+.tab-visual .vm { color: var(--muted); }
+.tab-visual .vhead { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+
+/* ---------- engine / models chips ---------- */
+.engine-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: stretch; }
+.panel {
+  background: var(--surface); border: 1px solid var(--border-soft);
+  border-radius: var(--r-md); padding: 26px 24px;
+}
+.panel h3 { font-size: 19px; font-weight: 750; letter-spacing: -0.01em; margin-bottom: 12px; color: var(--fg); }
+.panel p { font-size: 14px; color: var(--muted); line-height: 1.72; margin-bottom: 16px; }
+.chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  font-size: 12.5px;
+  color: var(--fg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  padding: 5px 12px;
+  background: rgba(255,255,255,0.02);
+}
+.chip::before { content: "\25CF"; color: var(--accent); font-size: 8px; margin-right: 6px; vertical-align: 2px; }
+.chip.mono { font-family: var(--mono); }
+
+/* ---------- feature cards ---------- */
 .features {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -264,6 +439,44 @@ header {
   letter-spacing: -0.01em;
 }
 .card p { font-size: 13.5px; color: var(--muted); line-height: 1.68; }
+
+/* ---------- metrics band ---------- */
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0,1fr));
+  gap: 14px;
+}
+.metric {
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-md);
+  padding: 24px 22px;
+}
+.metric .num {
+  font-family: var(--mono);
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--fg);
+  line-height: 1.1;
+}
+.metric .num.accent { color: var(--accent); }
+.metric .label { font-size: 13.5px; color: var(--muted); margin-top: 6px; }
+
+/* ---------- CTA band ---------- */
+.cta-band {
+  text-align: center;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: linear-gradient(180deg, var(--surface-warm), var(--surface));
+  box-shadow: var(--shadow-raised);
+  padding: 56px 32px;
+}
+.cta-band h2 { font-size: clamp(26px, 4vw, 38px); font-weight: 800; letter-spacing: -0.02em; line-height: 1.12; color: var(--fg); }
+.cta-band p { color: var(--muted); font-size: 16px; margin: 14px auto 28px; max-width: 560px; }
+.cta-band .cta-row { justify-content: center; }
+
+/* ---------- download ---------- */
 .download-section {
   border-top: 1px solid var(--border-soft);
   border-bottom: 1px solid var(--border-soft);
@@ -332,43 +545,129 @@ header {
 .notice-icon { font-size: 16px; flex-shrink: 0; padding-top: 2px; }
 .notice-text { font-size: 13.5px; color: var(--fg-2); line-height: 1.7; }
 .notice-text strong { color: var(--warn); }
-footer {
-  max-width: 1080px;
-  margin: 0 auto;
-  padding: 40px 32px 48px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 16px;
-  font-size: 13.5px;
-  color: var(--muted);
+
+/* ---------- FAQ ---------- */
+.faq { display: grid; gap: 10px; max-width: 820px; }
+.faq details {
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  transition: border-color 180ms var(--ease);
 }
-.footer-links { display: flex; gap: 24px; }
-.footer-links a { color: var(--fg-2); }
-.footer-links a:hover { color: var(--accent); }
+.faq details[open] { border-color: var(--border); }
+.faq summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 18px 22px;
+  font-size: 15.5px;
+  font-weight: 650;
+  color: var(--fg);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary:focus-visible { outline: none; box-shadow: var(--focus); border-radius: var(--r-md); }
+.faq summary .sign {
+  flex-shrink: 0;
+  width: 22px; height: 22px; border-radius: 6px;
+  border: 1px solid var(--border);
+  display: grid; place-items: center;
+  color: var(--accent);
+  position: relative;
+  transition: transform 220ms var(--ease), background 180ms var(--ease);
+}
+.faq summary .sign::before,
+.faq summary .sign::after {
+  content: ""; position: absolute; background: currentColor; border-radius: 2px;
+}
+.faq summary .sign::before { width: 11px; height: 2px; }
+.faq summary .sign::after { width: 2px; height: 11px; transition: transform 220ms var(--ease), opacity 180ms var(--ease); }
+.faq details[open] summary .sign { background: rgba(96,165,250,0.12); }
+.faq details[open] summary .sign::after { transform: rotate(90deg); opacity: 0; }
+.faq .answer {
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 260ms var(--ease);
+}
+.faq details[open] .answer { grid-template-rows: 1fr; }
+.faq .answer > div { overflow: hidden; min-height: 0; }
+.faq .answer p { padding: 0 22px 20px; font-size: 14px; color: var(--muted); line-height: 1.75; }
+
+/* ---------- footer ---------- */
+.footer-main {
+  border-top: 1px solid var(--border-soft);
+  background: rgba(11,16,32,0.5);
+}
+.footer-cols {
+  max-width: 1080px; margin: 0 auto; padding: 52px 32px 28px;
+  display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 32px;
+}
+.footer-brand .fb-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.footer-brand p { font-size: 13px; color: var(--muted); line-height: 1.7; max-width: 260px; }
+.footer-col h4 {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.10em; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 14px; font-weight: 600;
+}
+.footer-col a { display: block; font-size: 13.5px; color: var(--fg-2); margin-bottom: 9px; }
+.footer-col a:hover { color: var(--accent); }
+.footer-col span.static { display: block; font-size: 13.5px; color: var(--muted); margin-bottom: 9px; }
+.footer-bottom {
+  max-width: 1080px; margin: 0 auto; padding: 18px 32px 42px;
+  border-top: 1px solid var(--border-soft);
+  display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+  font-size: 13px; color: var(--muted);
+}
+
+/* ---------- scroll reveal ---------- */
+.reveal { opacity: 0; transform: translateY(20px); transition: opacity 620ms var(--ease), transform 620ms var(--ease); }
+.reveal.in { opacity: 1; transform: none; }
+
+/* ---------- responsive ---------- */
+@media (max-width: 940px) {
+  .footer-cols { grid-template-columns: 1fr 1fr; row-gap: 28px; }
+}
 @media (max-width: 820px) {
-  .wrap, .header-inner, footer { padding-left: 24px; padding-right: 24px; }
-  .hero { padding: 68px 0 48px; }
+  .wrap, .header-inner { padding-left: 24px; padding-right: 24px; }
+  .nav-links { gap: 14px; }
+  .nav-links .nav-link { display: none; }
+  .hero { padding: 64px 0 46px; }
   .hero-grid { grid-template-columns: 1fr; gap: 40px; }
   .hero .lead { max-width: none; }
-  .section { padding: 48px 0; }
+  .section { padding: 46px 0; }
+  .trio { grid-template-columns: 1fr; }
+  .steps { grid-template-columns: 1fr 1fr; }
+  .tab-panel.active { grid-template-columns: 1fr; }
+  .engine-grid { grid-template-columns: 1fr; }
   .features { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .metrics { grid-template-columns: 1fr 1fr; }
   .download-grid { grid-template-columns: 1fr; }
+  .preview-body { grid-template-columns: 96px 1fr; }
+  .p-side { display: none; }
 }
 @media (max-width: 560px) {
-  .wrap, .header-inner, footer { padding-left: 18px; padding-right: 18px; }
+  .wrap, .header-inner { padding-left: 18px; padding-right: 18px; }
+  .footer-cols, .footer-bottom { padding-left: 18px; padding-right: 18px; }
+  .footer-cols { grid-template-columns: 1fr; }
+  .steps { grid-template-columns: 1fr; }
   .features { grid-template-columns: 1fr; }
+  .metrics { grid-template-columns: 1fr; }
   .cta-row .btn { flex: 1 1 100%; }
-  footer { flex-direction: column; text-align: center; }
+  .footer-bottom { flex-direction: column; }
 }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   * { transition: none !important; }
+  .reveal { opacity: 1; transform: none; }
 }
 </style>
 </head>
 <body>
+
+<!-- ===== NAV ===== -->
 <header>
   <div class="header-inner">
     <svg class="logo-mark" viewBox="0 0 40 40" fill="none" role="img" aria-label="AgentBoard">
@@ -384,14 +683,23 @@ footer {
     </svg>
     <span class="logo-text">AgentBoard</span>
     <span class="ver-chip">v0.7.0 Beta</span>
+    <nav class="nav-links">
+      <a class="nav-link" href="#features">功能</a>
+      <a class="nav-link" href="#workflow">工作流</a>
+      <a class="nav-link" href="#download">下载</a>
+      <a class="nav-link" href="#faq">FAQ</a>
+      <a class="nav-cta" href="/downloads/AgentBoard_0.7.0_x64-setup.exe">下载</a>
+    </nav>
   </div>
 </header>
+
+<!-- ===== HERO ===== -->
 <section class="hero">
   <div class="wrap hero-grid">
     <div class="hero-copy">
-      <div class="eyebrow">Local-first Agent Workstation</div>
-      <h1>把 AI Agent 装进<br><em>本地工作台</em></h1>
-      <p class="lead">AgentBoard 是一个本地优先的 Agent 任务工作台——像管理项目卡片一样管理你的 AI 任务，实时看到每一步文件修改，数据不出机。</p>
+      <div class="eyebrow">本地优先 · 开源引擎</div>
+      <h1>把 AI Agent 装进<br>你自己的<em>工作台</em></h1>
+      <p class="lead">AgentBoard 在你的电脑上本地运行——自研引擎随安装包内置，装完即用，无需再装任何命令行工具。多模态对话、看板任务、代码工作区一体化，任务与文件全在本机，数据不出机。</p>
       <div class="cta-row">
         <a class="btn btn-primary" href="/downloads/AgentBoard_0.7.0_x64-setup.exe">
           <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M7.5 2v8m0 0L4.5 7m3 3 3-3M2 12h11" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -399,113 +707,356 @@ footer {
         </a>
         <a class="btn btn-secondary" href="#features">查看全部功能</a>
       </div>
+      <p class="hero-note">Windows x64 · v0.7.0 · 内置引擎 · 0 依赖安装</p>
     </div>
-    <div class="hero-panel">
-      <div class="panel-bar">
-        <span class="panel-dot" style="background:#fb7185"></span>
-        <span class="panel-dot" style="background:#fbbf24"></span>
-        <span class="panel-dot" style="background:#22c55e"></span>
-        <span class="panel-title">agentboard · run</span>
+    <div class="preview">
+      <div class="preview-bar">
+        <span class="p-dot" style="background:#fb7185"></span>
+        <span class="p-dot" style="background:#fbbf24"></span>
+        <span class="p-dot" style="background:#22c55e"></span>
+        <span class="preview-title">agentboard · 工作台</span>
       </div>
-      <div class="metric-grid">
-        <div class="metric">
-          <div class="num accent">100%</div>
-          <div class="label">本地运行</div>
+      <div class="preview-body">
+        <div class="p-tree">
+          <div class="row dir">&#9662; project</div>
+          <div class="row">&nbsp;&nbsp;&#9662; src</div>
+          <div class="row active">&nbsp;&nbsp;&nbsp;&nbsp;app.ts</div>
+          <div class="row">&nbsp;&nbsp;&nbsp;&nbsp;api.ts</div>
+          <div class="row">&nbsp;&nbsp;&nbsp;&nbsp;utils.ts</div>
+          <div class="row dir">&nbsp;&nbsp;&#9662; docs</div>
+          <div class="row">&nbsp;&nbsp;&nbsp;&nbsp;README.md</div>
+          <div class="row">&nbsp;&nbsp;package.json</div>
         </div>
-        <div class="metric">
-          <div class="num">内置</div>
-          <div class="label">Agent 引擎</div>
+        <div class="p-main">
+          <div class="p-bubble">帮我给 app.ts 的请求加上超时重试</div>
+          <div class="p-code"><span class="del">- const res = await fetch(url)</span><span class="add">+ const res = await <span class="kw">withRetry</span>(() =&gt;</span><span class="add">+&nbsp;&nbsp;fetch(url, { signal }))</span><span>&nbsp;&nbsp;return res.json()</span></div>
         </div>
-        <div class="metric">
-          <div class="num">多模态</div>
-          <div class="label">聊天 · 图像 · 代码</div>
+        <div class="p-side">
+          <div class="h">任务清单</div>
+          <div class="p-check"><span class="box done">&#10003;</span>读取 app.ts</div>
+          <div class="p-check"><span class="box done">&#10003;</span>生成补丁</div>
+          <div class="p-check"><span class="box run">&bull;</span>应用 diff</div>
+          <div class="p-check pending"><span class="box"></span>运行校验</div>
+          <div class="p-token">tokens 1,284 / 上下文</div>
+          <div class="p-bar"><span></span></div>
         </div>
-        <div class="metric">
-          <div class="num accent">实时</div>
-          <div class="label">手机同步</div>
-        </div>
-      </div>
-      <div class="chip-row">
-        <span class="chip">看板多任务</span>
-        <span class="chip">inline diff</span>
-        <span class="chip">MCP 工具</span>
-        <span class="chip">密钥仅存本机</span>
       </div>
     </div>
   </div>
 </section>
-<section class="section" id="features">
+
+<!-- ===== WHY ===== -->
+<section class="section reveal">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Why AgentBoard</div>
+      <h2>为什么选它</h2>
+      <p>不是又一个网页版套壳。AgentBoard 把前沿 AI 能力搬回你自己的桌面——你掌控数据、掌控密钥、掌控模型。</p>
+    </div>
+    <div class="trio">
+      <div class="pillar">
+        <div class="p-ico">&#128274;</div>
+        <h3>本地优先</h3>
+        <p>任务、文件、对话历史与快照全部保存在本机，运行不依赖任何云端服务。数据不出机——除非你自己选择开启手机同步，且只传必要内容。</p>
+      </div>
+      <div class="pillar">
+        <div class="p-ico">&#9881;</div>
+        <h3>内置引擎</h3>
+        <p>自研 Agent 引擎随安装包自带，装完即用，不需要你另外安装任何命令行工具或运行时。回复逐字流式输出，比外挂子进程更快更稳。</p>
+      </div>
+      <div class="pillar">
+        <div class="p-ico">&#128268;</div>
+        <h3>自带 Key · 多服务商</h3>
+        <p>接入任意 OpenAI 兼容服务商，下拉即切模型、切账号。API 密钥只存本机凭据管理器，永不上传，随时可换、随时可删。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== WORKFLOW ===== -->
+<section class="section alt reveal" id="workflow">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Workflow</div>
+      <h2>四步跑通一个任务</h2>
+      <p>从选定文件夹到导出成果，全程可见、可控、可回溯——像管理项目一样管理你的 AI。</p>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="num">01</div>
+        <h3>选一个文件夹</h3>
+        <p>打开本地项目目录，AgentBoard 直接在真实文件上工作，不搬运、不上传。</p>
+        <div class="step-viz">
+          <div style="display:flex;flex-direction:column;gap:5px;width:100%">
+            <span class="viz-line c"></span><span class="viz-line a"></span><span class="viz-line b"></span>
+          </div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">02</div>
+        <h3>自然语言对话</h3>
+        <p>用一句话描述需求，AI 直接改本地文件：文件树 + Monaco 编辑器 + inline diff，Trae 式体验。</p>
+        <div class="step-viz">
+          <div class="viz-diff">
+            <span class="neu"></span><span class="add"></span><span class="del"></span>
+          </div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">03</div>
+        <h3>逐条打勾进度</h3>
+        <p>任务拆成清单逐项执行，实时打勾看进度，并显示每一步的 token 消耗。</p>
+        <div class="step-viz">
+          <div class="viz-ck">
+            <i><b></b>读取文件</i><i><b></b>生成补丁</i><i><b></b>应用 diff</i>
+          </div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">04</div>
+        <h3>导出 / 同步</h3>
+        <p>成果一键导出为 Markdown 或自包含 HTML，或实时同步到手机，随时随地验收。</p>
+        <div class="step-viz">
+          <div class="viz-dev">
+            <span class="scr"></span><span class="arw">&rarr;</span><span class="phn"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== WHAT (tabs) ===== -->
+<section class="section reveal">
   <div class="wrap">
     <div class="section-head">
       <div class="eyebrow">Capabilities</div>
-      <h2>核心能力</h2>
+      <h2>它能做什么</h2>
+      <p>一套本地工作台，覆盖代码、对话、图像、文档与科研——点标签切换看看。</p>
+    </div>
+    <div class="tabs" role="tablist" aria-label="能力展示">
+      <button class="tab" role="tab" id="tab-code" aria-controls="panel-code" aria-selected="true">代码工作台</button>
+      <button class="tab" role="tab" id="tab-chat" aria-controls="panel-chat" aria-selected="false">直连对话</button>
+      <button class="tab" role="tab" id="tab-image" aria-controls="panel-image" aria-selected="false">图像生成</button>
+      <button class="tab" role="tab" id="tab-doc" aria-controls="panel-doc" aria-selected="false">PPT · 文档</button>
+      <button class="tab" role="tab" id="tab-research" aria-controls="panel-research" aria-selected="false">科研 Agent</button>
+      <button class="tab" role="tab" id="tab-sync" aria-controls="panel-sync" aria-selected="false">手机同步</button>
+    </div>
+    <div class="tab-panels">
+      <div class="tab-panel active" role="tabpanel" id="panel-code" aria-labelledby="tab-code">
+        <div class="tab-copy">
+          <h3>Trae 式代码工作台</h3>
+          <p>文件树 + Monaco 编辑器 + AI 对话三合一。AI 直接改本地文件并展示 inline diff，你审阅后再落盘。</p>
+          <ul><li>可连 SSH 远程编辑</li><li>挂载 MCP 工具与技能</li><li>进度条实时显示 token 消耗</li></ul>
+        </div>
+        <div class="tab-visual">
+          <div class="vhead">app.ts · inline diff</div>
+          <div><span class="vk">- </span><span class="vm">fetch(url)</span></div>
+          <div><span class="vk">+ </span>withRetry(() =&gt; fetch(url))</div>
+          <div class="vm">&#9656; 已应用 · 校验通过</div>
+        </div>
+      </div>
+      <div class="tab-panel" role="tabpanel" id="panel-chat" aria-labelledby="tab-chat">
+        <div class="tab-copy">
+          <h3>直连 API 对话</h3>
+          <p>ChatGPT 级聊天界面，直连你自己的 API Key。数学公式 LaTeX 渲染、代码高亮、真实可点搜索链接。</p>
+          <ul><li>流式输出 · 多会话管理</li><li>图片与文件附件</li><li>一键导出 Markdown / 自包含 HTML</li></ul>
+        </div>
+        <div class="tab-visual">
+          <div class="vhead">chat · LaTeX 渲染</div>
+          <div>&#8747; e^x dx = <span class="vk">e^x + C</span></div>
+          <div class="vm">&#9656; 流式输出中&hellip;</div>
+          <div class="vm">&#9656; 已导出 answer.html</div>
+        </div>
+      </div>
+      <div class="tab-panel" role="tabpanel" id="panel-image" aria-labelledby="tab-image">
+        <div class="tab-copy">
+          <h3>图像生成工作台</h3>
+          <p>输入描述即出图，画廊网格管理全部作品，一键另存到本地。视频生成模式已就绪，模型开通即可用。</p>
+          <ul><li>提示词 &rarr; 成图，画廊管理</li><li>一键另存本地</li><li>视频生成模式预留</li></ul>
+        </div>
+        <div class="tab-visual">
+          <div class="vhead">gallery</div>
+          <div class="vm">&#9723; &#9723; &#9723;&nbsp;&nbsp;&nbsp;&#9723; &#9723; &#9723;</div>
+          <div><span class="vk">prompt</span> &rarr; 512&times;512</div>
+          <div class="vm">&#9656; 已保存到本地画廊</div>
+        </div>
+      </div>
+      <div class="tab-panel" role="tabpanel" id="panel-doc" aria-labelledby="tab-doc">
+        <div class="tab-copy">
+          <h3>PPT · 文档可视化编辑</h3>
+          <p>一句话让 AI 生成 PPT 或文档的 HTML，右侧实时预览，点文字就地修改、导出成品——像在设计稿上直接改。</p>
+          <ul><li>自然语言生成 HTML</li><li>右侧所见即所得预览</li><li>点选文字就地编辑</li></ul>
+        </div>
+        <div class="tab-visual">
+          <div class="vhead">slide · live preview</div>
+          <div class="vm">&#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;</div>
+          <div>&#9474; <span class="vk">标题</span> · 可点改 &#9474;</div>
+          <div class="vm">&#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;</div>
+        </div>
+      </div>
+      <div class="tab-panel" role="tabpanel" id="panel-research" aria-labelledby="tab-research">
+        <div class="tab-copy">
+          <h3>科研 Agent 与技能流水线</h3>
+          <p>内置论文科研的 Agent 库与技能库，可浏览、编辑、一键跑流水线，执行仪表盘追踪每一次运行与产物。</p>
+          <ul><li>Agent 库 / 技能库可编辑</li><li>一键跑流水线</li><li>执行仪表盘追踪运行与产物</li></ul>
+        </div>
+        <div class="tab-visual">
+          <div class="vhead">pipeline · run</div>
+          <div><span class="vk">&#9656;</span> 检索 &rarr; 阅读 &rarr; 归纳</div>
+          <div><span class="vk">&#9656;</span> 生成报告草稿</div>
+          <div class="vm">&#9656; dashboard: 3 runs</div>
+        </div>
+      </div>
+      <div class="tab-panel" role="tabpanel" id="panel-sync" aria-labelledby="tab-sync">
+        <div class="tab-copy">
+          <h3>手机实时同步</h3>
+          <p>注册一个账号，手机 App 实时看到电脑上的任务进度与对话内容。躺在沙发上派新任务、一键验收，通道全程加密。</p>
+          <ul><li>桌面 &harr; 手机实时同步</li><li>远程派发任务 · 一键验收</li><li>通道加密 · 默认关闭</li></ul>
+        </div>
+        <div class="tab-visual">
+          <div class="vhead">desktop &#8646; phone</div>
+          <div><span class="vk">&#9656;</span> 任务进度已推送</div>
+          <div><span class="vk">&#9656;</span> 手机验收 &#10003;</div>
+          <div class="vm">&#9656; 通道加密</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== ENGINE & MODELS ===== -->
+<section class="section alt reveal" id="engine">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Engine &amp; Models</div>
+      <h2>内置引擎 · 多模型</h2>
+      <p>自带引擎让你装完即用，多服务商让你自由选模型——两者都在你自己的掌控之下。</p>
+    </div>
+    <div class="engine-grid">
+      <div class="panel">
+        <h3>内置 Agent 引擎</h3>
+        <p>自研引擎随安装包自带（codex 式工具执行 + pi 内核），不催动任何外部命令行工具，也不额外拉起子进程。逐字流式回复，工具调用与文件改动实时可见。</p>
+        <div class="chip-row">
+          <span class="chip">内置执行引擎</span>
+          <span class="chip">工具调用</span>
+          <span class="chip">inline diff</span>
+          <span class="chip">MCP 挂载</span>
+          <span class="chip">0 依赖安装</span>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>接任意 OpenAI 兼容服务商</h3>
+        <p>填入你自己的服务商地址与 API Key，下拉即可切换模型与账号。密钥只存本机凭据管理器，永不上传。以下为常见接入形态示意，具体以你配置的服务商为准。</p>
+        <div class="chip-row">
+          <span class="chip mono">OpenAI 兼容</span>
+          <span class="chip mono">自定义 base_url</span>
+          <span class="chip mono">gpt-5.5 等</span>
+          <span class="chip mono">自带 Key</span>
+          <span class="chip mono">下拉切换</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== FEATURES GRID ===== -->
+<section class="section reveal" id="features">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Core Features</div>
+      <h2>核心能力网格</h2>
       <p>一套本地工作台，覆盖对话、看板、代码、图像与科研——每一次运行都可见、可控、可回溯。</p>
     </div>
     <div class="features">
       <div class="card">
-        <div class="card-icon">⚡</div>
-        <h3>类 Codex 聊天工作区</h3>
-        <p>与 Agent 对话的同时，实时预览每个文件的创建、修改与删除——再也不用猜 Agent 在做什么。</p>
-      </div>
-      <div class="card">
-        <div class="card-icon">📋</div>
-        <h3>看板管理多任务</h3>
-        <p>用列与卡片组织多个并行任务，状态一目了然。切换任务无需关闭当前上下文。</p>
-      </div>
-      <div class="card">
-        <div class="card-icon">💬</div>
-        <h3>直连 API 对话</h3>
-        <p>内置 ChatGPT 级聊天界面：流式输出、图片与文件附件、多会话管理、模型随时切换，配置一次即可使用。</p>
-      </div>
-      <div class="card">
-        <div class="card-icon">🎨</div>
-        <h3>图像生成工作台</h3>
-        <p>输入描述即出图，画廊网格管理全部作品，一键另存到本地。视频生成模式已就绪，模型开通即可用。</p>
-      </div>
-      <div class="card">
-        <div class="card-icon">🛠️</div>
+        <div class="card-icon">&#128295;</div>
         <h3>Trae 式代码工作区</h3>
         <p>文件树 + Monaco 编辑器 + AI 对话直接改文件并展示 inline diff；可连 SSH 远程编辑、挂载 MCP 工具与技能，进度条实时显示 token 消耗。</p>
       </div>
       <div class="card">
-        <div class="card-icon">🧮</div>
-        <h3>超越网页版的对话</h3>
-        <p>数学公式渲染、代码高亮、真实可点的搜索链接；结果一键导出为 Markdown 或自包含 HTML，离线也能看。</p>
-      </div>
-      <div class="card">
-        <div class="card-icon">🔌</div>
-        <h3>多服务商随心切换</h3>
-        <p>配置任意 OpenAI 兼容服务商与自己的 API Key，下拉即切模型、切账号；密钥仅存本机凭据管理器，永不上传。</p>
-      </div>
-      <div class="card">
-        <div class="card-icon">⚙️</div>
+        <div class="card-icon">&#9881;</div>
         <h3>内置 Agent 引擎</h3>
         <p>自研引擎随安装包开箱即用，无需再装任何命令行工具；回复逐字流式输出，比子进程模式更快更稳。</p>
       </div>
       <div class="card">
-        <div class="card-icon">📑</div>
-        <h3>PPT/文档可视化</h3>
-        <p>用一句话让 AI 生成 PPT 或文档的 HTML，右侧实时预览，点文字就地修改、导出成品——像在设计稿上直接改。</p>
+        <div class="card-icon">&#128172;</div>
+        <h3>直连对话 + 公式</h3>
+        <p>直连 API 的流式对话：数学公式 LaTeX 渲染、代码高亮、可点搜索链接，一键导出 Markdown 或自包含 HTML。</p>
       </div>
       <div class="card">
-        <div class="card-icon">φ</div>
-        <h3>科研工作台</h3>
+        <div class="card-icon">&#127912;</div>
+        <h3>图像生成 + 画廊</h3>
+        <p>输入描述即出图，画廊网格管理全部作品，一键另存到本地。视频生成模式已就绪，模型开通即可用。</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">&#128209;</div>
+        <h3>PPT · 文档可视化</h3>
+        <p>一句话让 AI 生成 PPT 或文档的 HTML，右侧实时预览，点文字就地修改、导出成品——像在设计稿上直接改。</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">&#966;</div>
+        <h3>科研集成</h3>
         <p>内置论文科研的 Agent 库与技能库，可浏览、编辑、一键跑流水线，执行仪表盘追踪每一次运行与产物。</p>
       </div>
       <div class="card">
-        <div class="card-icon">📱</div>
-        <h3>手机实时同步</h3>
-        <p>注册一个账号，手机 App 实时看到电脑上的任务进度与对话内容；躺在沙发上派发新任务、一键验收，通道全程加密。</p>
+        <div class="card-icon">&#128203;</div>
+        <h3>逐条打勾任务流</h3>
+        <p>任务拆成清单逐项执行，实时打勾看进度，看板组织多个并行任务，切换不丢上下文。</p>
       </div>
       <div class="card">
-        <div class="card-icon">🔒</div>
+        <div class="card-icon">&#128241;</div>
+        <h3>手机实时同步</h3>
+        <p>注册一个账号，手机 App 实时看到电脑上的任务进度与对话；躺着派任务、一键验收，通道全程加密。</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">&#128274;</div>
         <h3>数据可控</h3>
         <p>任务历史、文件快照全在本机；手机同步只传必要内容，API 密钥永不上传，同步默认关闭。</p>
       </div>
     </div>
   </div>
 </section>
-<section class="download-section">
+
+<!-- ===== METRICS ===== -->
+<section class="section alt reveal">
+  <div class="wrap">
+    <div class="section-head center">
+      <div class="eyebrow">By the numbers</div>
+      <h2>诚实的亮点</h2>
+      <p>下面每一项都可以自己核验——我们不写星标数、用户数这类无法证实的数字。</p>
+    </div>
+    <div class="metrics">
+      <div class="metric"><div class="num accent">100%</div><div class="label">核心功能本地运行</div></div>
+      <div class="metric"><div class="num">6</div><div class="label">大功能模块（代码/对话/图像/文档/科研/同步）</div></div>
+      <div class="metric"><div class="num">220+</div><div class="label">自动化测试用例</div></div>
+      <div class="metric"><div class="num accent">3</div><div class="label">端触达（桌面 · 手机 · 网页）</div></div>
+      <div class="metric"><div class="num">0</div><div class="label">额外依赖安装（引擎内置）</div></div>
+      <div class="metric"><div class="num accent">&infin;</div><div class="label">多服务商 · 自带 Key</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== CTA BAND ===== -->
+<section class="section reveal">
+  <div class="wrap">
+    <div class="cta-band">
+      <div class="eyebrow" style="justify-content:center">Get started</div>
+      <h2>把前沿 AI 能力搬回<br>你自己的桌面</h2>
+      <p>开源引擎 · 本地运行 · 多模态。免费下载，装完即用，数据始终在你手里。</p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="/downloads/AgentBoard_0.7.0_x64-setup.exe">
+          <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M7.5 2v8m0 0L4.5 7m3 3 3-3M2 12h11" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          下载 Windows 版
+        </a>
+        <a class="btn btn-secondary" href="/downloads/AgentBoard_1.0.0.apk">下载 Android 版</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== DOWNLOAD ===== -->
+<section class="download-section" id="download">
   <div class="wrap section">
     <div class="section-head">
       <div class="eyebrow">Download</div>
@@ -520,7 +1071,7 @@ footer {
           <span class="spec">v0.7.0</span>
           <span class="spec">x64</span>
           <span class="spec">.exe</span>
-          <span class="spec">≈300MB</span>
+          <span class="spec">&asymp;300MB</span>
         </div>
         <div class="dl-meta">
           内置引擎的完整安装包，装完即用。<br>
@@ -550,7 +1101,7 @@ footer {
       </div>
     </div>
     <div class="notice-box">
-      <span class="notice-icon">⚠️</span>
+      <span class="notice-icon">&#9888;</span>
       <span class="notice-text">
         <strong>Windows SmartScreen 提示说明：</strong>
         安装包暂未进行代码签名，首次运行时 Windows 可能弹出「Windows 已保护你的电脑」提示。这属于正常现象——点击「更多信息」，再点「仍要运行」即可继续安装。
@@ -558,12 +1109,137 @@ footer {
     </div>
   </div>
 </section>
-<footer>
-  <span>© 2025 AgentBoard · 本地优先 · 开源即将上线</span>
-  <div class="footer-links">
-    <a href="/downloads/">安装包目录</a>
-    <a href="/THIRD-PARTY-NOTICES.txt">第三方声明</a>
+
+<!-- ===== FAQ ===== -->
+<section class="section reveal" id="faq">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">FAQ</div>
+      <h2>常见问题</h2>
+      <p>关于本地运行、数据安全、模型接入与安装的常见疑问。</p>
+    </div>
+    <div class="faq">
+      <details open>
+        <summary>AgentBoard 是什么？<span class="sign"></span></summary>
+        <div class="answer"><div><p>一个本地优先的 AI Agent 工作台。它把对话、看板任务、代码工作区、图像生成、文档可视化与科研流水线整合到一个桌面应用里，自研引擎随安装包内置，装完即用。你在真实的本地文件上工作，全过程可见、可控、可回溯。</p></div></div>
+      </details>
+      <details>
+        <summary>免费吗？<span class="sign"></span></summary>
+        <div class="answer"><div><p>应用本身免费下载使用，当前为 Beta。调用大模型的费用取决于你自己配置的 API 服务商——你用自己的 Key，按你选择的服务商计费，AgentBoard 不在中间加价。</p></div></div>
+      </details>
+      <details>
+        <summary>我的数据安全吗？<span class="sign"></span></summary>
+        <div class="answer"><div><p>任务历史、文件快照与对话记录都保存在本机。手机同步默认关闭；即使开启，也只传递必要的任务与对话内容，且通道加密。API 密钥始终存于本机凭据管理器，永不上传。</p></div></div>
+      </details>
+      <details>
+        <summary>需要另外安装命令行工具吗？<span class="sign"></span></summary>
+        <div class="answer"><div><p>不需要。Agent 引擎已随安装包内置，装完即用，无需你再单独安装任何 CLI、运行时或外部依赖。这也是安装包偏大（约 300MB）的原因。</p></div></div>
+      </details>
+      <details>
+        <summary>支持哪些模型？<span class="sign"></span></summary>
+        <div class="answer"><div><p>支持任意 OpenAI 兼容的服务商。你填入自己的服务地址与 API Key，就能在下拉里切换模型与账号。用哪个模型、走哪个中继完全由你决定。</p></div></div>
+      </details>
+      <details>
+        <summary>手机怎么同步？<span class="sign"></span></summary>
+        <div class="answer"><div><p>在桌面端与手机 App 登录同一个账号即可。手机会实时看到电脑上的任务进度与对话内容，你也可以从手机远程派发新任务、一键验收。通道全程加密，同步默认关闭、按需开启。</p></div></div>
+      </details>
+      <details>
+        <summary>安装时 SmartScreen 提示怎么办？<span class="sign"></span></summary>
+        <div class="answer"><div><p>安装包目前未做代码签名，Windows 首次运行可能弹出「Windows 已保护你的电脑」。这是正常现象：点击「更多信息」，再点「仍要运行」即可继续安装。你也可以先用同目录的 .sha256 文件校验安装包完整性。</p></div></div>
+      </details>
+      <details>
+        <summary>支持 SSH 远程和 MCP 吗？<span class="sign"></span></summary>
+        <div class="answer"><div><p>支持。代码工作台可连接 SSH 进行远程编辑，也可以挂载 MCP 工具与技能，让 Agent 调用你需要的外部能力。</p></div></div>
+      </details>
+      <details>
+        <summary>系统要求是什么？<span class="sign"></span></summary>
+        <div class="answer"><div><p>桌面端为 Windows x64（v0.7.0，安装包约 300MB，内置引擎）。手机端为 Android 7.0 及以上（v1.0.0 签名 APK）。安装后即可本地运行，接入模型时需要联网访问你配置的 API 服务商。</p></div></div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ===== FOOTER ===== -->
+<footer class="footer-main">
+  <div class="footer-cols">
+    <div class="footer-brand">
+      <div class="fb-row">
+        <svg width="26" height="26" viewBox="0 0 40 40" fill="none" role="img" aria-label="AgentBoard">
+          <rect width="40" height="40" rx="9" fill="url(#hLogoGrad)"/>
+          <ellipse cx="20" cy="20" rx="7.4" ry="9.6" stroke="#ffffff" stroke-width="3" fill="none"/>
+          <line x1="20" y1="7" x2="20" y2="33" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+        </svg>
+        <span class="logo-text">AgentBoard</span>
+      </div>
+      <p>本地优先的 AI Agent 工作台。开源引擎、本地运行、多模态，数据始终在你手里。</p>
+    </div>
+    <div class="footer-col">
+      <h4>下载</h4>
+      <a href="/downloads/AgentBoard_0.7.0_x64-setup.exe">Windows v0.7.0</a>
+      <a href="/downloads/AgentBoard_1.0.0.apk">Android v1.0.0</a>
+      <a href="/downloads/AgentBoard_0.7.0_x64-setup.exe.sha256">Windows SHA256</a>
+      <a href="/downloads/AgentBoard_1.0.0.apk.sha256">Android SHA256</a>
+      <a href="/downloads/">安装包目录</a>
+    </div>
+    <div class="footer-col">
+      <h4>功能</h4>
+      <a href="#features">核心能力</a>
+      <a href="#workflow">工作流</a>
+      <a href="#engine">内置引擎</a>
+      <a href="#faq">常见问题</a>
+    </div>
+    <div class="footer-col">
+      <h4>说明</h4>
+      <span class="static">本地优先 · 数据不出机</span>
+      <span class="static">开源引擎 · 内置随装</span>
+      <a href="/THIRD-PARTY-NOTICES.txt">第三方声明</a>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <span>© 2025 AgentBoard · 本地优先 · 开源即将上线</span>
+    <span>桌面 v0.7.0 · 安卓 v1.0.0 · Beta</span>
   </div>
 </footer>
+
+<script>
+(function () {
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* scroll reveal */
+  var reveals = document.querySelectorAll('.reveal');
+  if (reduce || !('IntersectionObserver' in window)) {
+    reveals.forEach(function (el) { el.classList.add('in'); });
+  } else {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+      });
+    }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+    reveals.forEach(function (el) { io.observe(el); });
+  }
+
+  /* capability tabs */
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('.tab'));
+  function selectTab(tab) {
+    tabs.forEach(function (t) {
+      var sel = t === tab;
+      t.setAttribute('aria-selected', sel ? 'true' : 'false');
+      var panel = document.getElementById(t.getAttribute('aria-controls'));
+      if (panel) panel.classList.toggle('active', sel);
+    });
+  }
+  tabs.forEach(function (tab, i) {
+    tab.addEventListener('click', function () { selectTab(tab); });
+    tab.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+        e.preventDefault();
+        var dir = e.key === 'ArrowRight' ? 1 : -1;
+        var next = tabs[(i + dir + tabs.length) % tabs.length];
+        next.focus(); selectTab(next);
+      }
+    });
+  });
+})();
+</script>
 </body>
 </html>
