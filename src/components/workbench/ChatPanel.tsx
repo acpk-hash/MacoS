@@ -67,7 +67,8 @@ const mdComponents: Components = {
   td: ({ children }) => <td className="border border-line px-2 py-1">{children}</td>,
 }
 
-const MarkdownLite = React.memo(function MarkdownLite({ text }: { text: string }) {
+// 导出给 EditorPane 的 Markdown 预览复用（同一套 GFM/公式/高亮管线）。
+export const MarkdownLite = React.memo(function MarkdownLite({ text }: { text: string }) {
   return (
     <div className="text-[13.5px] text-ink break-words">
       <ReactMarkdown

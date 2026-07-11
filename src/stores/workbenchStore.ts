@@ -67,6 +67,8 @@ export interface TouchedFile {
   kind: 'edit' | 'write'
   /** id of the entry to scroll to (latest touch). */
   entryId: string
+  /** 该次改动的 diff 文本（edit 事件带；write 无）——供编辑器定位改动行。 */
+  diff?: string
 }
 
 // ── Checklist (Claude Code 式逐条打勾) ───────────────────────────
@@ -304,14 +306,15 @@ function upsertFile(
   path: string,
   kind: 'edit' | 'write',
   entryId: string,
+  diff?: string,
 ): TouchedFile[] {
   const idx = files.findIndex((f) => f.path === path)
   if (idx >= 0) {
     const next = files.slice()
-    next[idx] = { path, kind, entryId }
+    next[idx] = { path, kind, entryId, diff }
     return next
   }
-  return [...files, { path, kind, entryId }]
+  return [...files, { path, kind, entryId, diff }]
 }
 
 export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
@@ -688,7 +691,7 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
               diff: ev.diff ?? '',
             },
           ],
-          files: upsertFile(s.files, path, 'edit', id),
+          files: upsertFile(s.files, path, 'edit', id, ev.diff),
           checklist: markChecklist(s.checklist, ev.tool_call_id ?? '', 'done', id),
         }))
         break

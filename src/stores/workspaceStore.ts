@@ -96,6 +96,98 @@ function toRel(root: string | null, p: string): string {
   return baseName(s)
 }
 
+/** 编辑器「代码追随」高亮：AI 改动行区间（1-based 闭区间）+ 定位行。 */
+export interface AiHighlight {
+  relPath: string
+  ranges: Array<[number, number]>
+  firstLine: number
+  /** 触发时间戳：既作变更序号，也用于判断新鲜度。 */
+  seq: number
+}
+
+/** 简单行级 diff（公共前缀/后缀裁剪），返回新内容中的改动行区间。 */
+function diffLineRange(oldText: string, newText: string): Array<[number, number]> {
+  if (oldText === newText) return []
+  const a = oldText.split('\n')
+  const b = newText.split('\n')
+  let start = 0
+  const lim = Math.min(a.length, b.length)
+  while (start < lim && a[start] === b[start]) start++
+  let endA = a.length - 1
+  let endB = b.length - 1
+  while (endA >= start && endB >= start && a[endA] === b[endB]) {
+    endA--
+    endB--
+  }
+  const from = Math.max(1, Math.min(start + 1, b.length))
+  const to = Math.max(from, Math.min(endB + 1, b.length))
+  return [[from, to]]
+}
+
+/** 从统一 diff（带 @@ hunk 头）解析新文件里的「新增行」区间。 */
+function rangesFromUnifiedDiff(diff: string): Array<[number, number]> {
+  const out: Array<[number, number]> = []
+  let newLn = 0
+  let inHunk = false
+  let curStart = 0
+  let curEnd = 0
+  const flush = () => {
+    if (curStart > 0) out.push([curStart, curEnd])
+    curStart = 0
+  }
+  for (const line of diff.split('\n')) {
+    const h = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line)
+    if (h) {
+      flush()
+      inHunk = true
+      newLn = parseInt(h[1], 10) - 1
+      continue
+    }
+    if (!inHunk) continue
+    if (line.startsWith('+')) {
+      newLn++
+      if (curStart === 0) curStart = newLn
+      curEnd = newLn
+    } else if (line.startsWith('-')) {
+      flush()
+    } else {
+      newLn++
+      flush()
+    }
+  }
+  flush()
+  return out
+}
+
+/** 退路：无 hunk 头的简化 diff——拿 '+' 行文本到新内容里定位改动行。 */
+function rangesFromAddedText(diff: string, content: string): Array<[number, number]> {
+  const added = new Set(
+    diff
+      .split('\n')
+      .filter((l) => l.startsWith('+') && !l.startsWith('+++'))
+      .map((l) => l.slice(1).trim())
+      .filter((l) => l.length > 0),
+  )
+  if (added.size === 0) return []
+  const lines = content.split('\n')
+  const out: Array<[number, number]> = []
+  let curStart = 0
+  let curEnd = 0
+  let marked = 0
+  for (let i = 0; i < lines.length && marked < 200; i++) {
+    if (added.has(lines[i].trim())) {
+      marked++
+      if (curStart === 0) curStart = i + 1
+      curEnd = i + 1
+    } else if (curStart > 0) {
+      out.push([curStart, curEnd])
+      curStart = 0
+    }
+  }
+  if (curStart > 0) out.push([curStart, curEnd])
+  return out
+}
+
 interface WorkspaceStore {
   root: string | null
   name: string | null
@@ -118,6 +210,11 @@ interface WorkspaceStore {
 
   /** rel_paths the AI has touched this session (dot marker in the tree). */
   aiTouched: Set<string>
+
+  /** 「跟随 AI」开关：开时 AI 改文件自动打开/跳转（默认开）。 */
+  followAi: boolean
+  /** 最近一次 AI 改动的高亮请求（编辑器消费后渐隐）。 */
+  aiHighlight: AiHighlight | null
 
   searchQuery: string
   searchResults: WsSearchHit[]
@@ -143,7 +240,8 @@ interface WorkspaceStore {
   renameNode: (rel: string, nextName: string) => Promise<void>
   runSearch: (query: string) => Promise<void>
   clearSearch: () => void
-  applyAiTouched: (paths: string[]) => Promise<void>
+  applyAiTouched: (touches: Array<{ path: string; diff?: string }>) => Promise<void>
+  setFollowAi: (v: boolean) => void
   reset: () => void
   clearNotice: () => void
 }
@@ -166,6 +264,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   activeTab: null,
 
   aiTouched: new Set<string>(),
+
+  followAi: true,
+  aiHighlight: null,
 
   searchQuery: '',
   searchResults: [],
@@ -448,41 +549,70 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
   clearSearch: () => set({ searchQuery: '', searchResults: [] }),
 
-  applyAiTouched: async (paths) => {
-    const { root, tabs, children, expanded, remote } = get()
+  applyAiTouched: async (touches) => {
+    const { root, tabs, children, expanded, remote, followAi } = get()
     // AI edits only ever land on the local workspace; skip while browsing remote.
     if (remote) return
-    if (paths.length === 0) return
-    const rels = paths.map((p) => toRel(root, p)).filter((r) => r.length > 0)
-    if (rels.length === 0) return
+    if (touches.length === 0) return
+    const items = touches
+      .map((t) => ({ rel: toRel(root, t.path), diff: t.diff }))
+      .filter((t) => t.rel.length > 0)
+    if (items.length === 0) return
 
     const touched = new Set(get().aiTouched)
-    rels.forEach((r) => touched.add(r))
+    items.forEach((t) => touched.add(t.rel))
 
-    const openMatch = new Set(rels)
+    const byRel = new Map(items.map((t) => [t.rel, t] as const))
     const nextTabs = tabs.map((t) => {
-      if (!openMatch.has(t.relPath)) return t
+      if (!byRel.has(t.relPath)) return t
       const dirty = t.content !== t.savedContent
       if (dirty) return { ...t, aiModified: true }
       return t
     })
     set({ aiTouched: touched, tabs: nextTabs })
 
-    for (const t of tabs) {
-      if (openMatch.has(t.relPath) && t.content === t.savedContent) {
-        await get().reloadTab(t.relPath)
+    // 代码追随：重载/打开被改文件，并算出改动行区间供编辑器高亮。
+    let highlight: AiHighlight | null = null
+    for (const { rel, diff } of items) {
+      const tab = tabs.find((t) => t.relPath === rel)
+      if (tab && tab.content === tab.savedContent) {
+        const before = tab.content
+        await get().reloadTab(rel)
+        const after = get().tabs.find((t) => t.relPath === rel)
+        if (!after || after.tooLarge || after.encoding === 'binary') continue
+        // 优先 diff hunk 头；否则新旧内容行级 diff；再退化到 '+' 行文本定位。
+        let ranges = diff ? rangesFromUnifiedDiff(diff) : []
+        if (ranges.length === 0) ranges = diffLineRange(before, after.content)
+        if (ranges.length === 0 && diff) ranges = rangesFromAddedText(diff, after.content)
+        highlight = { relPath: rel, ranges, firstLine: ranges[0]?.[0] ?? 1, seq: Date.now() }
+      } else if (!tab && followAi) {
+        // 未打开 → 跟随模式下自动开 tab；行范围只能从 diff 推。
+        await get().openFile(rel, baseName(rel))
+        const after = get().tabs.find((t) => t.relPath === rel)
+        if (!after || after.tooLarge || after.encoding === 'binary') continue
+        let ranges = diff ? rangesFromUnifiedDiff(diff) : []
+        if (ranges.length === 0 && diff) ranges = rangesFromAddedText(diff, after.content)
+        highlight = { relPath: rel, ranges, firstLine: ranges[0]?.[0] ?? 1, seq: Date.now() }
       }
+      // tab 存在但有未保存改动 → 只标 aiModified（banner），不抢占。
+    }
+    if (highlight) {
+      // 跟随开：切到该 tab 并滚动定位；关：只挂高亮不抢焦点。
+      if (followAi) set({ activeTab: highlight.relPath, aiHighlight: highlight })
+      else set({ aiHighlight: highlight })
     }
 
     const dirsToRefresh = new Set<string>()
-    for (const r of rels) {
-      const par = parentRel(r)
+    for (const { rel } of items) {
+      const par = parentRel(rel)
       if (children[par] !== undefined || expanded.has(par) || par === '') {
         dirsToRefresh.add(par)
       }
     }
     for (const d of dirsToRefresh) await get().listDir(d)
   },
+
+  setFollowAi: (v) => set({ followAi: v }),
 
   reset: () =>
     set({
@@ -497,6 +627,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       tabs: [],
       activeTab: null,
       aiTouched: new Set<string>(),
+      aiHighlight: null,
       searchQuery: '',
       searchResults: [],
     }),

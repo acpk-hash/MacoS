@@ -155,13 +155,16 @@ export default function Workbench() {
     })()
   }, [modelsLoaded]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // AI 改动的文件 → 同步到编辑器/文件树（仅处理新变化的路径）。
+  // AI 改动的文件 → 同步到编辑器/文件树（仅处理新变化的路径；带 diff 供
+  // 编辑器「代码追随」定位改动行）。
   useEffect(() => {
-    const changed: string[] = []
+    const changed: Array<{ path: string; diff?: string }> = []
     const next = new Map<string, string>()
     for (const f of wbFiles) {
       next.set(f.path, f.entryId)
-      if (prevSig.current.get(f.path) !== f.entryId) changed.push(f.path)
+      if (prevSig.current.get(f.path) !== f.entryId) {
+        changed.push({ path: f.path, diff: f.diff })
+      }
     }
     prevSig.current = next
     if (changed.length) void applyAiTouched(changed)

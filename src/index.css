@@ -281,3 +281,35 @@ select optgroup {
   animation: clFlash 0.9s ease-out;
   border-radius: 8px;
 }
+
+/* ── 工作台「代码追随」：AI 改动行高亮，数秒后渐隐 ──────────────────────── */
+@keyframes aiEditLineFade {
+  0% {
+    background-color: rgba(139, 124, 255, 0.24);
+  }
+  60% {
+    background-color: rgba(139, 124, 255, 0.16);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+.ai-edit-line {
+  animation: aiEditLineFade 3s ease-out forwards;
+}
+@keyframes aiEditGutterFade {
+  0%,
+  60% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.ai-edit-gutter {
+  width: 3px !important;
+  margin-left: 3px;
+  background: #8b7cff;
+  border-radius: 2px;
+  animation: aiEditGutterFade 3s ease-out forwards;
+}
