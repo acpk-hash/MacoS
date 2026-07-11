@@ -1,10 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Editor from '@monaco-editor/react'
+import ReactMarkdown, { type Components } from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { MONACO_THEME } from '../lib/monacoSetup'
 import { Mascot, StatusDot } from '../components/ui'
 import type { StatusKind } from '../components/ui/StatusDot'
 import { useWorkbenchStore } from '../stores/workbenchStore'
+import { useStudioStore } from '../stores/studioStore'
+import ProviderGuideCard from '../components/ProviderGuideCard'
+import { saveExport } from '../lib/exportChat'
 import {
   useResearchStore,
   type MdMeta,
@@ -12,6 +17,7 @@ import {
   type DashboardRun,
   type RunArtifact,
   type ResearchTab,
+  type LitPaper,
 } from '../stores/researchStore'
 
 const NL = String.fromCharCode(10)
@@ -467,6 +473,448 @@ function DashboardTab() {
   )
 }
 
+// -- 文献搜索（v0.8）-----------------------------------------------------------
+
+const DEFAULT_ANALYZE_INSTRUCTION = '总结这些文献的核心方法与研究缺口'
+const LIT_REMARK_PLUGINS = [remarkGfm]
+
+/** 在系统浏览器打开链接（永不在 webview 内跳转）。 */
+async function openExternal(url: string) {
+  try {
+    const { invoke } = await import('@tauri-apps/api/core')
+    await invoke('open_external_url', { url })
+  } catch (e) {
+    console.warn('[Research] openExternal failed:', e)
+  }
+}
+
+const litMdComponents: Components = {
+  p: ({ children }) => <p className="my-2 leading-6">{children}</p>,
+  ul: ({ children }) => (
+    <ul className="my-2 list-disc pl-5 space-y-1">{children}</ul>
+  ),
+  ol: ({ children }) => (
+    <ol className="my-2 list-decimal pl-5 space-y-1">{children}</ol>
+  ),
+  li: ({ children }) => <li className="leading-6">{children}</li>,
+  h1: ({ children }) => (
+    <h1 className="text-[16px] font-semibold mt-4 mb-2 text-ink">{children}</h1>
+  ),
+  h2: ({ children }) => (
+    <h2 className="text-[14.5px] font-semibold mt-4 mb-2 text-ink">{children}</h2>
+  ),
+  h3: ({ children }) => (
+    <h3 className="text-[13.5px] font-semibold mt-3 mb-1.5 text-ink">{children}</h3>
+  ),
+  code: ({ children }) => (
+    <code className="px-1 py-0.5 rounded bg-surface-2 text-[0.9em] font-mono">
+      {children}
+    </code>
+  ),
+  blockquote: ({ children }) => (
+    <blockquote className="border-l-2 border-line pl-3 my-2 text-ink-muted">
+      {children}
+    </blockquote>
+  ),
+  table: ({ children }) => (
+    <div className="my-3 overflow-x-auto">
+      <table className="border-collapse text-[12px]">{children}</table>
+    </div>
+  ),
+  th: ({ children }) => (
+    <th className="border border-line px-2 py-1 bg-surface text-left font-medium">
+      {children}
+    </th>
+  ),
+  td: ({ children }) => <td className="border border-line px-2 py-1">{children}</td>,
+  a: ({ href, children }) => (
+    <a
+      href={href}
+      onClick={(e) => {
+        if (href) {
+          e.preventDefault()
+          void openExternal(href)
+        }
+      }}
+      className="text-primary underline underline-offset-2 cursor-pointer"
+    >
+      {children}
+    </a>
+  ),
+}
+
+function LitMarkdown({ text }: { text: string }) {
+  return (
+    <div className="text-[12.5px] text-ink break-words">
+      <ReactMarkdown remarkPlugins={LIT_REMARK_PLUGINS} components={litMdComponents}>
+        {text}
+      </ReactMarkdown>
+    </div>
+  )
+}
+
+function PaperCard({
+  paper,
+  checked,
+  onToggle,
+}: {
+  paper: LitPaper
+  checked: boolean
+  onToggle: () => void
+}) {
+  return (
+    <div
+      className={
+        CARD +
+        ' p-3.5 flex gap-3 cursor-pointer ' +
+        (checked ? 'border-primary/70 bg-primary-tint/40' : 'hover:border-line-strong')
+      }
+      onClick={onToggle}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onToggle}
+        onClick={(e) => e.stopPropagation()}
+        className="mt-1 h-4 w-4 accent-primary flex-shrink-0"
+      />
+      <div className="min-w-0 flex-1">
+        <div className="text-[13px] text-ink font-semibold leading-5">{paper.title}</div>
+        <div className="flex flex-wrap items-center gap-2 mt-1">
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary-tint text-primary font-medium flex-shrink-0">
+            {paper.source === 'arxiv' ? 'arXiv' : 'OpenAlex'}
+          </span>
+          {paper.year && <span className="text-[10.5px] text-ink-dim">{paper.year}</span>}
+          {paper.authors.length > 0 && (
+            <span className="text-[10.5px] text-ink-dim truncate max-w-[440px]">
+              {paper.authors.slice(0, 6).join(', ')}
+              {paper.authors.length > 6 ? ' 等' : ''}
+            </span>
+          )}
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              void openExternal(paper.url)
+            }}
+            className="ml-auto text-[10.5px] px-2 py-0.5 rounded bg-surface-2 border border-line text-ink-muted hover:text-primary hover:border-primary/60 transition-colors flex-shrink-0"
+            title={paper.url}
+          >
+            打开原文 ↗
+          </button>
+        </div>
+        {paper.abstract && (
+          <p className="text-[11.5px] text-ink-muted leading-5 mt-1.5 line-clamp-3">
+            {paper.abstract}
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function LitSearchTab() {
+  const litSearch = useResearchStore((s) => s.litSearch)
+  const litAnalyze = useResearchStore((s) => s.litAnalyze)
+  const aggModels = useStudioStore((s) => s.aggModels)
+  const modelsLoaded = useStudioStore((s) => s.modelsLoaded)
+  const loadModels = useStudioStore((s) => s.loadModels)
+
+  const [query, setQuery] = useState('')
+  const [source, setSource] = useState('arxiv')
+  const [limit, setLimit] = useState(10)
+  const [searching, setSearching] = useState(false)
+  const [searchError, setSearchError] = useState<string | null>(null)
+  const [papers, setPapers] = useState<LitPaper[]>([])
+  const [searched, setSearched] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+
+  const [showAnalyze, setShowAnalyze] = useState(false)
+  const [instruction, setInstruction] = useState(DEFAULT_ANALYZE_INSTRUCTION)
+  const [modelKey, setModelKey] = useState('')
+  const [analyzing, setAnalyzing] = useState(false)
+  const [analysis, setAnalysis] = useState<string | null>(null)
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    if (!modelsLoaded) void loadModels()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const chatModels = useMemo(
+    () => aggModels.filter((m) => m.kind === 'chat'),
+    [aggModels],
+  )
+  const noChatModel = modelsLoaded && chatModels.length === 0
+
+  useEffect(() => {
+    if (!modelKey && chatModels.length > 0) {
+      setModelKey(chatModels[0].providerId + '|' + chatModels[0].modelId)
+    }
+  }, [chatModels, modelKey])
+
+  const paperKey = (p: LitPaper) => p.source + ':' + p.id
+  const selectedPapers = papers.filter((p) => selected.has(paperKey(p)))
+
+  const doSearch = async () => {
+    const q = query.trim()
+    if (!q || searching) return
+    setSearching(true)
+    setSearchError(null)
+    try {
+      const res = await litSearch(q, source, limit)
+      setPapers(res)
+      setSelected(new Set())
+      setSearched(true)
+    } catch (e) {
+      setSearchError('搜索失败：' + String(e))
+    } finally {
+      setSearching(false)
+    }
+  }
+
+  const toggle = (p: LitPaper) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      const k = paperKey(p)
+      if (next.has(k)) next.delete(k)
+      else next.add(k)
+      return next
+    })
+  }
+
+  const doAnalyze = async () => {
+    if (analyzing || selectedPapers.length === 0) return
+    const sep = modelKey.indexOf('|')
+    if (sep < 0) return
+    const providerId = modelKey.slice(0, sep)
+    const model = modelKey.slice(sep + 1)
+    setAnalyzing(true)
+    setAnalyzeError(null)
+    setAnalysis(null)
+    try {
+      const text = await litAnalyze(
+        selectedPapers,
+        instruction.trim() || DEFAULT_ANALYZE_INSTRUCTION,
+        model,
+        providerId,
+      )
+      setAnalysis(text)
+    } catch (e) {
+      setAnalyzeError('分析失败：' + String(e))
+    } finally {
+      setAnalyzing(false)
+    }
+  }
+
+  const copyAnalysis = async () => {
+    if (!analysis) return
+    try {
+      await navigator.clipboard.writeText(analysis)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      /* clipboard unavailable */
+    }
+  }
+
+  const toolBtn =
+    'text-[11.5px] px-2.5 py-1 rounded-md bg-surface-2 border border-line text-ink hover:bg-elevated transition-colors'
+  const selectCls =
+    'bg-surface border border-line rounded-lg px-2 py-1.5 text-[12px] text-ink focus:outline-none focus:border-primary transition-colors'
+
+  return (
+    <div className="flex-1 min-h-0 flex flex-col">
+      <div className="px-4 py-2.5 border-b border-line flex-shrink-0 flex flex-wrap items-center gap-2">
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void doSearch()
+          }}
+          placeholder="输入关键词搜索文献（如 homomorphic encryption）"
+          className="flex-1 min-w-[240px] bg-surface border border-line rounded-lg px-3 py-1.5 text-[12px] text-ink placeholder-ink-dim focus:outline-none focus:border-primary transition-colors"
+        />
+        <select value={source} onChange={(e) => setSource(e.target.value)} className={selectCls}>
+          <option value="arxiv">arXiv</option>
+          <option value="openalex">OpenAlex</option>
+        </select>
+        <select
+          value={String(limit)}
+          onChange={(e) => setLimit(Number(e.target.value))}
+          className={selectCls}
+        >
+          <option value="5">5 条</option>
+          <option value="10">10 条</option>
+          <option value="20">20 条</option>
+          <option value="30">30 条</option>
+        </select>
+        <button
+          onClick={() => void doSearch()}
+          disabled={searching || !query.trim()}
+          className="text-[12px] px-4 py-1.5 rounded-md bg-primary text-white hover:bg-primary/90 disabled:opacity-40 transition-colors"
+        >
+          {searching ? '搜索中…' : '搜索'}
+        </button>
+      </div>
+
+      {searchError && (
+        <div className="px-4 py-2 text-[12px] text-red-600 border-b border-line/60">
+          {searchError}
+        </div>
+      )}
+
+      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5">
+        {searching ? (
+          <div className="text-[12px] text-ink-dim">正在检索文献…</div>
+        ) : papers.length === 0 ? (
+          <div className="h-full flex flex-col items-center justify-center text-center py-16">
+            <Mascot mood="idle" size={64} className="mb-3" />
+            <p className="text-ink-muted text-sm">
+              {searched ? '没有找到相关文献' : '输入关键词开始搜索'}
+            </p>
+            <p className="text-ink-dim text-xs mt-1">
+              {searched
+                ? '换个关键词或切换数据源试试。'
+                : '支持 arXiv 与 OpenAlex 两个免费数据源，搜到后勾选文献即可做 AI 分析。'}
+            </p>
+          </div>
+        ) : (
+          papers.map((p) => (
+            <PaperCard
+              key={paperKey(p)}
+              paper={p}
+              checked={selected.has(paperKey(p))}
+              onToggle={() => toggle(p)}
+            />
+          ))
+        )}
+      </div>
+
+      {papers.length > 0 && (
+        <div className="px-4 py-2.5 border-t border-line flex-shrink-0 flex flex-wrap items-center gap-2 bg-surface">
+          <button onClick={() => setSelected(new Set(papers.map(paperKey)))} className={toolBtn}>
+            全选
+          </button>
+          <button onClick={() => setSelected(new Set())} className={toolBtn}>
+            清空
+          </button>
+          <span className="text-[11.5px] text-ink-dim">
+            已选 {selectedPapers.length} / {papers.length} 篇
+          </span>
+          <div className="flex-1" />
+          {noChatModel ? (
+            <div className="max-w-xs">
+              <ProviderGuideCard
+                compact
+                title="暂无可用聊天模型"
+                hint="添加一个 OpenAI 兼容服务商后，即可对勾选的文献做 AI 分析。"
+              />
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowAnalyze(true)}
+              disabled={selectedPapers.length === 0}
+              title={selectedPapers.length === 0 ? '请先勾选文献' : undefined}
+              className="text-[12px] px-4 py-1.5 rounded-md bg-primary text-white hover:bg-primary/90 disabled:opacity-40 transition-colors"
+            >
+              分析选中（{selectedPapers.length}）
+            </button>
+          )}
+        </div>
+      )}
+
+      {showAnalyze && (
+        <div
+          className="fixed inset-0 z-50 flex bg-black/40"
+          onClick={() => {
+            if (!analyzing) setShowAnalyze(false)
+          }}
+        >
+          <div
+            className="ml-auto h-full w-full max-w-2xl bg-bg border-l border-line flex flex-col shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-line flex-shrink-0">
+              <span className="text-[13.5px] text-ink font-semibold">
+                文献分析 · 已选 {selectedPapers.length} 篇
+              </span>
+              <div className="flex-1" />
+              {analysis && (
+                <>
+                  <button onClick={() => void copyAnalysis()} className={toolBtn}>
+                    {copied ? '已复制' : '复制'}
+                  </button>
+                  <button
+                    onClick={() => void saveExport('文献分析', 'md', analysis)}
+                    className={toolBtn}
+                  >
+                    导出 .md
+                  </button>
+                </>
+              )}
+              <button
+                onClick={() => setShowAnalyze(false)}
+                disabled={analyzing}
+                className="text-ink-dim hover:text-ink text-lg leading-none px-1 disabled:opacity-40"
+                title="关闭"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="px-4 py-3 border-b border-line/60 flex-shrink-0 space-y-2">
+              <textarea
+                value={instruction}
+                onChange={(e) => setInstruction(e.target.value)}
+                rows={2}
+                placeholder={DEFAULT_ANALYZE_INSTRUCTION}
+                className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-[12px] text-ink placeholder-ink-dim focus:outline-none focus:border-primary transition-colors resize-none"
+              />
+              <div className="flex items-center gap-2">
+                <select
+                  value={modelKey}
+                  onChange={(e) => setModelKey(e.target.value)}
+                  className={selectCls + ' max-w-[320px]'}
+                >
+                  {chatModels.map((m) => (
+                    <option
+                      key={m.providerId + '|' + m.modelId}
+                      value={m.providerId + '|' + m.modelId}
+                    >
+                      {m.providerLabel} · {m.modelId}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => void doAnalyze()}
+                  disabled={analyzing || selectedPapers.length === 0 || !modelKey}
+                  className="ml-auto text-[12px] px-4 py-1.5 rounded-md bg-primary text-white hover:bg-primary/90 disabled:opacity-40 transition-colors"
+                >
+                  {analyzing ? '分析中…' : '开始分析'}
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3">
+              {analyzing ? (
+                <div className="text-[12px] text-ink-dim">
+                  模型分析中，请稍候…（勾选文献越多耗时越长）
+                </div>
+              ) : analyzeError ? (
+                <div className="text-[12px] text-red-600">{analyzeError}</div>
+              ) : analysis ? (
+                <LitMarkdown text={analysis} />
+              ) : (
+                <div className="text-[12px] text-ink-dim">
+                  将把勾选文献的标题与摘要发送给所选模型，按上方指令生成 Markdown 分析报告。
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Research() {
   const navigate = useNavigate()
   const store = useResearchStore()
@@ -596,9 +1044,10 @@ export default function Research() {
           <TabButton id="skills" label="Skill 库" />
           <TabButton id="pipelines" label="流水线" />
           <TabButton id="dashboard" label="仪表盘" />
+          <TabButton id="lit" label="文献搜索" />
         </div>
         <p className="text-[11px] text-ink-dim mt-1">
-          集成本地 agent管理 / skills管理:浏览编辑 agent·skill 定义、运行流水线、查看运行仪表盘。
+          集成本地 agent管理 / skills管理:浏览编辑 agent·skill 定义、运行流水线、查看运行仪表盘、搜索并分析文献。
         </p>
       </header>
 
@@ -679,6 +1128,8 @@ export default function Research() {
       )}
 
       {tab === 'dashboard' && <DashboardTab />}
+
+      {tab === 'lit' && <LitSearchTab />}
 
       {editing && (
         <MdEditorOverlay

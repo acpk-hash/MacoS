@@ -101,7 +101,18 @@ export interface RunLaunch {
   label: string
 }
 
-export type ResearchTab = 'agents' | 'skills' | 'pipelines' | 'dashboard'
+/** Mirrors Rust litsearch::LitPaper (unified paper across sources). */
+export interface LitPaper {
+  id: string
+  title: string
+  authors: string[]
+  year: string
+  abstract: string
+  url: string
+  source: string
+}
+
+export type ResearchTab = 'agents' | 'skills' | 'pipelines' | 'dashboard' | 'lit'
 
 // -- Store ------------------------------------------------------------------
 
@@ -138,6 +149,14 @@ interface ResearchStore {
   writeSkill: (path: string, content: string) => Promise<void>
   readRunOutput: (path: string) => Promise<string>
   runPipeline: (id: string, input?: string) => Promise<RunLaunch>
+
+  litSearch: (query: string, source: string, limit: number) => Promise<LitPaper[]>
+  litAnalyze: (
+    papers: LitPaper[],
+    instruction: string,
+    model: string,
+    providerId: string | null,
+  ) => Promise<string>
 
   clearNotice: () => void
 }
@@ -227,6 +246,16 @@ export const useResearchStore = create<ResearchStore>((set) => ({
     tauriInvoke<string>('research_run_output_read', { path }),
   runPipeline: (id, input) =>
     tauriInvoke<RunLaunch>('research_run_pipeline', { id, input: input ?? null }),
+
+  litSearch: (query, source, limit) =>
+    tauriInvoke<LitPaper[]>('lit_search', { query, source, limit }),
+  litAnalyze: (papers, instruction, model, providerId) =>
+    tauriInvoke<string>('lit_analyze', {
+      papers,
+      instruction,
+      model,
+      providerId,
+    }),
 
   clearNotice: () => set({ notice: null, error: null }),
 }))

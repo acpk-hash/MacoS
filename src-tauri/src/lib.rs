@@ -3,6 +3,7 @@ pub mod bridge;
 pub mod db;
 pub mod engine_config;
 pub mod feishu;
+pub mod litsearch;
 pub mod mcp;
 pub mod pi_engine;
 pub mod providers;
@@ -1128,6 +1129,8 @@ pub fn run() {
             research::research_dashboard,
             research::research_run_output_read,
             research::research_run_pipeline,
+            litsearch::lit_search,
+            litsearch::lit_analyze,
             workspace_fs::ws_open_folder,
             workspace_fs::ws_list_dir,
             workspace_fs::ws_read_file,
