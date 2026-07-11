@@ -225,17 +225,28 @@ function MediaCard({
 }) {
   if (row.status === 'running' || row.status === 'pending') {
     return (
-      <div className="relative aspect-square rounded-xl overflow-hidden border border-line bg-surface/60 flex flex-col items-center justify-center gap-3">
+      <div className="group relative aspect-square rounded-xl overflow-hidden border border-line bg-surface/60 flex flex-col items-center justify-center gap-3">
         <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-surface-2/40 to-surface/40" />
         <Spinner />
         <span className="relative text-[11px] text-ink-dim">生成中…</span>
+        {/* 手动清除卡住的占位卡（仅移除该条记录） */}
+        <div className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          <IconBtn title="移除该占位" onClick={onDelete} danger>
+            ✕
+          </IconBtn>
+        </div>
       </div>
     )
   }
 
   if (row.status === 'failed') {
     return (
-      <div className="relative aspect-square rounded-xl overflow-hidden border border-red-900/70 bg-red-950/30 flex flex-col items-center justify-center gap-2 p-3 text-center">
+      <div className="group relative aspect-square rounded-xl overflow-hidden border border-red-900/70 bg-red-950/30 flex flex-col items-center justify-center gap-2 p-3 text-center">
+        <div className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          <IconBtn title="移除该记录" onClick={onDelete} danger>
+            ✕
+          </IconBtn>
+        </div>
         <span className="text-failed text-xs font-medium">生成失败</span>
         <span
           className="text-[11px] text-failed line-clamp-3 break-words"
@@ -744,7 +755,11 @@ export default function StudioGen() {
                   row={row}
                   onOpen={() => openLightbox(row)}
                   onDownload={() => void downloadMedia(row, showToast)}
-                  onDelete={() => setConfirmDelete(row)}
+                  onDelete={() =>
+                    row.status === 'done'
+                      ? setConfirmDelete(row)
+                      : void deleteMedia(row.id)
+                  }
                   onCopyPrompt={() => void copyPrompt(row)}
                   onRetry={() => handleRetry(row)}
                   onAnnotate={() => setAnnotateRow(row)}

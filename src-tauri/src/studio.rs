@@ -24,6 +24,20 @@ use tokio_util::sync::CancellationToken;
 /// Models cache time-to-live.
 const MODELS_TTL: Duration = Duration::from_secs(300);
 
+/// Hard cap for one image generation/edit call. The relay HTTP client already
+/// has its own 300 s timeout; this is the belt-and-braces bound around the
+/// whole call (request + image download) so a media row can never stay
+/// `running` because the future silently hung.
+const IMAGE_GEN_TIMEOUT: Duration = Duration::from_secs(360);
+
+/// Rows still `running`/`pending` after this long are considered interrupted
+/// (e.g. the app was closed mid-generation) and are swept to `failed` when the
+/// gallery is loaded.
+const MEDIA_STALE_MS: i64 = 10 * 60 * 1000;
+
+/// Error message written onto swept zombie rows.
+const MEDIA_STALE_ERROR: &str = "生成中断（超时或应用退出），请重试";
+
 // -- Shared studio state -----------------------------------------------------
 
 /// Per-app studio state: caches + in-flight chat cancellation tokens.
@@ -361,8 +375,11 @@ pub(crate) async fn chat_stop(
 // -- Image generation --------------------------------------------------------
 
 /// Generate `n` images. Inserts one `gen_media` row per requested image
-/// (status = running), calls the relay, then marks each row done/failed and
-/// emits a `studio-event`. Returns the created media row ids.
+/// (status = running), then fires one **independent** relay call per row (the
+/// same prompt, `n = 1` each) so a failure or timeout on one image never
+/// blocks or fails the others. Every row is guaranteed to leave `running`:
+/// each call is bounded by [`IMAGE_GEN_TIMEOUT`] and every outcome path marks
+/// the row done or failed and emits a `studio-event`. Returns the row ids.
 #[tauri::command]
 pub(crate) async fn image_generate(
     prompt: String,
@@ -395,34 +412,77 @@ pub(crate) async fn image_generate(
         }
     };
 
-    match relay::generate_image(&creds, &model, &prompt, &size, n).await {
-        Ok(images) => {
-            for (i, id) in ids.iter().enumerate() {
-                if let Some(img) = images.get(i) {
-                    let _ = db.gen_media_mark_done(id, &img.local_path, img.source_url.as_deref());
-                    emit(
-                        &app,
-                        json!({
-                            "type": "media_done", "id": id, "kind": "image",
-                            "local_path": img.local_path, "source_url": img.source_url,
-                        }),
-                    );
-                } else {
-                    let msg = "未返回该张图像";
-                    let _ = db.gen_media_mark_failed(id, msg);
-                    emit(
-                        &app,
-                        json!({ "type": "media_failed", "id": id, "error": msg }),
-                    );
+    // One independent call per image: prompts can't cross, and each row is
+    // finalized on its own (done or failed) no matter what the others do.
+    let results: Vec<Result<(), String>> =
+        futures_util::future::join_all(ids.iter().map(|id| {
+            let db = &db;
+            let app = &app;
+            let creds = &creds;
+            let model = model.as_str();
+            let prompt = prompt.as_str();
+            let size = size.as_str();
+            async move {
+                let outcome = match tokio::time::timeout(
+                    IMAGE_GEN_TIMEOUT,
+                    relay::generate_image(creds, model, prompt, size, 1),
+                )
+                .await
+                {
+                    Ok(r) => r,
+                    Err(_) => Err(format!(
+                        "生成超时（超过 {} 秒未完成）",
+                        IMAGE_GEN_TIMEOUT.as_secs()
+                    )),
+                };
+                match outcome {
+                    Ok(images) => match images.into_iter().next() {
+                        Some(img) => {
+                            let _ = db.gen_media_mark_done(
+                                id,
+                                &img.local_path,
+                                img.source_url.as_deref(),
+                            );
+                            emit(
+                                app,
+                                json!({
+                                    "type": "media_done", "id": id, "kind": "image",
+                                    "local_path": img.local_path, "source_url": img.source_url,
+                                }),
+                            );
+                            Ok(())
+                        }
+                        None => {
+                            let msg = "未返回该张图像".to_string();
+                            let _ = db.gen_media_mark_failed(id, &msg);
+                            emit(
+                                app,
+                                json!({ "type": "media_failed", "id": id, "error": msg }),
+                            );
+                            Err(msg)
+                        }
+                    },
+                    Err(e) => {
+                        let _ = db.gen_media_mark_failed(id, &e);
+                        emit(
+                            app,
+                            json!({ "type": "media_failed", "id": id, "error": e }),
+                        );
+                        Err(e)
+                    }
                 }
             }
-            Ok(ids)
-        }
-        Err(e) => {
-            fail_all(&db, &app, &ids, &e);
-            Err(e)
+        }))
+        .await;
+
+    // Only surface an error to the caller when the whole batch failed; partial
+    // success still resolves so the frontend just reloads the gallery.
+    if results.iter().all(|r| r.is_err()) {
+        if let Some(Err(e)) = results.into_iter().next() {
+            return Err(e);
         }
     }
+    Ok(ids)
 }
 
 /// Second-pass edit of an existing generated image. Reads the source image off
@@ -496,8 +556,20 @@ pub(crate) async fn image_edit(
         }
     };
 
-    // Primary path: multipart edits endpoint.
-    let mut result = relay::edit_image(&creds, &model, &prompt, &size, image_bytes, mask_bytes).await;
+    // Primary path: multipart edits endpoint (bounded so the row can never
+    // stay `running` on a hung call).
+    let timeout_err = || {
+        format!(
+            "生成超时（超过 {} 秒未完成）",
+            IMAGE_GEN_TIMEOUT.as_secs()
+        )
+    };
+    let mut result = tokio::time::timeout(
+        IMAGE_GEN_TIMEOUT,
+        relay::edit_image(&creds, &model, &prompt, &size, image_bytes, mask_bytes),
+    )
+    .await
+    .unwrap_or_else(|_| Err(timeout_err()));
 
     // Downgrade path: if edits is not available, regenerate from a fused prompt.
     if let Err(e) = &result {
@@ -506,7 +578,12 @@ pub(crate) async fn image_edit(
                 "{prompt}\n\n（请参考原图进行上述修改；原图描述：{}）",
                 source.prompt
             );
-            result = relay::generate_image(&creds, &model, &fused, &size, 1).await;
+            result = tokio::time::timeout(
+                IMAGE_GEN_TIMEOUT,
+                relay::generate_image(&creds, &model, &fused, &size, 1),
+            )
+            .await
+            .unwrap_or_else(|_| Err(timeout_err()));
         }
     }
 
@@ -560,6 +637,12 @@ pub(crate) async fn media_list(
     kind: Option<String>,
     state: State<'_, crate::AppState>,
 ) -> Result<Vec<GenMediaRow>, String> {
+    // Zombie sweep: rows stuck at running/pending for too long (e.g. the app
+    // was closed mid-generation) become failed so the gallery never shows a
+    // spinner card forever.
+    let _ = state
+        .db
+        .gen_media_fail_stale(MEDIA_STALE_MS, MEDIA_STALE_ERROR);
     state
         .db
         .gen_media_list(kind.as_deref())

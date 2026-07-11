@@ -329,6 +329,20 @@ impl Db {
         Ok(())
     }
 
+    /// Sweep zombie rows: any row still `running`/`pending` whose `created_at`
+    /// is older than `max_age_ms` is marked failed with `error`. Covers the
+    /// case where the process exited mid-generation and never updated status.
+    /// Returns the number of rows swept.
+    pub fn gen_media_fail_stale(&self, max_age_ms: i64, error: &str) -> SqlResult<usize> {
+        let cutoff = now_ms() - max_age_ms;
+        let n = self.conn.lock().unwrap().execute(
+            "UPDATE gen_media SET status = 'failed', error = ?1 \
+             WHERE status IN ('running', 'pending') AND created_at < ?2",
+            params![error, cutoff],
+        )?;
+        Ok(n)
+    }
+
     /// List generated media, optionally filtered by `kind`, newest first.
     pub fn gen_media_list(&self, kind: Option<&str>) -> SqlResult<Vec<GenMediaRow>> {
         let conn = self.conn.lock().unwrap();
@@ -562,6 +576,43 @@ mod tests {
         assert_eq!(imgs[0].error.as_deref(), Some("boom"));
         let all = db.gen_media_list(None).unwrap();
         assert_eq!(all.len(), 2);
+    }
+
+    #[test]
+    fn gen_media_fail_stale_keeps_fresh_rows() {
+        let db = new_db();
+        db.gen_media_insert("s1", "image", "p", "m", None, "running")
+            .unwrap();
+        // Fresh row (created just now) must NOT be swept with a 60 s threshold.
+        let n = db.gen_media_fail_stale(60_000, "生成超时/中断").unwrap();
+        assert_eq!(n, 0);
+        assert_eq!(db.gen_media_list(None).unwrap()[0].status, "running");
+    }
+
+    #[test]
+    fn gen_media_fail_stale_sweeps_old_running_and_pending() {
+        let db = new_db();
+        db.gen_media_insert("s2", "image", "p", "m", None, "running")
+            .unwrap();
+        db.gen_media_insert("s3", "image", "p", "m", None, "pending")
+            .unwrap();
+        db.gen_media_insert("s4", "image", "p", "m", None, "running")
+            .unwrap();
+        db.gen_media_mark_done("s4", "/tmp/s4.png", None).unwrap();
+        // Negative max age puts the cutoff in the future, so all still-stuck
+        // rows count as stale; done rows must be untouched.
+        let n = db.gen_media_fail_stale(-1_000, "生成超时/中断").unwrap();
+        assert_eq!(n, 2);
+        let rows = db.gen_media_list(None).unwrap();
+        for r in &rows {
+            match r.id.as_str() {
+                "s4" => assert_eq!(r.status, "done"),
+                _ => {
+                    assert_eq!(r.status, "failed");
+                    assert_eq!(r.error.as_deref(), Some("生成超时/中断"));
+                }
+            }
+        }
     }
 
     #[test]
