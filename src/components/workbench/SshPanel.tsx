@@ -344,7 +344,7 @@ export default function SshPanel() {
           <button
             type="submit"
             disabled={!termConnId || termRunning || !cmd.trim()}
-            className="px-3 py-1 rounded-btn bg-surface-2 hover:bg-[#e9eef5] border border-line text-[12px] text-ink disabled:opacity-40"
+            className="px-3 py-1 rounded-btn bg-surface-2 hover:bg-elevated border border-line text-[12px] text-ink disabled:opacity-40"
           >
             运行
           </button>

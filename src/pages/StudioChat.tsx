@@ -208,13 +208,13 @@ const MarkdownMessage = React.memo(function MarkdownMessage({
 function TypingDots() {
   return (
     <div className="flex items-center gap-1 py-2">
-      <span className="w-2 h-2 rounded-full bg-gray-500 animate-pulse" />
+      <span className="w-2 h-2 rounded-full bg-ink-dim animate-pulse" />
       <span
-        className="w-2 h-2 rounded-full bg-gray-500 animate-pulse"
+        className="w-2 h-2 rounded-full bg-ink-dim animate-pulse"
         style={{ animationDelay: '0.2s' }}
       />
       <span
-        className="w-2 h-2 rounded-full bg-gray-500 animate-pulse"
+        className="w-2 h-2 rounded-full bg-ink-dim animate-pulse"
         style={{ animationDelay: '0.4s' }}
       />
     </div>
@@ -223,7 +223,7 @@ function TypingDots() {
 
 function BlinkCursor() {
   return (
-    <span className="inline-block w-[7px] h-[15px] ml-0.5 -mb-0.5 bg-gray-300 animate-pulse rounded-[1px] align-middle" />
+    <span className="inline-block w-[7px] h-[15px] ml-0.5 -mb-0.5 bg-ink-muted animate-pulse rounded-[1px] align-middle" />
   )
 }
 
@@ -378,7 +378,7 @@ const MessageItem = React.memo(function MessageItem({
         <div className="mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
           <button
             onClick={onDelete}
-            className="text-xs text-ink-dim hover:text-red-600 transition-colors"
+            className="text-xs text-ink-dim hover:text-failed transition-colors"
             title="删除这条消息"
           >
             删除
@@ -394,7 +394,7 @@ const MessageItem = React.memo(function MessageItem({
     <div className="group flex flex-col items-start w-full">
       <div className="w-full">
         {isError ? (
-          <div className="bg-red-950/50 border border-red-900 rounded-lg px-4 py-2.5 text-red-600 text-sm break-words">
+          <div className="bg-red-950/50 border border-red-900 rounded-lg px-4 py-2.5 text-failed text-sm break-words">
             {msg.content || '请求出错'}
           </div>
         ) : msg.content === '' && streaming ? (
@@ -436,7 +436,7 @@ const MessageItem = React.memo(function MessageItem({
           )}
           <button
             onClick={onDelete}
-            className="text-xs hover:text-red-600 transition-colors"
+            className="text-xs hover:text-failed transition-colors"
             title="删除这条消息"
           >
             删除
@@ -582,7 +582,7 @@ function SessionSidebar({
                       setMenuId(null)
                       setConfirmDelete(s)
                     }}
-                    className="w-full text-left px-3 py-1.5 text-xs text-red-600 hover:bg-elevated transition-colors"
+                    className="w-full text-left px-3 py-1.5 text-xs text-failed hover:bg-elevated transition-colors"
                   >
                     删除
                   </button>
@@ -616,7 +616,7 @@ function SessionSidebar({
                   onDelete(confirmDelete.id)
                   setConfirmDelete(null)
                 }}
-                className="text-xs px-3 py-1.5 rounded-lg bg-red-700 hover:bg-red-600 text-white border border-red-600 transition-colors"
+                className="text-xs px-3 py-1.5 rounded-lg bg-[#da3633] hover:bg-failed text-white border border-failed transition-colors"
               >
                 删除
               </button>

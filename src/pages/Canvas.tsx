@@ -21,10 +21,10 @@ async function invokeTauri<T>(
 
 function taskDot(status: string): string {
   if (status === 'running') return 'bg-sky canvas-glow'
-  if (status === 'failed') return 'bg-red-500'
-  if (status === 'awaiting_review') return 'bg-amber-400'
-  if (status === 'done') return 'bg-green-500'
-  return 'bg-gray-500'
+  if (status === 'failed') return 'bg-failed'
+  if (status === 'awaiting_review') return 'bg-awaiting'
+  if (status === 'done') return 'bg-done'
+  return 'bg-ink-dim'
 }
 
 export default function Canvas() {

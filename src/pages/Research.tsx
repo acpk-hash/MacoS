@@ -211,8 +211,8 @@ function PipelineCard({
           className={
             'ml-auto text-[10px] px-1.5 py-0.5 rounded font-medium flex-shrink-0 ' +
             (pipeline.source === 'skill'
-              ? 'bg-emerald-100 text-emerald-700'
-              : 'bg-indigo-100 text-indigo-700')
+              ? 'bg-[#3fb9501f] text-done'
+              : 'bg-primary-tint text-primary')
           }
         >
           {pipeline.source === 'skill' ? 'skill' : 'agent'}
@@ -353,7 +353,7 @@ function RunCard({ run }: { run: DashboardRun }) {
               className={
                 'text-[9.5px] px-1.5 py-0.5 rounded font-medium ' +
                 (st.status === 'completed'
-                  ? 'bg-emerald-100 text-emerald-700'
+                  ? 'bg-[#3fb9501f] text-done'
                   : st.status === 'running'
                     ? 'bg-primary-tint text-primary'
                     : 'bg-surface-2 text-ink-dim')
@@ -758,7 +758,7 @@ function LitSearchTab() {
       </div>
 
       {searchError && (
-        <div className="px-4 py-2 text-[12px] text-red-600 border-b border-line/60">
+        <div className="px-4 py-2 text-[12px] text-failed border-b border-line/60">
           {searchError}
         </div>
       )}
@@ -899,7 +899,7 @@ function LitSearchTab() {
                   模型分析中，请稍候…（勾选文献越多耗时越长）
                 </div>
               ) : analyzeError ? (
-                <div className="text-[12px] text-red-600">{analyzeError}</div>
+                <div className="text-[12px] text-failed">{analyzeError}</div>
               ) : analysis ? (
                 <LitMarkdown text={analysis} />
               ) : (
@@ -1052,7 +1052,7 @@ export default function Research() {
       </header>
 
       {store.error && (
-        <div className="px-4 py-2 text-[12px] text-red-600 border-b border-line/60">
+        <div className="px-4 py-2 text-[12px] text-failed border-b border-line/60">
           {store.error}
         </div>
       )}

@@ -58,7 +58,7 @@ function renderMarkdown(text: string): React.ReactNode {
  *  StudioChat streaming style. */
 function BlinkCursor() {
   return (
-    <span className="inline-block w-[7px] h-[15px] ml-0.5 -mb-0.5 bg-gray-300 animate-pulse rounded-[1px] align-middle" />
+    <span className="inline-block w-[7px] h-[15px] ml-0.5 -mb-0.5 bg-ink-muted animate-pulse rounded-[1px] align-middle" />
   )
 }
 
@@ -86,14 +86,14 @@ function DiffViewer({ diff }: { diff: string }) {
         }
         if (line.startsWith('+')) {
           return (
-            <div key={i} className="bg-green-950/60 text-green-700 px-1">
+            <div key={i} className="bg-green-950/60 text-done px-1">
               {line}
             </div>
           )
         }
         if (line.startsWith('-')) {
           return (
-            <div key={i} className="bg-red-950/60 text-red-600 px-1">
+            <div key={i} className="bg-red-950/60 text-failed px-1">
               {line}
             </div>
           )
@@ -124,7 +124,7 @@ function FileEditRow({
   const filename = info.path.split(/[\\/]/).pop() ?? info.path
   const statusColor: Record<FileEditStatus, string> = {
     pending: 'text-yellow-400',
-    approved: 'text-green-600',
+    approved: 'text-done',
     reverted: 'text-ink-dim',
   }
   const statusLabel: Record<FileEditStatus, string> = {
@@ -148,10 +148,10 @@ function FileEditRow({
         {(info.added > 0 || info.removed > 0) && (
           <span className="flex-shrink-0 text-xs font-mono gap-1 flex">
             {info.added > 0 && (
-              <span className="text-green-600">+{info.added}</span>
+              <span className="text-done">+{info.added}</span>
             )}
             {info.removed > 0 && (
-              <span className="text-red-600">−{info.removed}</span>
+              <span className="text-failed">−{info.removed}</span>
             )}
           </span>
         )}
@@ -181,13 +181,13 @@ function FileEditRow({
         <div className="flex gap-2 px-3 py-2 border-t border-line bg-surface/50">
           <button
             onClick={() => onApprove(info.path)}
-            className="text-xs px-2 py-1 rounded bg-green-900/50 hover:bg-green-100 text-green-700 border border-green-200 transition-colors"
+            className="text-xs px-2 py-1 rounded bg-green-900/50 hover:bg-[#3fb9501f] text-done border border-[#3fb95040] transition-colors"
           >
             批准
           </button>
           <button
             onClick={() => onRevert(info.path)}
-            className="text-xs px-2 py-1 rounded bg-red-900/50 hover:bg-red-100 text-red-600 border border-red-200 transition-colors"
+            className="text-xs px-2 py-1 rounded bg-red-900/50 hover:bg-[#f851491f] text-failed border border-[#f8514940] transition-colors"
           >
             回滚
           </button>
@@ -262,7 +262,7 @@ function DiffPanel({
         {pendingFiles.length > 0 && (
           <button
             onClick={handleApproveAll}
-            className="text-xs px-2 py-0.5 rounded bg-green-900/50 hover:bg-green-100 text-green-700 border border-green-200 transition-colors whitespace-nowrap"
+            className="text-xs px-2 py-0.5 rounded bg-green-900/50 hover:bg-[#3fb9501f] text-done border border-[#3fb95040] transition-colors whitespace-nowrap"
           >
             全部批准
           </button>
@@ -301,7 +301,7 @@ function DiffPanel({
               </button>
               <button
                 onClick={handleRevertConfirm}
-                className="text-xs px-3 py-1.5 rounded-lg bg-red-700 hover:bg-red-600 text-white border border-red-600 transition-colors"
+                className="text-xs px-3 py-1.5 rounded-lg bg-[#da3633] hover:bg-failed text-white border border-failed transition-colors"
               >
                 确认回滚
               </button>
@@ -356,10 +356,10 @@ function EntryView({
           {(entry.added > 0 || entry.removed > 0) && (
             <span className="font-mono">
               {entry.added > 0 && (
-                <span className="text-green-500">+{entry.added}</span>
+                <span className="text-done">+{entry.added}</span>
               )}
               {entry.removed > 0 && (
-                <span className="text-red-500 ml-0.5">−{entry.removed}</span>
+                <span className="text-failed ml-0.5">−{entry.removed}</span>
               )}
             </span>
           )}
@@ -384,8 +384,8 @@ function EntryView({
               className={[
                 'flex-shrink-0 px-1.5 py-0.5 rounded text-xs font-sans font-medium',
                 isSuccess
-                  ? 'bg-green-900/60 text-green-600'
-                  : 'bg-red-900/60 text-red-600',
+                  ? 'bg-green-900/60 text-done'
+                  : 'bg-red-900/60 text-failed',
               ].join(' ')}
             >
               {entry.exitCode}
@@ -421,7 +421,7 @@ function EntryView({
 
     case 'error':
       return (
-        <div className="bg-red-950/50 border border-red-900 rounded-lg px-4 py-2 text-red-600 text-sm break-words">
+        <div className="bg-red-950/50 border border-red-900 rounded-lg px-4 py-2 text-failed text-sm break-words">
           {entry.message}
         </div>
       )
@@ -443,14 +443,14 @@ function StatusBadge({ status }: { status: string }) {
   }
   if (status === 'done') {
     return (
-      <span className="text-xs px-2 py-0.5 rounded-full bg-green-900/70 text-green-700 border border-green-200">
+      <span className="text-xs px-2 py-0.5 rounded-full bg-green-900/70 text-done border border-[#3fb95040]">
         已完成
       </span>
     )
   }
   if (status === 'error') {
     return (
-      <span className="text-xs px-2 py-0.5 rounded-full bg-red-900/70 text-red-600 border border-red-200">
+      <span className="text-xs px-2 py-0.5 rounded-full bg-red-900/70 text-failed border border-[#f8514940]">
         出错
       </span>
     )
@@ -462,9 +462,9 @@ function StatusBadge({ status }: { status: string }) {
 
 function statusBadgeClass(status: string): string {
   if (status === 'running') return 'bg-sakura/70 text-sky border-lavender'
-  if (status === 'failed') return 'bg-red-900/70 text-red-600 border-red-200'
+  if (status === 'failed') return 'bg-red-900/70 text-failed border-[#f8514940]'
   if (status === 'awaiting_review') return 'bg-yellow-900/70 text-yellow-300 border-yellow-800'
-  return 'bg-green-900/70 text-green-700 border-green-200'
+  return 'bg-green-900/70 text-done border-[#3fb95040]'
 }
 
 function statusLabel(status: string): string {
@@ -761,7 +761,7 @@ export default function Chat() {
           {isRunning && (
             <button
               onClick={handleCancel}
-              className="flex-shrink-0 text-xs px-3 py-1.5 rounded-lg bg-red-900/60 hover:bg-red-800 text-red-600 border border-red-200 transition-colors whitespace-nowrap"
+              className="flex-shrink-0 text-xs px-3 py-1.5 rounded-lg bg-red-900/60 hover:bg-red-800 text-failed border border-[#f8514940] transition-colors whitespace-nowrap"
             >
               取消
             </button>

@@ -322,7 +322,7 @@ export default function Artifacts() {
                   <span className="max-w-[120px] truncate">{a.name}</span>
                   <button
                     onClick={() => removeAttachment(i)}
-                    className="text-ink-dim hover:text-red-600 transition-colors"
+                    className="text-ink-dim hover:text-failed transition-colors"
                     title="移除"
                   >
                     ✕
@@ -514,7 +514,7 @@ export default function Artifacts() {
           </button>
         </div>
 
-        <div className="flex-1 min-h-0 bg-[#f1f6ff] relative">
+        <div className="flex-1 min-h-0 bg-bg relative">
           {html ? (
             <iframe
               key={mode}

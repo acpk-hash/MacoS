@@ -1,8 +1,8 @@
 /** @type {import('tailwindcss').Config} */
-// v0.7 蓝白科研设计系统（Research / Academic）— 色值/圆角/阴影/字体以
-// docs/v0.7-design-system-research.md 为准。浅色唯一，无暗色切换。
-// 注：为降低翻皮改动量，v0.6 的旧 token 名（sakura/lavender/sky/mint/gold/
-// coral/ink/line 等）作为「浅色别名」保留，映射到 v0.7 的主色/语义色/文字色。
+// v0.9 Trae 风深色专业 IDE 设计系统 — 色值/圆角/阴影/字体以
+// docs/v0.9-design-trae-ide.md 为准。深色唯一，无浅色切换。
+// 注：为降低翻皮改动量，v0.6/v0.7 的旧 token 名（sakura/lavender/sky/mint/
+// gold/coral/ink/line/surface 等）作为「深色别名」保留，映射到 v0.9 token。
 export default {
   content: [
     './index.html',
@@ -11,62 +11,69 @@ export default {
   theme: {
     extend: {
       colors: {
-        // 底与面（浅）
-        bg: '#f7f9fc',
-        surface: '#ffffff',
-        'surface-2': '#f1f4f9',
-        elevated: '#ffffff',
-        // 描边
-        line: '#e2e8f0',
-        'line-strong': '#cbd7e6',
-        border: '#e2e8f0',
-        'border-strong': '#cbd7e6',
-        // 主色（蓝）
-        primary: '#2563eb',
-        'primary-hover': '#1d4ed8',
-        'primary-tint': '#eff4ff',
-        // 语义色（科研清爽）
-        running: '#2563eb',
-        done: '#16a34a',
-        awaiting: '#d97706',
-        failed: '#dc2626',
-        todo: '#64748b',
-        // 文字（深色字，浅底上）
-        text: '#1e293b',
-        'text-muted': '#475569',
-        'text-dim': '#94a3b8',
-        ink: '#1e293b',
-        'ink-muted': '#475569',
-        'ink-dim': '#94a3b8',
-        // v0.6 旧点缀色 -> v0.7 浅色映射（保持类名可用）
-        sakura: '#2563eb',
-        lavender: '#2563eb',
-        sky: '#2563eb',
-        mint: '#16a34a',
-        gold: '#d97706',
-        coral: '#dc2626',
+        // 底与面（深）
+        bg: '#17171b',          // 应用最底 / 活动栏
+        editor: '#1e1e22',      // 编辑器 / 主内容区
+        surface: '#202024',     // 侧栏 / 面板（旧 surface 别名）
+        'surface-2': '#26262c', // hover / 内嵌块
+        elevated: '#26262c',    // 弹层 / hover
+        // 描边（边框主导分层）
+        line: '#2c2c33',
+        'line-soft': '#242429',
+        'line-strong': '#3a3a44',
+        border: '#2c2c33',
+        'border-soft': '#242429',
+        'border-strong': '#3a3a44',
+        // 强调（Trae 感，克制紫蓝）
+        primary: '#8b7cff',
+        'primary-hover': '#9a8dff',
+        'primary-active': '#7a6bf0',
+        'primary-tint': 'rgba(139, 124, 255, 0.14)',
+        accent: '#8b7cff',
+        'accent-soft': 'rgba(139, 124, 255, 0.14)',
+        // 语义色（GitHub 深色语义色系）
+        running: '#5b8cff',
+        done: '#3fb950',
+        awaiting: '#d29922',
+        failed: '#f85149',
+        todo: '#8a8a95',
+        // 文字（浅字，深底上）
+        text: '#e6e6ea',
+        'text-muted': '#b4b4be',
+        'text-dim': '#8a8a95',
+        ink: '#e6e6ea',
+        'ink-muted': '#b4b4be',
+        'ink-dim': '#8a8a95',
+        'ink-faint': '#63636e',
+        // v0.6 旧点缀色 -> v0.9 深色映射（保持类名可用）
+        sakura: '#8b7cff',
+        lavender: '#8b7cff',
+        sky: '#5b8cff',
+        mint: '#3fb950',
+        gold: '#d29922',
+        coral: '#f85149',
       },
       borderRadius: {
-        card: '12px',
-        pop: '14px',
-        btn: '8px',
-        input: '8px',
-        chip: '6px',
-        icon: '8px',
+        card: '8px',
+        pop: '10px',
+        btn: '6px',
+        input: '6px',
+        chip: '5px',
+        icon: '6px',
       },
       boxShadow: {
-        // 柔和阴影（非发光）
-        card: '0 1px 3px rgba(15,23,42,0.06), 0 1px 2px rgba(15,23,42,0.04)',
-        pop: '0 8px 24px rgba(15,23,42,0.12)',
-        // 旧 glow-* / glass 名 -> 映射到柔和阴影（保持类名可用）
-        'glow-primary': '0 1px 3px rgba(15,23,42,0.06), 0 1px 2px rgba(15,23,42,0.04)',
-        'glow-sakura': '0 1px 3px rgba(15,23,42,0.06)',
-        'glow-lavender': '0 1px 3px rgba(15,23,42,0.06)',
-        'glow-sky': '0 1px 3px rgba(15,23,42,0.06)',
-        'glow-mint': '0 1px 3px rgba(15,23,42,0.06)',
-        'glow-gold': '0 1px 3px rgba(15,23,42,0.06)',
-        'glow-coral': '0 1px 3px rgba(15,23,42,0.06)',
-        glass: '0 8px 24px rgba(15,23,42,0.12)',
+        // IDE 靠边框分层，阴影几乎不用；弹层深投影 + 细边
+        card: '0 1px 2px rgba(0, 0, 0, 0.35)',
+        pop: '0 8px 28px rgba(0, 0, 0, 0.5)',
+        // 旧 glow-* / glass 名 -> 映射（保持类名可用，无发光）
+        'glow-primary': '0 1px 2px rgba(0, 0, 0, 0.35)',
+        'glow-sakura': '0 1px 2px rgba(0, 0, 0, 0.35)',
+        'glow-lavender': '0 1px 2px rgba(0, 0, 0, 0.35)',
+        'glow-sky': '0 1px 2px rgba(0, 0, 0, 0.35)',
+        'glow-mint': '0 1px 2px rgba(0, 0, 0, 0.35)',
+        'glow-gold': '0 1px 2px rgba(0, 0, 0, 0.35)',
+        'glow-coral': '0 1px 2px rgba(0, 0, 0, 0.35)',
+        glass: '0 8px 28px rgba(0, 0, 0, 0.5)',
       },
       fontFamily: {
         rounded: [
@@ -89,14 +96,15 @@ export default {
           '"JetBrains Mono"',
           '"Cascadia Code"',
           'ui-monospace',
+          'Consolas',
           'SFMono-Regular',
           'Menlo',
           'monospace',
         ],
       },
       backgroundImage: {
-        // 主色蓝渐变（按钮/logo 用，非文字渐变）
-        'grad-primary': 'linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)',
+        // 签名渐变：仅品牌点（logo/主按钮）使用
+        'grad-primary': 'linear-gradient(120deg, #8b7cff 0%, #5b8cff 100%)',
       },
       keyframes: {
         'float-soft': {

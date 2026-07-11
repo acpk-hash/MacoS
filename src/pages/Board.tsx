@@ -157,7 +157,7 @@ function TodoCard({ task, onDispatch, onDelete, onRenameCommit }: TodoCardProps)
         </button>
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(task) }}
-          className="text-xs px-2 py-1 rounded-lg bg-elevated hover:bg-red-900/60 text-ink-muted hover:text-red-600 border border-line hover:border-red-200 transition-colors"
+          className="text-xs px-2 py-1 rounded-lg bg-elevated hover:bg-red-900/60 text-ink-muted hover:text-failed border border-line hover:border-[#f8514940] transition-colors"
           title="删除任务"
         >
           删
@@ -185,14 +185,14 @@ function RunningCard({ task, session, onClick }: RunningCardProps) {
       className={[
         'glass rounded-card px-3 py-2.5 cursor-pointer select-none transition-all duration-150 hover:-translate-y-0.5',
         isFailed
-          ? 'border-red-200 hover:border-red-600'
+          ? 'border-[#f8514940] hover:border-failed'
           : 'border-line hover:border-line-strong',
       ].join(' ')}
     >
       {/* Failed badge */}
       {isFailed && (
         <div className="flex items-center gap-1 mb-1.5">
-          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-900/70 text-red-600 border border-red-200">
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-900/70 text-failed border border-[#f8514940]">
             出错
           </span>
         </div>
@@ -673,7 +673,7 @@ export default function Board() {
               </button>
               <button
                 onClick={handleDeleteConfirm}
-                className="text-xs px-3 py-1.5 rounded-lg bg-red-700 hover:bg-red-600 text-white border border-red-600 transition-colors"
+                className="text-xs px-3 py-1.5 rounded-lg bg-[#da3633] hover:bg-failed text-white border border-failed transition-colors"
               >
                 确认删除
               </button>

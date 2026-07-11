@@ -236,16 +236,16 @@ function MediaCard({
   if (row.status === 'failed') {
     return (
       <div className="relative aspect-square rounded-xl overflow-hidden border border-red-900/70 bg-red-950/30 flex flex-col items-center justify-center gap-2 p-3 text-center">
-        <span className="text-red-600 text-xs font-medium">生成失败</span>
+        <span className="text-failed text-xs font-medium">生成失败</span>
         <span
-          className="text-[11px] text-red-600 line-clamp-3 break-words"
+          className="text-[11px] text-failed line-clamp-3 break-words"
           title={row.error ?? ''}
         >
           {row.error ?? '未知错误'}
         </span>
         <button
           onClick={onRetry}
-          className="mt-1 px-2.5 py-1 rounded-lg bg-red-900/60 hover:bg-red-800 text-red-100 text-[11px] border border-red-200 transition-colors"
+          className="mt-1 px-2.5 py-1 rounded-lg bg-red-900/60 hover:bg-red-800 text-red-100 text-[11px] border border-[#f8514940] transition-colors"
         >
           重试
         </button>
@@ -324,8 +324,8 @@ function IconBtn({
       className={[
         'w-7 h-7 flex items-center justify-center rounded-lg text-sm border backdrop-blur transition-colors',
         danger
-          ? 'bg-black/50 border-white/20 text-white hover:bg-red-700 hover:border-red-600'
-          : 'bg-black/50 border-white/20 text-white hover:bg-white/20',
+          ? 'bg-black/50 border-white/20 text-white hover:bg-[#da3633] hover:border-failed'
+          : 'bg-black/50 border-white/20 text-white hover:bg-elevated/20',
       ].join(' ')}
     >
       {children}
@@ -398,7 +398,7 @@ function Lightbox({
           </button>
           <button
             onClick={() => onDelete(row)}
-            className="px-3 py-1.5 rounded-lg bg-surface-2 hover:bg-red-700 text-ink text-xs border border-line hover:border-red-600 transition-colors"
+            className="px-3 py-1.5 rounded-lg bg-surface-2 hover:bg-[#da3633] text-ink text-xs border border-line hover:border-failed transition-colors"
           >
             删除
           </button>
@@ -845,7 +845,7 @@ export default function StudioGen() {
                   void deleteMedia(confirmDelete.id)
                   setConfirmDelete(null)
                 }}
-                className="text-xs px-3 py-1.5 rounded-lg bg-red-700 hover:bg-red-600 text-white border border-red-600 transition-colors"
+                className="text-xs px-3 py-1.5 rounded-lg bg-[#da3633] hover:bg-failed text-white border border-failed transition-colors"
               >
                 删除
               </button>

@@ -129,7 +129,7 @@ export default function ExtensionsPanel({
       onClick={() => setTab(id)}
       className={[
         'px-3 py-1.5 rounded-btn text-[12px] transition-colors',
-        tab === id ? 'bg-[#e9eef5] text-ink' : 'text-ink-muted hover:text-ink',
+        tab === id ? 'bg-elevated text-ink' : 'text-ink-muted hover:text-ink',
       ].join(' ')}
     >
       {label}
@@ -286,7 +286,7 @@ export default function ExtensionsPanel({
                           onUseSkill(`请使用技能「${sk.name}」：${sk.description || sk.name}`)
                           onClose()
                         }}
-                        className="mt-2 self-start text-[11px] px-2.5 py-1 rounded-md bg-surface-2 hover:bg-[#e9eef5] border border-line text-ink transition-colors"
+                        className="mt-2 self-start text-[11px] px-2.5 py-1 rounded-md bg-surface-2 hover:bg-elevated border border-line text-ink transition-colors"
                       >
                         在工作台使用
                       </button>

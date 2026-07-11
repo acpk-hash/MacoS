@@ -3,37 +3,43 @@
 @tailwind utilities;
 
 /* ══════════════════════════════════════════════════════════════════════════
-   v0.7 蓝白科研设计系统（Research / Academic）— 基础层
-   色值以 docs/v0.7-design-system-research.md 为准。浅色唯一，无暗色切换。
+   v0.9 Trae 风深色专业 IDE — 基础层
+   色值以 docs/v0.9-design-trae-ide.md 为准。深色唯一，无浅色切换。
+   深中性底 + 细边分隔 + 克制紫蓝强调；无发光/弥散/aurora/糖果多彩。
    ══════════════════════════════════════════════════════════════════════════ */
 
 :root {
-  --bg: #f7f9fc;
-  --surface: #ffffff;
-  --surface-2: #f1f4f9;
-  --elevated: #ffffff;
-  --border: #e2e8f0;
-  --border-strong: #cbd7e6;
+  --bg: #17171b;
+  --editor: #1e1e22;
+  --panel: #202024;
+  --surface: #202024;
+  --surface-2: #26262c;
+  --elevated: #26262c;
+  --border: #2c2c33;
+  --border-soft: #242429;
+  --border-strong: #3a3a44;
 
-  --primary: #2563eb;
-  --primary-hover: #1d4ed8;
-  --primary-tint: #eff4ff;
-  --primary-ring: rgba(37, 99, 235, 0.35);
+  --primary: #8b7cff;
+  --primary-hover: #9a8dff;
+  --primary-active: #7a6bf0;
+  --primary-tint: rgba(139, 124, 255, 0.14);
+  --primary-ring: rgba(139, 124, 255, 0.4);
 
-  --running: #2563eb;
-  --done: #16a34a;
-  --awaiting: #d97706;
-  --failed: #dc2626;
-  --todo: #64748b;
+  --running: #5b8cff;
+  --done: #3fb950;
+  --awaiting: #d29922;
+  --failed: #f85149;
+  --todo: #8a8a95;
 
-  --text: #1e293b;
-  --text-muted: #475569;
-  --text-dim: #94a3b8;
+  --text: #e6e6ea;
+  --text-muted: #b4b4be;
+  --text-dim: #8a8a95;
+  --text-faint: #63636e;
 
-  --grad-primary: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
-  /* 卡片/弹层柔和阴影（非发光） */
-  --shadow-card: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
-  --shadow-pop: 0 8px 24px rgba(15, 23, 42, 0.12);
+  --grad-primary: linear-gradient(120deg, #8b7cff 0%, #5b8cff 100%);
+  /* IDE 靠边框分层；弹层深投影 + 细边 */
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-pop: 0 8px 28px rgba(0, 0, 0, 0.5);
 }
 
 *,
@@ -55,22 +61,31 @@ body,
 body {
   font-family: 'Inter', 'Source Han Sans SC', 'PingFang SC', 'Microsoft YaHei',
     system-ui, sans-serif;
+  font-size: 13.5px;
   color: var(--text);
   background-color: var(--bg);
-  /* 极淡点阵网格（opacity < 3%）增科研感，不用弥散霓光 */
-  background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Ccircle cx='2' cy='2' r='0.7' fill='%232563eb' opacity='0.05'/%3E%3C/svg%3E");
-  background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
   font-feature-settings: 'tnum';
+  color-scheme: dark;
 }
 
-/* ── 面板/卡片工具类（浅色，柔和阴影，非玻璃霓光） ─────────────────────────── */
+/* 原生控件（select/option/input 日期等）走深色 */
+select,
+input,
+textarea {
+  color-scheme: dark;
+}
+select option,
+select optgroup {
+  background-color: #26262c;
+  color: #e6e6ea;
+}
+
+/* ── 面板/卡片工具类（深底细边，扁平，无发光） ─────────────────────────────── */
 @layer components {
   .glass {
-    background: var(--surface);
+    background: var(--panel);
     border: 1px solid var(--border);
-    box-shadow: var(--shadow-card);
   }
   .glass-strong {
     background: var(--elevated);
@@ -78,15 +93,43 @@ body {
     box-shadow: var(--shadow-pop);
   }
   .card-soft {
-    background: var(--surface);
+    background: var(--panel);
     border: 1px solid var(--border);
-    box-shadow: var(--shadow-card);
+  }
+
+  /* 底部状态栏（VSCode 式细条）：深底、小字、分段 */
+  .statusbar {
+    height: 24px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: stretch;
+    background: var(--bg);
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    line-height: 1;
+    color: var(--text-dim);
+    user-select: none;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .statusbar-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0 9px;
+    color: var(--text-dim);
+    transition: background-color 0.12s ease, color 0.12s ease;
+  }
+  .statusbar-item.clickable:hover {
+    background: var(--surface-2);
+    color: var(--text);
+    cursor: pointer;
   }
 }
 
 /* ── 工具类 ─────────────────────────────────────────────────────────────── */
 @layer utilities {
-  /* 旧 glow-* 名 -> 浅色下退化为柔和阴影 */
+  /* 旧 glow-* 名 -> 深色下退化为极弱投影（无发光） */
   .glow-primary,
   .glow-sky,
   .glow-mint,
@@ -96,22 +139,22 @@ body {
     box-shadow: var(--shadow-card);
   }
 
-  /* 聚焦环（主色） */
+  /* 聚焦环（强调紫蓝） */
   .primary-ring:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 3px var(--primary-ring);
+    box-shadow: 0 0 0 2px var(--primary-ring);
   }
 
-  /* 旧 text-gradient -> 科研风纯主色（不再用渐变文字） */
+  /* 旧 text-gradient -> 纯强调色（不再用渐变文字） */
   .text-gradient {
     color: var(--primary);
     -webkit-text-fill-color: currentColor;
   }
 
-  /* 高亮描边 -> 主色细边 + 白底 */
+  /* 高亮描边 -> 强调细边 + 面板底 */
   .border-gradient {
     border: 1px solid var(--primary);
-    background: var(--surface);
+    background: var(--panel);
   }
 
   /* 分隔线 -> 实色细线 */
@@ -122,24 +165,27 @@ body {
   }
 }
 
-/* ── 柔和滚动条（浅色） ─────────────────────────────────────────────────── */
+/* ── IDE 滚动条（深色，方直，hover 才醒目） ─────────────────────────────── */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(100, 116, 139, 0.35) transparent;
+  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
 }
 *::-webkit-scrollbar {
-  width: 9px;
-  height: 9px;
+  width: 10px;
+  height: 10px;
 }
 *::-webkit-scrollbar-thumb {
-  background: rgba(100, 116, 139, 0.3);
-  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 5px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: rgba(100, 116, 139, 0.5);
+  background: rgba(255, 255, 255, 0.24);
   background-clip: padding-box;
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 /* ── 尊重 prefers-reduced-motion ────────────────────────────────────────── */
@@ -153,15 +199,15 @@ body {
   }
 }
 
-/* ── Workflow canvas (React Flow) — 蓝白配色覆盖 ─────────────────────────── */
+/* ── Workflow canvas (React Flow) — 深色 IDE 配色覆盖 ────────────────────── */
 
 @keyframes canvasBreathe {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.28);
+    box-shadow: 0 0 0 0 rgba(139, 124, 255, 0.28);
   }
   50% {
-    box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.18);
+    box-shadow: 0 0 0 4px rgba(139, 124, 255, 0.16);
   }
 }
 
@@ -175,30 +221,33 @@ body {
 }
 
 .react-flow__edge-path {
-  stroke: #cbd7e6;
+  stroke: #3a3a44;
   stroke-width: 1.5;
 }
 .react-flow__edge.animated .react-flow__edge-path {
-  stroke: #2563eb;
+  stroke: #8b7cff;
 }
 
 .react-flow__node.selected > div {
-  outline: 2px solid #2563eb;
+  outline: 1.5px solid #8b7cff;
   outline-offset: 2px;
 }
 
+.react-flow__controls {
+  box-shadow: var(--shadow-pop);
+}
 .react-flow__controls-button {
-  background: #ffffff;
-  border-bottom: 1px solid #e2e8f0;
-  color: #475569;
-  fill: #475569;
+  background: #202024;
+  border-bottom: 1px solid #2c2c33;
+  color: #b4b4be;
+  fill: #b4b4be;
 }
 .react-flow__controls-button:hover {
-  background: #f1f4f9;
+  background: #26262c;
 }
 .react-flow__attribution {
   background: transparent;
-  color: #94a3b8;
+  color: #63636e;
 }
 
 /* ── 任务清单打勾轻过渡（reduced-motion 由上方全局守卫兜底）───────────────── */
@@ -222,7 +271,7 @@ body {
 /* ── 清单跳转时目标卡片高亮一下 ──────────────────────────────────────────── */
 @keyframes clFlash {
   0% {
-    background-color: rgba(37, 99, 235, 0.14);
+    background-color: rgba(139, 124, 255, 0.16);
   }
   100% {
     background-color: transparent;
@@ -230,5 +279,5 @@ body {
 }
 .cl-flash {
   animation: clFlash 0.9s ease-out;
-  border-radius: 12px;
+  border-radius: 8px;
 }

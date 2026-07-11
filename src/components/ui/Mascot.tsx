@@ -1,5 +1,5 @@
-// v0.7：二次元吉祥物退场。保留 Mascot 名与 props 签名（避免改动全部空态调用点），
-// 渲染为极简线性图标（科研风）：浅灰细描边的圆角文档/占位图标，忽略 mood。
+// v0.7 起吉祥物退场。保留 Mascot 名与 props 签名（避免改动全部空态调用点），
+// 渲染为极简线性图标（深色 IDE 风）：dim 灰细描边的圆角文档/占位图标，忽略 mood。
 // 建议空态用法：<Mascot size={44} /> + 说明文字。
 import type { CSSProperties } from 'react'
 
@@ -25,7 +25,7 @@ export default function Mascot({
       <svg
         viewBox="0 0 48 48"
         fill="none"
-        stroke="#94a3b8"
+        stroke="#63636e"
         strokeWidth={2}
         strokeLinecap="round"
         strokeLinejoin="round"

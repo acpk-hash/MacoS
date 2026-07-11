@@ -1,4 +1,5 @@
-// Button — 蓝白科研主题按钮。variant: primary(实蓝) / ghost / soft / danger。
+// Button — 深色 IDE 按钮：小圆角、细边、扁平，无发光。
+// variant: primary(实心强调紫蓝) / ghost / soft / danger。
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
 
 type Variant = 'primary' | 'ghost' | 'danger' | 'soft'
@@ -11,22 +12,22 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const base =
-  'inline-flex items-center justify-center gap-1.5 font-medium rounded-btn transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none primary-ring whitespace-nowrap'
+  'inline-flex items-center justify-center gap-1.5 font-medium rounded-btn transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none primary-ring whitespace-nowrap'
 
 const sizes: Record<Size, string> = {
   sm: 'text-xs px-2.5 py-1.5',
-  md: 'text-sm px-4 py-2',
+  md: 'text-sm px-3.5 py-1.5',
 }
 
 const variants: Record<Variant, string> = {
   primary:
-    'text-white bg-primary shadow-card hover:bg-primary-hover',
+    'text-white bg-primary hover:bg-primary-hover active:bg-primary-active',
   ghost:
-    'text-ink-muted bg-surface border border-line hover:text-ink hover:bg-surface-2 hover:border-line-strong',
+    'text-ink-muted bg-transparent border border-line hover:text-ink hover:bg-surface-2 hover:border-line-strong',
   soft:
-    'text-primary bg-primary-tint border border-[#c7dbff] hover:bg-[#e0e9ff]',
+    'text-primary bg-primary-tint border border-[#8b7cff3d] hover:bg-[#8b7cff29]',
   danger:
-    'text-failed bg-[#fef2f2] border border-[#fecaca] hover:bg-[#fee2e2]',
+    'text-failed bg-[#f851491a] border border-[#f8514940] hover:bg-[#f8514929]',
 }
 
 export default function Button({

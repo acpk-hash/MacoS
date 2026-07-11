@@ -198,7 +198,7 @@ export default function Workbench() {
         <button
           onClick={() => void pickDir()}
           disabled={wsOpening}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-btn bg-surface-2 hover:bg-[#e9eef5] border border-line hover:border-line-strong text-[12px] text-ink transition-colors disabled:opacity-40 max-w-[240px]"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-btn bg-surface-2 hover:bg-elevated border border-line hover:border-line-strong text-[12px] text-ink transition-colors disabled:opacity-40 max-w-[240px]"
           title={root ?? '选择工作目录'}
         >
           <span aria-hidden="true">📁</span>

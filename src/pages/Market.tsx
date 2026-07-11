@@ -95,7 +95,7 @@ function DetailModal({
       onClick={onClose}
     >
       <div
-        className="bg-white border border-line rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col"
+        className="bg-elevated border border-line rounded-pop shadow-pop w-full max-w-3xl max-h-[85vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-3 border-b border-line">
@@ -191,7 +191,7 @@ function ItemCard({
 }) {
   return (
     <div
-      className="bg-white border border-line rounded-xl p-4 flex flex-col gap-2 hover:border-primary/50 hover:shadow-md transition-all cursor-pointer"
+      className="bg-surface border border-line rounded-card p-4 flex flex-col gap-2 hover:border-primary/50 transition-all cursor-pointer"
       onClick={onOpen}
     >
       <div className="flex items-start justify-between gap-2">
@@ -376,7 +376,7 @@ export default function Market() {
           </div>
           <button
             onClick={() => void load()}
-            className="text-xs text-ink-muted border border-line bg-white px-3 py-1.5 rounded-btn hover:border-primary hover:text-primary transition-colors"
+            className="text-xs text-ink-muted border border-line bg-surface-2 px-3 py-1.5 rounded-btn hover:border-primary hover:text-primary transition-colors"
           >
             刷新
           </button>
@@ -392,7 +392,7 @@ export default function Market() {
                 className={
                   'px-4 py-1.5 text-xs rounded-btn transition-colors ' +
                   (tab === t
-                    ? 'bg-white text-primary font-semibold shadow-sm'
+                    ? 'bg-elevated text-primary font-semibold'
                     : 'text-ink-muted hover:text-ink')
                 }
               >
@@ -403,7 +403,7 @@ export default function Market() {
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value)}
-            className="text-xs border border-line bg-white text-ink rounded-btn px-2.5 py-1.5 outline-none focus:border-primary"
+            className="text-xs border border-line bg-surface-2 text-ink rounded-btn px-2.5 py-1.5 outline-none focus:border-primary"
           >
             {categories.map((c) => (
               <option key={c} value={c}>
@@ -415,7 +415,7 @@ export default function Market() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="搜索名称 / 描述 / 标签…"
-            className="flex-1 min-w-[180px] text-xs border border-line bg-white text-ink rounded-btn px-3 py-1.5 outline-none focus:border-primary placeholder:text-ink-dim"
+            className="flex-1 min-w-[180px] text-xs border border-line bg-surface-2 text-ink rounded-btn px-3 py-1.5 outline-none focus:border-primary placeholder:text-ink-dim"
           />
         </div>
 

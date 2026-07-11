@@ -56,9 +56,9 @@ function statusLabel(s: string): string {
 }
 
 function statusClass(s: string): string {
-  if (s === 'failed') return 'bg-red-100 text-red-600'
+  if (s === 'failed') return 'bg-[#f851491f] text-failed'
   if (s === 'running' || s === 'active') return 'bg-sakura/25 text-sky'
-  if (s === 'awaiting_review') return 'bg-amber-100 text-amber-600'
+  if (s === 'awaiting_review') return 'bg-[#d299221f] text-awaiting'
   return 'bg-elevated/60 text-ink-muted'
 }
 
@@ -68,7 +68,7 @@ function KindBadge({ kind }: { kind: RunKind }) {
     <span
       className={[
         'text-[10px] px-1.5 py-0.5 rounded font-medium flex-shrink-0',
-        isBoard ? 'bg-indigo-100 text-indigo-700' : 'bg-emerald-100 text-emerald-700',
+        isBoard ? 'bg-primary-tint text-primary' : 'bg-[#3fb9501f] text-done',
       ].join(' ')}
     >
       {isBoard ? '看板' : '工作台'}
@@ -119,7 +119,7 @@ function RunCard({
       <div className="flex items-center gap-1 px-3 py-2 border-t border-line/70 bg-surface/40">
         <button
           onClick={onReuse}
-          className="text-[11px] px-2.5 py-1 rounded-md bg-emerald-600/80 hover:bg-emerald-600 text-white transition-colors"
+          className="text-[11px] px-2.5 py-1 rounded-md bg-done/80 hover:bg-done text-white transition-colors"
           title="以同样的工作目录 / 模型重开一个工作台会话，并预填最初的指令"
         >
           复用
@@ -127,7 +127,7 @@ function RunCard({
         <div className="flex-1" />
         <button
           onClick={onDelete}
-          className="text-[11px] px-2.5 py-1 rounded-md text-ink-dim hover:text-red-600 hover:bg-red-950/40 transition-colors"
+          className="text-[11px] px-2.5 py-1 rounded-md text-ink-dim hover:text-failed hover:bg-red-950/40 transition-colors"
           title="从沉淀库中删除该运行记录"
         >
           删除
@@ -217,7 +217,7 @@ function DetailOverlay({
           <div className="flex-1" />
           <button
             onClick={onReuse}
-            className="text-[11px] px-2.5 py-1 rounded-md bg-emerald-600/80 hover:bg-emerald-600 text-white transition-colors flex-shrink-0"
+            className="text-[11px] px-2.5 py-1 rounded-md bg-done/80 hover:bg-done text-white transition-colors flex-shrink-0"
           >
             复用
           </button>
@@ -231,7 +231,7 @@ function DetailOverlay({
         </div>
         <div className="flex-1 overflow-y-auto px-4 py-4">
           {loading && <div className="text-[12px] text-ink-dim">加载中…</div>}
-          {error && <div className="text-[12px] text-red-600">{error}</div>}
+          {error && <div className="text-[12px] text-failed">{error}</div>}
           {!loading && !error && detail && detail.kind === 'workbench' && (
             <WorkbenchDetail detail={detail} />
           )}
@@ -257,7 +257,7 @@ function SkillCard({ skill, onUse }: { skill: SkillInfo; onUse: () => void }) {
           className={[
             'text-[10px] px-1.5 py-0.5 rounded font-mono flex-shrink-0',
             skill.source === 'pi'
-              ? 'bg-sky-100 text-sky-600'
+              ? 'bg-[#5b8cff1f] text-running'
               : 'bg-violet-600/25 text-violet-300',
           ].join(' ')}
         >
@@ -399,7 +399,7 @@ export default function Sediment() {
                 if (e.key === 'Enter') void loadRuns()
               }}
               placeholder="搜索标题 / 目录 / 模型，回车检索"
-              className="flex-1 max-w-md bg-surface border border-line rounded-lg px-3 py-1.5 text-[12px] text-ink placeholder-ink-dim focus:outline-none focus:border-emerald-600 transition-colors"
+              className="flex-1 max-w-md bg-surface border border-line rounded-lg px-3 py-1.5 text-[12px] text-ink placeholder-ink-dim focus:outline-none focus:border-done transition-colors"
             />
             <button
               onClick={() => void loadRuns()}
@@ -416,7 +416,7 @@ export default function Sediment() {
                   className={[
                     'text-[11px] px-2.5 py-1.5 rounded-lg transition-colors',
                     filterKind === f.id
-                      ? 'bg-emerald-600/80 text-white'
+                      ? 'bg-done/80 text-white'
                       : 'bg-surface border border-line text-ink-muted hover:text-ink',
                   ].join(' ')}
                 >
@@ -427,7 +427,7 @@ export default function Sediment() {
           </div>
 
           <div className="flex-1 overflow-y-auto px-4 py-4">
-            {runsError && <div className="mb-3 text-[12px] text-red-600">{runsError}</div>}
+            {runsError && <div className="mb-3 text-[12px] text-failed">{runsError}</div>}
             {runsLoading && runs.length === 0 ? (
               <div className="text-[12px] text-ink-dim">加载中…</div>
             ) : runs.length === 0 ? (
@@ -455,7 +455,7 @@ export default function Sediment() {
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto px-4 py-4">
-          {skillsError && <div className="mb-3 text-[12px] text-red-600">{skillsError}</div>}
+          {skillsError && <div className="mb-3 text-[12px] text-failed">{skillsError}</div>}
           {skillsLoading && skills.length === 0 ? (
             <div className="text-[12px] text-ink-dim">扫描中…</div>
           ) : skills.length === 0 ? (

@@ -1,4 +1,4 @@
-// Chip / Tag — 浅蓝底标签。tone 决定语义配色（浅底徽章，非光晕）。
+// Chip / Tag — 深色 IDE 标签：语义色低透明底 + 语义字 + 细边（无光晕）。
 import type { ReactNode } from 'react'
 
 export type ChipTone =
@@ -16,19 +16,19 @@ export type ChipTone =
   | 'failed'
   | 'todo'
 
-// 浅色徽章：极浅底 + 语义文字 + 细边。旧 tone 名映射到 v0.7 语义色。
+// 深色徽章：语义色 10-14% 底 + 语义色文字 + 25% 细边。旧 tone 名映射到语义色。
 const tones: Record<ChipTone, string> = {
-  primary: 'bg-primary-tint text-primary border-[#c7dbff]',
-  running: 'bg-primary-tint text-primary border-[#c7dbff]',
-  sakura: 'bg-primary-tint text-primary border-[#c7dbff]',
-  lavender: 'bg-primary-tint text-primary border-[#c7dbff]',
-  sky: 'bg-primary-tint text-primary border-[#c7dbff]',
-  done: 'bg-[#ecfdf5] text-done border-[#bbf7d0]',
-  mint: 'bg-[#ecfdf5] text-done border-[#bbf7d0]',
-  awaiting: 'bg-[#fffbeb] text-awaiting border-[#fde68a]',
-  gold: 'bg-[#fffbeb] text-awaiting border-[#fde68a]',
-  failed: 'bg-[#fef2f2] text-failed border-[#fecaca]',
-  coral: 'bg-[#fef2f2] text-failed border-[#fecaca]',
+  primary: 'bg-primary-tint text-primary border-[#8b7cff40]',
+  sakura: 'bg-primary-tint text-primary border-[#8b7cff40]',
+  lavender: 'bg-primary-tint text-primary border-[#8b7cff40]',
+  running: 'bg-[#5b8cff1f] text-running border-[#5b8cff40]',
+  sky: 'bg-[#5b8cff1f] text-running border-[#5b8cff40]',
+  done: 'bg-[#3fb9501f] text-done border-[#3fb95040]',
+  mint: 'bg-[#3fb9501f] text-done border-[#3fb95040]',
+  awaiting: 'bg-[#d299221f] text-awaiting border-[#d2992240]',
+  gold: 'bg-[#d299221f] text-awaiting border-[#d2992240]',
+  failed: 'bg-[#f851491f] text-failed border-[#f8514940]',
+  coral: 'bg-[#f851491f] text-failed border-[#f8514940]',
   todo: 'bg-surface-2 text-todo border-line',
   neutral: 'bg-surface-2 text-ink-muted border-line',
 }

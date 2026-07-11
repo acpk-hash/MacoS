@@ -103,9 +103,9 @@ const STATUS_LABEL: Record<string, string> = {
 }
 
 function statusClass(s: string): string {
-  if (s === 'failed') return 'bg-red-100 text-red-600'
-  if (s === 'running' || s === 'active') return 'bg-blue-100 text-blue-600'
-  if (s === 'awaiting_review') return 'bg-amber-100 text-amber-600'
+  if (s === 'failed') return 'bg-[#f851491f] text-failed'
+  if (s === 'running' || s === 'active') return 'bg-[#5b8cff1f] text-running'
+  if (s === 'awaiting_review') return 'bg-[#d299221f] text-awaiting'
   return 'bg-elevated/60 text-ink-muted'
 }
 
@@ -171,7 +171,7 @@ function TrendChart({ series }: { series: TokenSeriesPoint[] }) {
               {/* hover 提示 */}
               <div
                 className="hidden group-hover:block absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 z-20
-                           bg-ink text-white text-[10.5px] leading-4 rounded-md px-2.5 py-1.5 whitespace-nowrap shadow-lg pointer-events-none"
+                           bg-elevated border border-line text-ink text-[10.5px] leading-4 rounded-md px-2.5 py-1.5 whitespace-nowrap shadow-lg pointer-events-none"
               >
                 <div className="font-medium">{p.date}</div>
                 <div className="tabular-nums">
@@ -188,9 +188,9 @@ function TrendChart({ series }: { series: TokenSeriesPoint[] }) {
                            group-hover:opacity-80 transition-opacity"
                 style={{ height: `${Math.min(100, pct(p.total))}%` }}
               >
-                <div className="w-full bg-blue-400" style={{ flexGrow: p.input }} />
-                <div className="w-full bg-blue-600" style={{ flexGrow: p.output }} />
-                <div className="w-full bg-blue-200" style={{ flexGrow: cache }} />
+                <div className="w-full bg-[#7ea6ff]" style={{ flexGrow: p.input }} />
+                <div className="w-full bg-[#5b8cff]" style={{ flexGrow: p.output }} />
+                <div className="w-full bg-[#2e3a55]" style={{ flexGrow: cache }} />
               </div>
               {/* 无数据日的基线刻度 */}
               {p.total === 0 && <div className="w-full h-[2px] bg-line rounded-full" />}
@@ -205,13 +205,13 @@ function TrendChart({ series }: { series: TokenSeriesPoint[] }) {
       </div>
       <div className="mt-2 flex items-center gap-4 text-[10.5px] text-ink-muted">
         <span className="flex items-center gap-1.5">
-          <i className="w-2.5 h-2.5 rounded-sm bg-blue-400 inline-block" />输入
+          <i className="w-2.5 h-2.5 rounded-sm bg-[#7ea6ff] inline-block" />输入
         </span>
         <span className="flex items-center gap-1.5">
-          <i className="w-2.5 h-2.5 rounded-sm bg-blue-600 inline-block" />输出
+          <i className="w-2.5 h-2.5 rounded-sm bg-[#5b8cff] inline-block" />输出
         </span>
         <span className="flex items-center gap-1.5">
-          <i className="w-2.5 h-2.5 rounded-sm bg-blue-200 inline-block" />缓存等
+          <i className="w-2.5 h-2.5 rounded-sm bg-[#2e3a55] inline-block" />缓存等
         </span>
       </div>
     </div>
@@ -253,7 +253,7 @@ function ModelBars({ models }: { models: ModelStat[] }) {
             </div>
             <div className="h-2 rounded-full bg-surface-2 overflow-hidden">
               <div
-                className="h-full rounded-full bg-gradient-to-r from-blue-400 to-blue-600"
+                className="h-full rounded-full bg-gradient-to-r from-[#8b7cff] to-[#5b8cff]"
                 style={{ width: `${widthPct}%` }}
                 title={`输入 ${fmtTokens(m.input)} · 输出 ${fmtTokens(m.output)}`}
               />
@@ -301,8 +301,8 @@ function RecentRunsTable({ runs }: { runs: RecentRun[] }) {
                   className={[
                     'text-[10px] px-1.5 py-0.5 rounded font-medium',
                     r.kind === 'board'
-                      ? 'bg-indigo-100 text-indigo-700'
-                      : 'bg-emerald-100 text-emerald-700',
+                      ? 'bg-primary-tint text-primary'
+                      : 'bg-[#3fb9501f] text-done',
                   ].join(' ')}
                 >
                   {r.kind === 'board' ? '看板' : '工作台'}
@@ -394,7 +394,7 @@ export default function Dashboard() {
 
       <div className="flex-1 overflow-y-auto px-4 py-4">
         {loading && <div className="text-[12px] text-ink-dim">加载中…</div>}
-        {error && <div className="mb-3 text-[12px] text-red-600">{error}</div>}
+        {error && <div className="mb-3 text-[12px] text-failed">{error}</div>}
 
         {empty && (
           <div className="h-full flex flex-col items-center justify-center text-center py-20">

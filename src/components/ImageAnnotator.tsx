@@ -465,7 +465,7 @@ export default function ImageAnnotator({
         onClick={(e) => e.stopPropagation()}
       >
         {loadError ? (
-          <div className="text-red-600 text-sm">{loadError}</div>
+          <div className="text-failed text-sm">{loadError}</div>
         ) : (
           <canvas
             ref={canvasRef}

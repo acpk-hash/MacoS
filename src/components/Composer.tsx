@@ -203,7 +203,7 @@ export default function Composer({
                 <span className="max-w-[140px] truncate">{a.name}</span>
                 <button
                   onClick={() => removeAttachment(i)}
-                  className="ml-1 text-ink-dim hover:text-red-600 transition-colors"
+                  className="ml-1 text-ink-dim hover:text-failed transition-colors"
                   title="移除"
                 >
                   ✕
@@ -268,7 +268,7 @@ export default function Composer({
           {busy && onStop ? (
             <button
               onClick={onStop}
-              className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-gray-200 hover:bg-white text-gray-900 transition-colors"
+              className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-surface-2 hover:bg-elevated text-ink transition-colors"
               title="停止生成"
             >
               <span className="w-3 h-3 bg-surface rounded-[2px]" />

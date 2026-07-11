@@ -273,11 +273,11 @@ function ProvidersSection() {
                   <p className="text-xs text-ink-dim truncate">{p.base_url}</p>
                   <p className="text-xs mt-0.5">
                     {p.has_key ? (
-                      <span className="text-green-500">
+                      <span className="text-done">
                         Key 已设置（{p.key_mask}）
                       </span>
                     ) : (
-                      <span className="text-yellow-500">Key 未设置</span>
+                      <span className="text-awaiting">Key 未设置</span>
                     )}
                   </p>
                 </div>
@@ -303,14 +303,14 @@ function ProvidersSection() {
               ) : st ? (
                 st.ok ? (
                   <p
-                    className="text-xs text-green-600"
+                    className="text-xs text-done"
                     title={st.models.map((m) => m.id).join(', ')}
                   >
                     ✓ {st.models.length} 个可用模型
                   </p>
                 ) : (
                   <div className="bg-red-900/20 border border-red-900/40 rounded px-2 py-1.5 space-y-1.5">
-                    <p className="text-xs text-red-600 break-words">
+                    <p className="text-xs text-failed break-words">
                       ✗ 无法使用：{st.error ?? '未知错误'}
                     </p>
                     <div className="flex items-center gap-3 text-xs">
@@ -322,7 +322,7 @@ function ProvidersSection() {
                       </button>
                       <button
                         onClick={() => setConfirmDelete(p.id)}
-                        className="text-red-600 hover:text-red-600 transition-colors"
+                        className="text-failed hover:text-failed transition-colors"
                       >
                         删除
                       </button>
@@ -349,10 +349,10 @@ function ProvidersSection() {
                 </button>
                 {confirmDelete === p.id ? (
                   <span className="flex items-center gap-2">
-                    <span className="text-red-600">确认?</span>
+                    <span className="text-failed">确认?</span>
                     <button
                       onClick={() => handleDelete(p.id)}
-                      className="text-red-600 hover:text-red-600"
+                      className="text-failed hover:text-failed"
                     >
                       删除
                     </button>
@@ -366,7 +366,7 @@ function ProvidersSection() {
                 ) : (
                   <button
                     onClick={() => setConfirmDelete(p.id)}
-                    className="text-ink-dim hover:text-red-600 transition-colors"
+                    className="text-ink-dim hover:text-failed transition-colors"
                   >
                     删除
                   </button>
@@ -377,8 +377,8 @@ function ProvidersSection() {
                 <p
                   className={`text-xs rounded px-2 py-1 break-words ${
                     t.success
-                      ? 'bg-green-900/30 text-green-700'
-                      : 'bg-red-900/30 text-red-600'
+                      ? 'bg-green-900/30 text-done'
+                      : 'bg-red-900/30 text-failed'
                   }`}
                 >
                   {t.message}
@@ -395,7 +395,7 @@ function ProvidersSection() {
           <h4 className="text-xs font-semibold text-ink-muted">
             {editId ? '编辑服务商' : '添加服务商'}
           </h4>
-          {formError && <p className="text-xs text-red-600">{formError}</p>}
+          {formError && <p className="text-xs text-failed">{formError}</p>}
           <div>
             <label className="block text-xs text-ink-dim mb-1">名称</label>
             <input
@@ -673,7 +673,7 @@ function ModelServiceSection() {
           <label className="block text-xs text-ink-dim mb-1">
             API Key{' '}
             {cfg?.has_api_key && (
-              <span className="text-green-600 ml-1">（已设置）</span>
+              <span className="text-done ml-1">（已设置）</span>
             )}
           </label>
           <input
@@ -716,7 +716,7 @@ function ModelServiceSection() {
       {saveResult && (
         <p
           className={`text-xs ${
-            saveResult.startsWith('保存失败') ? 'text-red-600' : 'text-green-600'
+            saveResult.startsWith('保存失败') ? 'text-failed' : 'text-done'
           }`}
         >
           {saveResult}
@@ -728,8 +728,8 @@ function ModelServiceSection() {
         <div
           className={`text-xs rounded-lg p-3 font-mono whitespace-pre-wrap break-words ${
             testResult.success
-              ? 'bg-green-900/30 text-green-700'
-              : 'bg-red-900/30 text-red-600'
+              ? 'bg-green-900/30 text-done'
+              : 'bg-red-900/30 text-failed'
           }`}
         >
           {testResult.message}
@@ -864,7 +864,7 @@ function EngineSection() {
             <div className="flex items-center gap-2.5">
               <span
                 className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                  codexEngine?.available ? 'bg-green-400' : 'bg-elevated'
+                  codexEngine?.available ? 'bg-done' : 'bg-elevated'
                 }`}
               />
               <span className="text-sm font-medium text-ink">Codex</span>
@@ -883,12 +883,12 @@ function EngineSection() {
             <div className="flex items-center gap-2.5">
               <span
                 className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                  claudeEngine?.available ? 'bg-green-400' : 'bg-elevated'
+                  claudeEngine?.available ? 'bg-done' : 'bg-elevated'
                 }`}
               />
               <span className="text-sm font-medium text-ink">Claude</span>
             </div>
-            <span className="text-xs text-yellow-600 bg-yellow-900/30 px-1.5 py-0.5 rounded">
+            <span className="text-xs text-awaiting bg-yellow-900/30 px-1.5 py-0.5 rounded">
               即将支持
             </span>
           </div>
@@ -946,7 +946,7 @@ function EngineSection() {
           <div className="flex items-start gap-2">
             <span
               className={`mt-1 w-2 h-2 rounded-full flex-shrink-0 ${
-                embeddedStatus?.engine_bin_found ? 'bg-green-400' : 'bg-red-500'
+                embeddedStatus?.engine_bin_found ? 'bg-done' : 'bg-failed'
               }`}
             />
             <div className="min-w-0">
@@ -958,7 +958,7 @@ function EngineSection() {
                   {embeddedStatus.engine_bin_path}
                 </p>
               ) : (
-                <p className="text-xs text-red-600">
+                <p className="text-xs text-failed">
                   未找到 agentboard-engine，请重新安装应用或在设置中指定路径。
                 </p>
               )}
@@ -969,7 +969,7 @@ function EngineSection() {
           <div className="flex items-start gap-2">
             <span
               className={`mt-1 w-2 h-2 rounded-full flex-shrink-0 ${
-                embeddedStatus?.codex_found ? 'bg-green-400' : 'bg-yellow-500'
+                embeddedStatus?.codex_found ? 'bg-done' : 'bg-awaiting'
               }`}
             />
             <div className="min-w-0">
@@ -1209,10 +1209,10 @@ function McpSection() {
                 <div className="flex-shrink-0">
                   {confirmDelete === s.name ? (
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-red-600">确认删除?</span>
+                      <span className="text-xs text-failed">确认删除?</span>
                       <button
                         onClick={() => handleRemove(s.name)}
-                        className="text-xs text-red-600 hover:text-red-600"
+                        className="text-xs text-failed hover:text-failed"
                       >
                         确认
                       </button>
@@ -1226,7 +1226,7 @@ function McpSection() {
                   ) : (
                     <button
                       onClick={() => setConfirmDelete(s.name)}
-                      className="text-xs text-ink-dim hover:text-red-600 transition-colors"
+                      className="text-xs text-ink-dim hover:text-failed transition-colors"
                     >
                       删除
                     </button>
@@ -1243,7 +1243,7 @@ function McpSection() {
         <div className="bg-surface border border-line rounded-lg p-3 space-y-3">
           <h4 className="text-xs font-semibold text-ink-muted">添加 MCP 服务器</h4>
           {formError && (
-            <p className="text-xs text-red-600">{formError}</p>
+            <p className="text-xs text-failed">{formError}</p>
           )}
           <div className="space-y-2">
             <div>
@@ -1554,7 +1554,7 @@ function FeishuSection() {
         {testResult && (
           <p
             className={`text-xs mt-2 ${
-              testResult.startsWith('成功') ? 'text-green-600' : 'text-red-600'
+              testResult.startsWith('成功') ? 'text-done' : 'text-failed'
             }`}
           >
             {testResult}
@@ -1579,7 +1579,7 @@ function FeishuSection() {
                 <p
                   key={i}
                   className={`text-xs font-mono ${
-                    entry.includes('ERR') ? 'text-red-600' : 'text-green-600'
+                    entry.includes('ERR') ? 'text-failed' : 'text-done'
                   }`}
                 >
                   {entry}
@@ -1605,7 +1605,7 @@ function FeishuSection() {
         <div className="flex items-center gap-2">
           <span
             className={`w-2 h-2 rounded-full flex-shrink-0 ${
-              nodeVersion ? 'bg-green-400' : nodeVersion === null ? 'bg-red-500' : 'bg-elevated'
+              nodeVersion ? 'bg-done' : nodeVersion === null ? 'bg-failed' : 'bg-elevated'
             }`}
           />
           <span className="text-xs text-ink-muted">
@@ -1643,18 +1643,18 @@ function FeishuSection() {
           <span
             className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium ${
               bridgeStatus.state === 'running'
-                ? 'bg-green-900/40 text-green-700'
+                ? 'bg-green-900/40 text-done'
                 : bridgeStatus.state === 'error'
-                  ? 'bg-red-900/40 text-red-600'
+                  ? 'bg-red-900/40 text-failed'
                   : 'bg-surface-2 text-ink-dim'
             }`}
           >
             <span
               className={`w-1.5 h-1.5 rounded-full ${
                 bridgeStatus.state === 'running'
-                  ? 'bg-green-400'
+                  ? 'bg-done'
                   : bridgeStatus.state === 'error'
-                    ? 'bg-red-400'
+                    ? 'bg-failed'
                     : 'bg-elevated'
               }`}
             />
@@ -1665,7 +1665,7 @@ function FeishuSection() {
                 : '已停止'}
           </span>
           {bridgeStatus.state === 'error' && bridgeStatus.message && (
-            <span className="text-xs text-red-600 truncate">{bridgeStatus.message}</span>
+            <span className="text-xs text-failed truncate">{bridgeStatus.message}</span>
           )}
         </div>
 
@@ -1714,7 +1714,7 @@ function FeishuSection() {
                     key={i}
                     className={`text-xs font-mono leading-relaxed ${
                       entry.includes('[ERR]') || entry.includes('[err]')
-                        ? 'text-red-600'
+                        ? 'text-failed'
                         : entry.includes('[WARN]')
                           ? 'text-yellow-400'
                           : 'text-ink-muted'
@@ -1791,7 +1791,7 @@ function SkillsSection() {
               <p className="text-sm font-medium text-ink-muted">{p.name}</p>
               <p className="text-xs text-ink-dim mt-0.5">{p.desc}</p>
             </div>
-            <span className="text-xs text-yellow-600 bg-yellow-900/30 px-1.5 py-0.5 rounded">
+            <span className="text-xs text-awaiting bg-yellow-900/30 px-1.5 py-0.5 rounded">
               即将上线
             </span>
           </div>
@@ -1826,7 +1826,7 @@ function AgentMarketSection() {
                 <p className="text-sm font-medium text-ink-muted">{c.name}</p>
                 <p className="text-xs text-ink-dim mt-0.5">{c.org}</p>
               </div>
-              <span className="text-xs text-yellow-600 bg-yellow-900/30 px-1.5 py-0.5 rounded">
+              <span className="text-xs text-awaiting bg-yellow-900/30 px-1.5 py-0.5 rounded">
                 敬请期待
               </span>
             </div>
@@ -2040,7 +2040,7 @@ function WecomSection() {
         {testResult && (
           <p
             className={`text-xs mt-2 ${
-              testResult.startsWith('成功') ? 'text-green-600' : 'text-red-600'
+              testResult.startsWith('成功') ? 'text-done' : 'text-failed'
             }`}
           >
             {testResult}
@@ -2065,7 +2065,7 @@ function WecomSection() {
                 <p
                   key={i}
                   className={`text-xs font-mono ${
-                    entry.includes('ERR') ? 'text-red-600' : 'text-green-600'
+                    entry.includes('ERR') ? 'text-failed' : 'text-done'
                   }`}
                 >
                   {entry}
@@ -2225,9 +2225,9 @@ function SyncSection() {
   const state = status?.state ?? 'disabled'
   const dotClass =
     state === 'connected'
-      ? 'bg-green-400'
+      ? 'bg-done'
       : state === 'connecting' || state === 'reconnecting'
-        ? 'bg-yellow-400'
+        ? 'bg-awaiting'
         : 'bg-elevated'
   const stateLabel =
     state === 'connected'
@@ -2296,7 +2296,7 @@ function SyncSection() {
             </div>
 
             {status.last_error && state !== 'connected' && (
-              <p className="text-xs text-red-600 break-words">{status.last_error}</p>
+              <p className="text-xs text-failed break-words">{status.last_error}</p>
             )}
           </div>
 
@@ -2348,7 +2348,7 @@ function SyncSection() {
           <p className="text-xs text-ink-dim -mt-2">
             退出后回到本地模式：本地数据保留，仅停止跨端同步。
           </p>
-          {actionError && <p className="text-xs text-red-600">{actionError}</p>}
+          {actionError && <p className="text-xs text-failed">{actionError}</p>}
         </div>
       ) : (
         // ── Logged out（本地模式）：登录/注册统一走账号门户，不再放重复表单 ──
