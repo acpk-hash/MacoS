@@ -109,7 +109,12 @@ export interface LitPaper {
   year: string
   abstract: string
   url: string
+  /** "arxiv" | "openalex" | "dblp" | "eprint" */
   source: string
+  /** DBLP venue 徽章（如 "CRYPTO"），其他来源为空串。 */
+  venue: string
+  /** 裸 DOI（如 "10.1007/…"），未知时为空串。 */
+  doi: string
 }
 
 /** Mirrors Rust litsearch::LitFigure (figure image URL + caption). */
@@ -171,7 +176,12 @@ interface ResearchStore {
   readRunOutput: (path: string) => Promise<string>
   runPipeline: (id: string, input?: string) => Promise<RunLaunch>
 
-  litSearch: (query: string, source: string, limit: number) => Promise<LitPaper[]>
+  litSearch: (
+    query: string,
+    source: string,
+    limit: number,
+    venues?: string[],
+  ) => Promise<LitPaper[]>
   litAnalyze: (
     papers: LitPaper[],
     instruction: string,
@@ -268,8 +278,13 @@ export const useResearchStore = create<ResearchStore>((set) => ({
   runPipeline: (id, input) =>
     tauriInvoke<RunLaunch>('research_run_pipeline', { id, input: input ?? null }),
 
-  litSearch: (query, source, limit) =>
-    tauriInvoke<LitPaper[]>('lit_search', { query, source, limit }),
+  litSearch: (query, source, limit, venues) =>
+    tauriInvoke<LitPaper[]>('lit_search', {
+      query,
+      source,
+      limit,
+      venues: venues ?? null,
+    }),
   litAnalyze: (papers, instruction, model, providerId) =>
     tauriInvoke<LitAnalyzeResult>('lit_analyze', {
       papers,

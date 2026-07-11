@@ -653,6 +653,26 @@ function analysisToMarkdown(r: LitAnalyzeResult): string {
   )
 }
 
+const LIT_SOURCE_LABEL: Record<string, string> = {
+  arxiv: 'arXiv',
+  openalex: 'OpenAlex',
+  dblp: 'DBLP',
+  eprint: 'IACR ePrint',
+}
+
+/** 与 Rust litsearch::DBLP_VENUES 对齐的九大密码学/安全顶会顶刊。 */
+const DBLP_VENUES: { key: string; label: string }[] = [
+  { key: 'crypto', label: 'CRYPTO' },
+  { key: 'eurocrypt', label: 'EUROCRYPT' },
+  { key: 'asiacrypt', label: 'ASIACRYPT' },
+  { key: 'sp', label: 'S&P' },
+  { key: 'ccs', label: 'CCS' },
+  { key: 'uss', label: 'USENIX Sec' },
+  { key: 'ndss', label: 'NDSS' },
+  { key: 'tifs', label: 'TIFS' },
+  { key: 'tdsc', label: 'TDSC' },
+]
+
 function PaperCard({
   paper,
   checked,
@@ -682,8 +702,13 @@ function PaperCard({
         <div className="text-[13px] text-ink font-semibold leading-5">{paper.title}</div>
         <div className="flex flex-wrap items-center gap-2 mt-1">
           <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary-tint text-primary font-medium flex-shrink-0">
-            {paper.source === 'arxiv' ? 'arXiv' : 'OpenAlex'}
+            {LIT_SOURCE_LABEL[paper.source] ?? paper.source}
           </span>
+          {paper.venue && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#3fb9501f] text-done font-medium flex-shrink-0">
+              {paper.venue}
+            </span>
+          )}
           {paper.year && <span className="text-[10.5px] text-ink-dim">{paper.year}</span>}
           {paper.authors.length > 0 && (
             <span className="text-[10.5px] text-ink-dim truncate max-w-[440px]">
@@ -721,6 +746,8 @@ function LitSearchTab() {
 
   const [query, setQuery] = useState('')
   const [source, setSource] = useState('arxiv')
+  // DBLP venue 多选；空集 = 全部九个顶会顶刊。
+  const [venues, setVenues] = useState<Set<string>>(new Set())
   const [limit, setLimit] = useState(10)
   const [searching, setSearching] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
@@ -761,7 +788,12 @@ function LitSearchTab() {
     setSearching(true)
     setSearchError(null)
     try {
-      const res = await litSearch(q, source, limit)
+      const res = await litSearch(
+        q,
+        source,
+        limit,
+        source === 'dblp' ? Array.from(venues) : undefined,
+      )
       setPapers(res)
       setSelected(new Set())
       setSearched(true)
@@ -836,6 +868,8 @@ function LitSearchTab() {
         />
         <select value={source} onChange={(e) => setSource(e.target.value)} className={selectCls}>
           <option value="arxiv">arXiv</option>
+          <option value="eprint">IACR ePrint</option>
+          <option value="dblp">DBLP（顶会顶刊）</option>
           <option value="openalex">OpenAlex</option>
         </select>
         <select
@@ -857,6 +891,44 @@ function LitSearchTab() {
         </button>
       </div>
 
+      {source === 'dblp' && (
+        <div className="px-4 py-2 border-b border-line/60 flex-shrink-0 flex flex-wrap items-center gap-1.5">
+          <span className="text-[11px] text-ink-dim mr-1">会议/期刊：</span>
+          <button
+            onClick={() => setVenues(new Set())}
+            className={
+              'text-[10.5px] px-2 py-0.5 rounded-md border transition-colors ' +
+              (venues.size === 0
+                ? 'bg-primary-tint border-primary/60 text-primary font-medium'
+                : 'bg-surface-2 border-line text-ink-muted hover:text-ink')
+            }
+          >
+            全部
+          </button>
+          {DBLP_VENUES.map((v) => (
+            <button
+              key={v.key}
+              onClick={() =>
+                setVenues((prev) => {
+                  const next = new Set(prev)
+                  if (next.has(v.key)) next.delete(v.key)
+                  else next.add(v.key)
+                  return next
+                })
+              }
+              className={
+                'text-[10.5px] px-2 py-0.5 rounded-md border transition-colors ' +
+                (venues.has(v.key)
+                  ? 'bg-primary-tint border-primary/60 text-primary font-medium'
+                  : 'bg-surface-2 border-line text-ink-muted hover:text-ink')
+              }
+            >
+              {v.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {searchError && (
         <div className="px-4 py-2 text-[12px] text-failed border-b border-line/60">
           {searchError}
@@ -875,7 +947,7 @@ function LitSearchTab() {
             <p className="text-ink-dim text-xs mt-1">
               {searched
                 ? '换个关键词或切换数据源试试。'
-                : '支持 arXiv 与 OpenAlex 两个免费数据源，搜到后勾选文献即可做 AI 分析。'}
+                : '支持 arXiv、IACR ePrint、DBLP（CRYPTO/S&P 等九大密码学与安全顶会顶刊）与 OpenAlex，搜到后勾选文献即可做 AI 分析。'}
             </p>
           </div>
         ) : (
@@ -1012,9 +1084,11 @@ function LitSearchTab() {
                 </div>
               ) : (
                 <div className="text-[12px] text-ink-dim">
-                  将自动抓取勾选文献的原文（arXiv 走 ar5iv HTML 全文，抓不到自动退回摘要并注明）、
-                  重要图表与开源代码链接，随后按固定模板逐篇生成详细报告：摘要 / 背景知识 /
-                  Idea Overview / 是否开源 / 方法要点 / 实现与效果 / 重要图表；多篇时附横向对比。
+                  将自动抓取勾选文献的开放版原文：arXiv 走 ar5iv HTML 全文；DBLP/OpenAlex
+                  论文自动匹配 arXiv 或 IACR ePrint 开放版（找不到开放版则仅用元数据并注明，
+                  不抓取付费墙正文）；ePrint 用其公开摘要页。随后按固定模板逐篇生成详细报告：
+                  摘要 / 背景知识 / Idea Overview / 是否开源 / 方法要点 / 实现与效果 /
+                  重要图表；多篇时附横向对比。
                 </div>
               )}
             </div>

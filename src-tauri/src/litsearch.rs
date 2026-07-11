@@ -5,6 +5,17 @@
 //!     small hand-rolled extractor (no extra XML dependency).
 //!   - OpenAlex `https://api.openalex.org/works` — JSON; abstracts arrive as an
 //!     inverted index and are reconstructed locally.
+//!   - DBLP `https://dblp.org/search/publ/api` — JSON, one request per selected
+//!     venue stream (`streamid:conf/crypto:` …), restricted to a whitelist of
+//!     nine crypto/security top venues and sorted newest-first.
+//!   - IACR ePrint `https://eprint.iacr.org/search?q=…` — HTML result list,
+//!     parsed with the same hand-rolled extractor (id/title/authors/abstract).
+//!
+//! Full text policy: only openly available versions are fetched. For DBLP /
+//! OpenAlex hits the analyzer resolves an open version (arXiv id in the ee/doi
+//! link, else an arXiv title match, else an ePrint title match); paywalled
+//! bodies are never fetched — such papers fall back to metadata only, and the
+//! note says so.
 //!
 //! Analysis (v0.9): for each selected arXiv paper the backend fetches the
 //! ar5iv HTML full text (fallback: the arXiv `/abs/` page; final fallback:
@@ -55,8 +66,14 @@ pub struct LitPaper {
     pub abstract_text: String,
     /// Best link to the full text / landing page.
     pub url: String,
-    /// "arxiv" | "openalex"
+    /// "arxiv" | "openalex" | "dblp" | "eprint"
     pub source: String,
+    /// Venue badge for DBLP hits (e.g. "CRYPTO"), "" for other sources.
+    #[serde(default)]
+    pub venue: String,
+    /// Bare DOI (e.g. "10.1007/…"), "" when unknown.
+    #[serde(default)]
+    pub doi: String,
 }
 
 /// Paper payload accepted by `lit_analyze` (subset the frontend checks send).
@@ -75,6 +92,10 @@ pub struct LitPaperInput {
     pub url: String,
     #[serde(default)]
     pub source: String,
+    #[serde(default)]
+    pub venue: String,
+    #[serde(default)]
+    pub doi: String,
 }
 
 /// One figure extracted from the ar5iv HTML (absolute image URL + caption).
@@ -214,6 +235,8 @@ pub(crate) fn parse_arxiv_atom(xml: &str) -> Vec<LitPaper> {
             abstract_text: summary,
             url,
             source: "arxiv".to_string(),
+            venue: String::new(),
+            doi: String::new(),
         });
     }
     out
@@ -284,11 +307,16 @@ pub(crate) fn parse_openalex_json(body: &str) -> Result<Vec<LitPaper>, String> {
             }
         }
         let abstract_text = reconstruct_abstract(w.get("abstract_inverted_index"));
-        let url = w
+        let doi_url = w
             .get("doi")
             .and_then(|d| d.as_str())
             .filter(|s| !s.is_empty())
-            .map(|s| s.to_string())
+            .map(|s| s.to_string());
+        let doi = doi_url
+            .as_deref()
+            .map(|u| u.trim_start_matches("https://doi.org/").to_string())
+            .unwrap_or_default();
+        let url = doi_url
             .or_else(|| {
                 w.pointer("/primary_location/landing_page_url")
                     .and_then(|u| u.as_str())
@@ -303,9 +331,280 @@ pub(crate) fn parse_openalex_json(body: &str) -> Result<Vec<LitPaper>, String> {
             abstract_text,
             url,
             source: "openalex".to_string(),
+            venue: String::new(),
+            doi,
         });
     }
     Ok(out)
+}
+
+// -- DBLP (crypto/security top-venue whitelist) ----------------------------------
+
+/// One whitelisted DBLP venue: frontend key, DBLP stream id, short badge label.
+pub(crate) struct DblpVenue {
+    pub key: &'static str,
+    pub stream: &'static str,
+    pub label: &'static str,
+}
+
+/// The nine crypto/security venues `lit_search` is allowed to return.
+pub(crate) const DBLP_VENUES: &[DblpVenue] = &[
+    DblpVenue { key: "crypto", stream: "conf/crypto", label: "CRYPTO" },
+    DblpVenue { key: "eurocrypt", stream: "conf/eurocrypt", label: "EUROCRYPT" },
+    DblpVenue { key: "asiacrypt", stream: "conf/asiacrypt", label: "ASIACRYPT" },
+    DblpVenue { key: "sp", stream: "conf/sp", label: "IEEE S&P" },
+    DblpVenue { key: "ccs", stream: "conf/ccs", label: "CCS" },
+    DblpVenue { key: "uss", stream: "conf/uss", label: "USENIX Security" },
+    DblpVenue { key: "ndss", stream: "conf/ndss", label: "NDSS" },
+    DblpVenue { key: "tifs", stream: "journals/tifs", label: "IEEE TIFS" },
+    DblpVenue { key: "tdsc", stream: "journals/tdsc", label: "IEEE TDSC" },
+];
+
+/// Whitelist lookup by DBLP record key (e.g. "conf/crypto/CramerD98").
+fn venue_of_dblp_key(rec_key: &str) -> Option<&'static DblpVenue> {
+    DBLP_VENUES
+        .iter()
+        .find(|v| rec_key.starts_with(v.stream) && rec_key[v.stream.len()..].starts_with('/'))
+}
+
+/// DBLP's XML→JSON conversion collapses single-element lists into an object;
+/// treat both shapes as "a list of values".
+fn json_items(v: Option<&Value>) -> Vec<&Value> {
+    match v {
+        Some(Value::Array(a)) => a.iter().collect(),
+        Some(other) => vec![other],
+        None => Vec::new(),
+    }
+}
+
+/// Parse one DBLP `/search/publ/api?format=json` response. Hits whose record
+/// key falls outside the venue whitelist are dropped.
+pub(crate) fn parse_dblp_json(body: &str) -> Result<Vec<LitPaper>, String> {
+    let v: Value = serde_json::from_str(body).map_err(|e| format!("DBLP 响应解析失败: {e}"))?;
+    let hits = v
+        .pointer("/result/hits")
+        .ok_or_else(|| "DBLP 响应缺少 hits 字段".to_string())?;
+    let mut out = Vec::new();
+    for hit in json_items(hits.get("hit")) {
+        let Some(info) = hit.get("info") else { continue };
+        let rec_key = info.get("key").and_then(|k| k.as_str()).unwrap_or("");
+        let Some(venue) = venue_of_dblp_key(rec_key) else { continue };
+        let title = info
+            .get("title")
+            .and_then(|t| t.as_str())
+            .unwrap_or("")
+            .trim()
+            .trim_end_matches('.')
+            .to_string();
+        if title.is_empty() {
+            continue;
+        }
+        let authors = json_items(info.pointer("/authors/author"))
+            .into_iter()
+            .filter_map(|a| {
+                a.get("text")
+                    .and_then(|t| t.as_str())
+                    .or_else(|| a.as_str())
+            })
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>();
+        let year = info
+            .get("year")
+            .and_then(|y| y.as_str())
+            .unwrap_or("")
+            .to_string();
+        let doi = info
+            .get("doi")
+            .and_then(|d| d.as_str())
+            .unwrap_or("")
+            .to_string();
+        let ee = json_items(info.get("ee"))
+            .into_iter()
+            .filter_map(|e| e.as_str())
+            .next()
+            .unwrap_or("")
+            .to_string();
+        let url = if !ee.is_empty() {
+            ee
+        } else if !doi.is_empty() {
+            format!("https://doi.org/{doi}")
+        } else {
+            info.get("url")
+                .and_then(|u| u.as_str())
+                .unwrap_or("")
+                .to_string()
+        };
+        out.push(LitPaper {
+            id: rec_key.to_string(),
+            title,
+            authors,
+            year,
+            abstract_text: String::new(), // DBLP carries no abstracts.
+            url,
+            source: "dblp".to_string(),
+            venue: venue.label.to_string(),
+            doi,
+        });
+    }
+    Ok(out)
+}
+
+/// Dedup by id, sort newest-first (recency preference), cap at `limit`.
+pub(crate) fn dedup_recent_first(mut papers: Vec<LitPaper>, limit: usize) -> Vec<LitPaper> {
+    let mut seen = std::collections::HashSet::new();
+    papers.retain(|p| seen.insert(p.id.clone()));
+    papers.sort_by_key(|p| std::cmp::Reverse(p.year.parse::<i32>().unwrap_or(0)));
+    papers.truncate(limit);
+    papers
+}
+
+/// Search DBLP restricted to the whitelisted venues: one request per selected
+/// stream (`streamid:` facet), merged newest-first. `venue_keys` empty = all.
+async fn search_dblp(
+    query: &str,
+    venue_keys: &[String],
+    limit: u32,
+) -> Result<Vec<LitPaper>, String> {
+    let selected: Vec<&DblpVenue> = if venue_keys.is_empty() {
+        DBLP_VENUES.iter().collect()
+    } else {
+        DBLP_VENUES
+            .iter()
+            .filter(|v| venue_keys.iter().any(|k| k == v.key))
+            .collect()
+    };
+    if selected.is_empty() {
+        return Err("未选择有效的 DBLP 会议/期刊".to_string());
+    }
+    let client = lit_client()?;
+    let fetches = selected.iter().map(|v| {
+        let client = client.clone();
+        let q = format!("{} streamid:{}:", query, v.stream);
+        let h = limit.to_string();
+        async move {
+            let resp = client
+                .get("https://dblp.org/search/publ/api")
+                .query(&[("q", q.as_str()), ("format", "json"), ("h", h.as_str())])
+                .send()
+                .await
+                .map_err(|e| format!("DBLP 请求失败: {e}"))?;
+            let status = resp.status();
+            let text = resp.text().await.map_err(|e| format!("DBLP 读取失败: {e}"))?;
+            if !status.is_success() {
+                return Err(format!("DBLP HTTP {}", status.as_u16()));
+            }
+            parse_dblp_json(&text)
+        }
+    });
+    let results = futures_util::future::join_all(fetches).await;
+    let mut papers = Vec::new();
+    let mut first_err: Option<String> = None;
+    for r in results {
+        match r {
+            Ok(mut v) => papers.append(&mut v),
+            Err(e) => first_err = first_err.or(Some(e)),
+        }
+    }
+    if papers.is_empty() {
+        if let Some(e) = first_err {
+            return Err(e);
+        }
+    }
+    Ok(dedup_recent_first(papers, limit as usize))
+}
+
+// -- IACR ePrint ------------------------------------------------------------------
+
+/// Parse the ePrint `/search?q=…` HTML result list. Each hit is anchored by an
+/// `<a title="YYYY/NNN" class="paperlink" href="/YYYY/NNN">` link followed by
+/// `<strong>title</strong>`, an author span (`fst-italic`) and a
+/// `search-abstract` paragraph.
+pub(crate) fn parse_eprint_html(html: &str) -> Vec<LitPaper> {
+    const ANCHOR: &str = "class=\"paperlink\"";
+    let mut out = Vec::new();
+    let mut starts: Vec<usize> = Vec::new();
+    let mut pos = 0;
+    while let Some(hit) = html[pos..].find(ANCHOR) {
+        starts.push(pos + hit);
+        pos = pos + hit + ANCHOR.len();
+    }
+    for (i, &at) in starts.iter().enumerate() {
+        let seg_end = starts.get(i + 1).copied().unwrap_or(html.len());
+        // Enclosing <a …> tag around the paperlink class → href gives the id.
+        let Some(tag_start) = html[..at].rfind("<a ") else { continue };
+        let Some(tag_gt) = html[tag_start..seg_end].find('>') else { continue };
+        let tag = &html[tag_start..tag_start + tag_gt + 1];
+        let Some(href) = xml_attr_value(tag, "href") else { continue };
+        let id = href.trim_matches('/').to_string();
+        // id shape: "YYYY/NNN".
+        let year: String = id.chars().take(4).collect();
+        if id.len() < 6 || !year.chars().all(|c| c.is_ascii_digit()) {
+            continue;
+        }
+        let seg = &html[at..seg_end];
+        let title = xml_tag_text(seg, "strong")
+            .map(|t| collapse_ws(&xml_unescape(&strip_tags(&t))))
+            .unwrap_or_default();
+        if title.is_empty() {
+            continue;
+        }
+        let authors = seg
+            .find("class=\"fst-italic\">")
+            .and_then(|a| {
+                let rest = &seg[a + "class=\"fst-italic\">".len()..];
+                rest.find("</span>").map(|e| &rest[..e])
+            })
+            .map(|s| {
+                collapse_ws(&xml_unescape(&strip_tags(s)))
+                    .split(',')
+                    .map(|a| a.trim().to_string())
+                    .filter(|a| !a.is_empty())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let abstract_text = seg
+            .find("search-abstract\">")
+            .and_then(|a| {
+                let rest = &seg[a + "search-abstract\">".len()..];
+                rest.find("</p>").map(|e| &rest[..e])
+            })
+            .map(|s| collapse_ws(&xml_unescape(&strip_tags(s))))
+            .unwrap_or_default();
+        out.push(LitPaper {
+            url: format!("https://eprint.iacr.org/{id}"),
+            id,
+            title,
+            authors,
+            year,
+            abstract_text,
+            source: "eprint".to_string(),
+            venue: String::new(),
+            doi: String::new(),
+        });
+    }
+    out
+}
+
+/// Search the IACR Cryptology ePrint Archive (HTML result list).
+async fn search_eprint(query: &str, limit: u32) -> Result<Vec<LitPaper>, String> {
+    let resp = lit_client()?
+        .get("https://eprint.iacr.org/search")
+        .query(&[("q", query)])
+        .send()
+        .await
+        .map_err(|e| format!("ePrint 请求失败: {e}"))?;
+    let status = resp.status();
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| format!("ePrint 读取失败: {e}"))?;
+    if !status.is_success() {
+        return Err(format!("ePrint HTTP {}", status.as_u16()));
+    }
+    let mut papers = parse_eprint_html(&text);
+    papers.truncate(limit as usize);
+    Ok(papers)
 }
 
 // -- HTTP search -----------------------------------------------------------------
@@ -319,10 +618,15 @@ fn lit_client() -> Result<reqwest::Client, String> {
 }
 
 async fn search_arxiv(query: &str, limit: u32) -> Result<Vec<LitPaper>, String> {
+    search_arxiv_raw(&format!("all:{}", query), limit).await
+}
+
+/// arXiv query with a caller-built `search_query` (e.g. `ti:"…"` title match).
+async fn search_arxiv_raw(search_query: &str, limit: u32) -> Result<Vec<LitPaper>, String> {
     let resp = lit_client()?
         .get("https://export.arxiv.org/api/query")
         .query(&[
-            ("search_query", format!("all:{}", query)),
+            ("search_query", search_query.to_string()),
             ("start", "0".to_string()),
             ("max_results", limit.to_string()),
         ])
@@ -593,8 +897,136 @@ async fn fetch_arxiv_abs_text(id: &str) -> Option<String> {
     }
 }
 
+// -- Open-access version resolution (DBLP / OpenAlex → arXiv / ePrint) ------------
+
+/// Extract an arXiv id from an abs/pdf/ar5iv link or an "10.48550/arXiv.…" DOI.
+pub(crate) fn arxiv_id_from_link(s: &str) -> Option<String> {
+    let s = s.trim();
+    for marker in ["arxiv.org/abs/", "arxiv.org/pdf/", "ar5iv.org/abs/", "10.48550/arXiv."] {
+        if let Some(at) = s.find(marker) {
+            let tail = &s[at + marker.len()..];
+            let end = tail
+                .find(|c: char| !(c.is_ascii_alphanumeric() || ".-/".contains(c)))
+                .unwrap_or(tail.len());
+            let id = tail[..end]
+                .trim_end_matches(".pdf")
+                .trim_matches('/')
+                .to_string();
+            if !id.is_empty() {
+                return Some(id);
+            }
+        }
+    }
+    None
+}
+
+/// Lowercase alphanumerics only — robust title equality across punctuation,
+/// spacing and TeX markup differences.
+pub(crate) fn normalize_title(t: &str) -> String {
+    t.chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .collect::<String>()
+        .to_ascii_lowercase()
+}
+
+/// Same paper? Exact normalized match, or one is a long prefix of the other
+/// (subtitle variants like "…; or: Can ZK be for Free?").
+pub(crate) fn titles_match(a: &str, b: &str) -> bool {
+    let (na, nb) = (normalize_title(a), normalize_title(b));
+    if na.is_empty() || nb.is_empty() {
+        return false;
+    }
+    na == nb
+        || (na.len() >= 25 && nb.starts_with(&na))
+        || (nb.len() >= 25 && na.starts_with(&nb))
+}
+
+/// Find an arXiv version of `title` via a `ti:"…"` query (open-access match).
+async fn find_arxiv_id_by_title(title: &str) -> Option<String> {
+    let clean = title.replace('"', " ");
+    let q = format!("ti:\"{}\"", clean.trim());
+    let hits = search_arxiv_raw(&q, 5).await.ok()?;
+    hits.into_iter()
+        .find(|h| titles_match(&h.title, title))
+        .map(|h| h.id)
+}
+
+/// Find an IACR ePrint version of `title` via its search page.
+async fn find_eprint_id_by_title(title: &str) -> Option<String> {
+    let hits = search_eprint(title, 5).await.ok()?;
+    hits.into_iter()
+        .find(|h| titles_match(&h.title, title))
+        .map(|h| h.id)
+}
+
+/// Plain text of an ePrint landing page (`https://eprint.iacr.org/YYYY/NNN`) —
+/// abstract + keywords + metadata. The PDF body itself is not parsed.
+async fn fetch_eprint_page_text(id: &str) -> Option<String> {
+    let client = fulltext_client().ok()?;
+    let resp = client
+        .get(format!("https://eprint.iacr.org/{id}"))
+        .send()
+        .await
+        .ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let body = resp.text().await.ok()?;
+    let text = html_to_text(&body);
+    if text.is_empty() {
+        None
+    } else {
+        Some(truncate_chars(&text, 8_000))
+    }
+}
+
+/// Try the full arXiv pipeline (ar5iv full text → abs page) for `id`, filling
+/// `ex` and returning true on any success. `via` labels the note ("" for
+/// native arXiv papers, "arXiv 开放版" when resolved from another source).
+async fn fill_from_arxiv(ex: &mut LitPaperExtras, id: &str, open_version: bool) -> bool {
+    if let Some((html, final_url)) = fetch_arxiv_fulltext(id).await {
+        let body = article_scope(&html);
+        ex.figures = extract_figures(body, &final_url);
+        merge_links(&mut ex.code_links, extract_code_links(&xml_unescape(body)));
+        ex.fulltext = truncate_chars(&html_to_text(&html), FULLTEXT_PER_PAPER_CAP);
+        ex.note = if open_version {
+            format!("全文（arXiv 开放版 {id}，ar5iv HTML 抓取）")
+        } else {
+            "全文（ar5iv HTML 抓取）".to_string()
+        };
+        return true;
+    }
+    if let Some(text) = fetch_arxiv_abs_text(id).await {
+        merge_links(&mut ex.code_links, extract_code_links(&text));
+        ex.fulltext = text;
+        ex.note = if open_version {
+            format!("部分（arXiv 开放版 {id} 摘要页，ar5iv 全文不可用）")
+        } else {
+            "部分（arXiv 摘要页，ar5iv 全文不可用）".to_string()
+        };
+        return true;
+    }
+    false
+}
+
+/// Fill `ex` from an ePrint landing page; returns true on success.
+async fn fill_from_eprint(ex: &mut LitPaperExtras, id: &str, open_version: bool) -> bool {
+    let Some(text) = fetch_eprint_page_text(id).await else {
+        return false;
+    };
+    merge_links(&mut ex.code_links, extract_code_links(&text));
+    ex.fulltext = text;
+    ex.note = if open_version {
+        format!("部分（ePrint 开放版 {id} 摘要页，PDF 正文未解析）")
+    } else {
+        "部分（ePrint 摘要页，PDF 正文未解析）".to_string()
+    };
+    true
+}
+
 /// Gather full text / figures / code links for one paper. Never fails: on any
-/// fetch problem it degrades to abstract-only and records why in `note`.
+/// fetch problem it degrades to abstract/metadata-only and records why in
+/// `note`. Only openly available versions are fetched — paywalled bodies never.
 async fn fetch_paper_extras(p: &LitPaperInput) -> LitPaperExtras {
     let mut ex = LitPaperExtras {
         title: p.title.clone(),
@@ -602,23 +1034,49 @@ async fn fetch_paper_extras(p: &LitPaperInput) -> LitPaperExtras {
     };
     merge_links(&mut ex.code_links, extract_code_links(&p.abstract_text));
     let id = p.id.trim();
-    if p.source != "arxiv" || id.is_empty() {
-        ex.note = "仅摘要（非 arXiv 来源，未抓取全文）".to_string();
+
+    // Native arXiv papers: unchanged v0.9 pipeline.
+    if p.source == "arxiv" && !id.is_empty() {
+        if !fill_from_arxiv(&mut ex, id, false).await {
+            ex.note = "仅摘要（全文抓取失败）".to_string();
+        }
         return ex;
     }
-    if let Some((html, final_url)) = fetch_arxiv_fulltext(id).await {
-        let body = article_scope(&html);
-        ex.figures = extract_figures(body, &final_url);
-        merge_links(&mut ex.code_links, extract_code_links(&xml_unescape(body)));
-        ex.fulltext = truncate_chars(&html_to_text(&html), FULLTEXT_PER_PAPER_CAP);
-        ex.note = "全文（ar5iv HTML 抓取）".to_string();
-    } else if let Some(text) = fetch_arxiv_abs_text(id).await {
-        merge_links(&mut ex.code_links, extract_code_links(&text));
-        ex.fulltext = text;
-        ex.note = "部分（arXiv 摘要页，ar5iv 全文不可用）".to_string();
-    } else {
-        ex.note = "仅摘要（全文抓取失败）".to_string();
+
+    // Native ePrint papers: the landing page is the canonical open version.
+    if p.source == "eprint" && !id.is_empty() {
+        if !fill_from_eprint(&mut ex, id, false).await {
+            ex.note = "仅摘要（ePrint 页面抓取失败）".to_string();
+        }
+        return ex;
     }
+
+    // DBLP / OpenAlex / other: resolve an open version, never the paywall.
+    // ① arXiv id already present in the ee/doi link?
+    let mut arxiv_id = arxiv_id_from_link(&p.url).or_else(|| arxiv_id_from_link(&p.doi));
+    // ② else try an arXiv title match.
+    if arxiv_id.is_none() && !p.title.trim().is_empty() {
+        arxiv_id = find_arxiv_id_by_title(&p.title).await;
+    }
+    if let Some(aid) = arxiv_id {
+        if fill_from_arxiv(&mut ex, &aid, true).await {
+            return ex;
+        }
+    }
+    // ③ else try an IACR ePrint title match.
+    if !p.title.trim().is_empty() {
+        if let Some(eid) = find_eprint_id_by_title(&p.title).await {
+            if fill_from_eprint(&mut ex, &eid, true).await {
+                return ex;
+            }
+        }
+    }
+    // ④ no open version found: metadata/abstract only, and say so.
+    ex.note = if p.abstract_text.trim().is_empty() {
+        "仅元数据（未找到开放全文，不抓取付费墙正文）".to_string()
+    } else {
+        "仅摘要（未找到开放全文，不抓取付费墙正文）".to_string()
+    };
     ex
 }
 
@@ -647,6 +1105,9 @@ pub(crate) fn build_analysis_messages(
         }
         if !p.year.is_empty() {
             ctx.push_str(&format!("年份: {}\n", p.year));
+        }
+        if !p.venue.is_empty() {
+            ctx.push_str(&format!("发表于: {}\n", p.venue));
         }
         if !p.source.is_empty() {
             ctx.push_str(&format!("来源: {}\n", p.source));
@@ -705,12 +1166,15 @@ pub(crate) fn build_analysis_messages(
 
 // -- Tauri commands ----------------------------------------------------------------
 
-/// Search a free literature source. `source`: "arxiv" (default) | "openalex".
+/// Search a free literature source.
+/// `source`: "arxiv" (default) | "openalex" | "dblp" | "eprint".
+/// `venues` (DBLP only): whitelist keys like "crypto"/"sp"/…; empty/None = all nine.
 #[tauri::command]
 pub(crate) async fn lit_search(
     query: String,
     source: Option<String>,
     limit: Option<u32>,
+    venues: Option<Vec<String>>,
 ) -> Result<Vec<LitPaper>, String> {
     let q = query.trim();
     if q.is_empty() {
@@ -719,6 +1183,8 @@ pub(crate) async fn lit_search(
     let limit = limit.unwrap_or(10).clamp(1, 50);
     match source.as_deref().unwrap_or("arxiv") {
         "openalex" => search_openalex(q, limit).await,
+        "dblp" => search_dblp(q, &venues.unwrap_or_default(), limit).await,
+        "eprint" => search_eprint(q, limit).await,
         _ => search_arxiv(q, limit).await,
     }
 }
@@ -1072,6 +1538,209 @@ Model: https://huggingface.co/org/model-1.5";
         assert_eq!(links, vec!["https://github.com/real/repo".to_string()]);
     }
 
+    // -- DBLP ---------------------------------------------------------------
+
+    const DBLP_SAMPLE: &str = r#"{
+      "result": {
+        "hits": {
+          "@total": "3", "@sent": "3",
+          "hit": [
+            {
+              "@id": "1",
+              "info": {
+                "authors": {"author": [
+                  {"@pid": "c/RC", "text": "Ronald Cramer"},
+                  {"@pid": "d/ID", "text": "Ivan Damgård"}
+                ]},
+                "title": "Zero-Knowledge Proofs for Finite Field Arithmetic.",
+                "venue": "CRYPTO", "year": "1998",
+                "key": "conf/crypto/CramerD98",
+                "doi": "10.1007/BFB0055745",
+                "ee": "https://doi.org/10.1007/BFb0055745",
+                "url": "https://dblp.org/rec/conf/crypto/CramerD98"
+              }
+            },
+            {
+              "@id": "2",
+              "info": {
+                "authors": {"author": {"@pid": "x/Solo", "text": "Solo Author"}},
+                "title": "A TIFS Journal Paper",
+                "venue": "IEEE Trans. Inf. Forensics Secur.", "year": "2024",
+                "key": "journals/tifs/Solo24",
+                "ee": "https://arxiv.org/abs/2401.01234",
+                "url": "https://dblp.org/rec/journals/tifs/Solo24"
+              }
+            },
+            {
+              "@id": "3",
+              "info": {
+                "title": "Off-Whitelist Paper",
+                "venue": "ICML", "year": "2024",
+                "key": "conf/icml/Nope24",
+                "url": "https://dblp.org/rec/conf/icml/Nope24"
+              }
+            }
+          ]
+        }
+      }
+    }"#;
+
+    #[test]
+    fn dblp_parses_and_filters_venue_whitelist() {
+        let papers = parse_dblp_json(DBLP_SAMPLE).unwrap();
+        // The ICML hit is outside the nine-venue whitelist and must be dropped.
+        assert_eq!(papers.len(), 2);
+
+        let p = &papers[0];
+        assert_eq!(p.id, "conf/crypto/CramerD98");
+        // Trailing period stripped.
+        assert_eq!(p.title, "Zero-Knowledge Proofs for Finite Field Arithmetic");
+        assert_eq!(p.authors, vec!["Ronald Cramer", "Ivan Damgård"]);
+        assert_eq!(p.year, "1998");
+        assert_eq!(p.venue, "CRYPTO");
+        assert_eq!(p.doi, "10.1007/BFB0055745");
+        assert_eq!(p.url, "https://doi.org/10.1007/BFb0055745");
+        assert_eq!(p.source, "dblp");
+        assert_eq!(p.abstract_text, "");
+
+        // Single-author object (not array) still parses; venue label mapped.
+        let q = &papers[1];
+        assert_eq!(q.authors, vec!["Solo Author"]);
+        assert_eq!(q.venue, "IEEE TIFS");
+        assert_eq!(q.url, "https://arxiv.org/abs/2401.01234");
+    }
+
+    #[test]
+    fn dblp_tolerates_empty_hits() {
+        let empty = r#"{"result":{"hits":{"@total":"0"}}}"#;
+        assert!(parse_dblp_json(empty).unwrap().is_empty());
+        assert!(parse_dblp_json("{}").is_err());
+    }
+
+    #[test]
+    fn dblp_venue_key_prefix_must_be_exact_segment() {
+        // "conf/ccs2" must not match the "conf/ccs" stream.
+        assert!(venue_of_dblp_key("conf/ccs/Abc24").is_some());
+        assert!(venue_of_dblp_key("conf/ccs2/Abc24").is_none());
+        assert!(venue_of_dblp_key("conf/sp/Xyz23").is_some());
+        assert!(venue_of_dblp_key("journals/tdsc/Foo22").is_some());
+        assert!(venue_of_dblp_key("conf/icml/Nope24").is_none());
+    }
+
+    #[test]
+    fn dedup_recent_first_sorts_and_caps() {
+        let mk = |id: &str, year: &str| LitPaper {
+            id: id.to_string(),
+            title: id.to_string(),
+            authors: vec![],
+            year: year.to_string(),
+            abstract_text: String::new(),
+            url: String::new(),
+            source: "dblp".to_string(),
+            venue: String::new(),
+            doi: String::new(),
+        };
+        let v = vec![mk("a", "1998"), mk("b", "2024"), mk("a", "1998"), mk("c", "2020")];
+        let out = dedup_recent_first(v, 2);
+        assert_eq!(
+            out.iter().map(|p| p.id.as_str()).collect::<Vec<_>>(),
+            vec!["b", "c"]
+        );
+    }
+
+    // -- IACR ePrint ----------------------------------------------------------
+
+    const EPRINT_SAMPLE: &str = r#"
+      <div class="mb-4">
+        <div class="d-flex"><a title="2026/1366" class="paperlink" href="/2026/1366">2026/1366</a>
+          <span class="ms-2"><a href="/2026/1366.pdf">(PDF)</a></span>
+          <small class="ms-auto">Last updated: 2026-07-02</small>
+        </div>
+        <div class="ms-md-4">
+          <strong>Halfspace Learning for <mark>Lattice</mark> Signature Key Recovery</strong>
+          <div class="mt-1"><span class="fst-italic">Marcus Brinkmann, Nicolai Kraus, Alexander May</span></div>
+          <p class="mb-0 mt-1 search-abstract">Any signature scheme has to protect its
+secret key &amp; randomness.</p>
+        </div>
+      </div>
+      <div class="mb-4">
+        <div class="d-flex"><a title="2025/0042" class="paperlink" href="/2025/0042">2025/0042</a></div>
+        <div class="ms-md-4"><strong>Minimal Entry</strong></div>
+      </div>"#;
+
+    #[test]
+    fn eprint_html_parses_entries() {
+        let papers = parse_eprint_html(EPRINT_SAMPLE);
+        assert_eq!(papers.len(), 2);
+
+        let p = &papers[0];
+        assert_eq!(p.id, "2026/1366");
+        assert_eq!(p.year, "2026");
+        // <mark> highlight stripped.
+        assert_eq!(
+            p.title,
+            "Halfspace Learning for Lattice Signature Key Recovery"
+        );
+        assert_eq!(
+            p.authors,
+            vec!["Marcus Brinkmann", "Nicolai Kraus", "Alexander May"]
+        );
+        assert_eq!(
+            p.abstract_text,
+            "Any signature scheme has to protect its secret key & randomness."
+        );
+        assert_eq!(p.url, "https://eprint.iacr.org/2026/1366");
+        assert_eq!(p.source, "eprint");
+
+        // Entry without authors/abstract still yields a paper.
+        let q = &papers[1];
+        assert_eq!(q.id, "2025/0042");
+        assert_eq!(q.title, "Minimal Entry");
+        assert!(q.authors.is_empty());
+        assert_eq!(q.abstract_text, "");
+    }
+
+    #[test]
+    fn eprint_html_ignores_garbage() {
+        assert!(parse_eprint_html("").is_empty());
+        assert!(parse_eprint_html("<html><body>no results</body></html>").is_empty());
+    }
+
+    // -- Open-version resolution ----------------------------------------------
+
+    #[test]
+    fn arxiv_id_from_link_variants() {
+        assert_eq!(
+            arxiv_id_from_link("https://arxiv.org/abs/2401.01234v2"),
+            Some("2401.01234v2".to_string())
+        );
+        assert_eq!(
+            arxiv_id_from_link("http://arxiv.org/pdf/2401.01234.pdf"),
+            Some("2401.01234".to_string())
+        );
+        assert_eq!(
+            arxiv_id_from_link("10.48550/arXiv.2301.00001"),
+            Some("2301.00001".to_string())
+        );
+        assert_eq!(arxiv_id_from_link("https://doi.org/10.1007/xyz"), None);
+        assert_eq!(arxiv_id_from_link(""), None);
+    }
+
+    #[test]
+    fn titles_match_is_robust_to_punctuation() {
+        assert!(titles_match(
+            "Zero-Knowledge Proofs for Finite Field Arithmetic",
+            "zero knowledge proofs for finite field arithmetic."
+        ));
+        // Long-prefix subtitle variant.
+        assert!(titles_match(
+            "Zero-Knowledge Proofs for Finite Field Arithmetic",
+            "Zero-Knowledge Proofs for Finite Field Arithmetic; or: Can Zero-Knowledge be for Free?"
+        ));
+        assert!(!titles_match("Attention Is All You Need", "Attention"));
+        assert!(!titles_match("", "x"));
+    }
+
     #[test]
     fn truncate_chars_marks_truncation() {
         assert_eq!(truncate_chars("abc", 5), "abc");
@@ -1104,6 +1773,61 @@ Model: https://huggingface.co/org/model-1.5";
             ex.note
         );
         assert!(!ex.fulltext.is_empty());
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_dblp_search() {
+        // Venue-scoped: keyword hits inside CRYPTO only.
+        let papers = search_dblp("zero-knowledge", &["crypto".to_string()], 5)
+            .await
+            .expect("DBLP search should succeed");
+        assert!(!papers.is_empty(), "expected at least one DBLP hit");
+        for p in &papers {
+            println!("[{}] {} ({} {}) {}", p.id, p.title, p.venue, p.year, p.url);
+            assert_eq!(p.venue, "CRYPTO");
+            assert!(p.id.starts_with("conf/crypto/"));
+        }
+        // All-venue merge, newest first.
+        let all = search_dblp("fuzzing", &[], 10).await.expect("all-venue DBLP");
+        assert!(!all.is_empty());
+        for p in &all {
+            println!("[{}] {} ({} {})", p.id, p.title, p.venue, p.year);
+        }
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_eprint_search() {
+        let papers = search_eprint("lattice signature", 5)
+            .await
+            .expect("ePrint search should succeed");
+        assert!(!papers.is_empty(), "expected at least one ePrint hit");
+        for p in &papers {
+            println!("[{}] {} ({}) {}", p.id, p.title, p.year, p.url);
+            assert!(p.url.starts_with("https://eprint.iacr.org/"));
+        }
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_open_version_resolution_for_dblp_paper() {
+        // A TIFS paper whose ee is paywalled but which has an arXiv version.
+        let p = LitPaperInput {
+            title: "Attention Is All You Need".to_string(),
+            id: "conf/nips/VaswaniSPUJGKP17".to_string(),
+            url: "https://doi.org/10.5555/3295222".to_string(),
+            source: "dblp".to_string(),
+            ..Default::default()
+        };
+        let ex = fetch_paper_extras(&p).await;
+        println!("note: {}", ex.note);
+        println!("fulltext chars: {}", ex.fulltext.chars().count());
+        assert!(
+            ex.note.contains("开放版") || ex.note.contains("未找到开放全文"),
+            "unexpected note: {}",
+            ex.note
+        );
     }
 
     #[tokio::test]
