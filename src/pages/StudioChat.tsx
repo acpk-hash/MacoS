@@ -21,7 +21,7 @@ import {
   messageToMarkdown,
   saveExport,
 } from '../lib/exportChat'
-import Composer from '../components/Composer'
+import Composer, { type ComposerHandle } from '../components/Composer'
 import ModelPicker from '../components/ModelPicker'
 import ProviderGuideCard from '../components/ProviderGuideCard'
 import { Mascot } from '../components/ui'
@@ -685,6 +685,11 @@ export default function StudioChat() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const toastTimer = useRef<number | null>(null)
 
+  // 页面级拖放（整个对话区都是拖放目标）。
+  const composerRef = useRef<ComposerHandle>(null)
+  const [dropActive, setDropActive] = useState(false)
+  const dragDepth = useRef(0)
+
   const isStreaming = activeSessionId ? !!streaming[activeSessionId] : false
 
   // 聊天下拉只列 kind=="chat" 的模型（图像/视频模型不混入）。
@@ -731,6 +736,33 @@ export default function StudioChat() {
   const handleSend = (content: string, attachments: Attachment[]) => {
     setAutoScroll(true)
     void send(content, attachments)
+  }
+
+  // ── 拖任意文件进来作为上下文（图片→附件；文本类→内联；其余→提示跳过） ──
+  const dragHasFiles = (e: React.DragEvent) =>
+    Array.from(e.dataTransfer?.types ?? []).includes('Files')
+  const onDragEnter = (e: React.DragEvent) => {
+    if (!dragHasFiles(e)) return
+    e.preventDefault()
+    dragDepth.current += 1
+    setDropActive(true)
+  }
+  const onDragOver = (e: React.DragEvent) => {
+    if (!dragHasFiles(e)) return
+    e.preventDefault()
+  }
+  const onDragLeave = (e: React.DragEvent) => {
+    if (!dragHasFiles(e)) return
+    dragDepth.current = Math.max(0, dragDepth.current - 1)
+    if (dragDepth.current === 0) setDropActive(false)
+  }
+  const onDrop = (e: React.DragEvent) => {
+    dragDepth.current = 0
+    setDropActive(false)
+    if (!dragHasFiles(e)) return
+    if (e.defaultPrevented) return // Composer 自己的拖放区已处理
+    e.preventDefault()
+    composerRef.current?.addFiles(Array.from(e.dataTransfer?.files ?? []))
   }
 
   const exportConversation = async (fmt: 'md' | 'html') => {
@@ -791,7 +823,25 @@ export default function StudioChat() {
         onDelete={(id) => void deleteSession(id)}
       />
 
-      <div className="flex flex-col flex-1 min-w-0 h-full">
+      <div
+        className="relative flex flex-col flex-1 min-w-0 h-full"
+        onDragEnter={onDragEnter}
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+      >
+        {/* 拖放遮罩 */}
+        {dropActive && (
+          <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/55 backdrop-blur-[2px] pointer-events-none">
+            <div className="px-10 py-8 rounded-pop border-2 border-dashed border-lavender/70 bg-surface/90 text-center">
+              <div className="text-3xl mb-2" aria-hidden="true">📂</div>
+              <p className="text-[14px] text-ink font-medium">拖放文件到这里，让 AI 处理</p>
+              <p className="text-[11.5px] text-ink-dim mt-1.5">
+                支持图片与文本类文件（代码 / 日志 / CSV 等），松手即添加为附件
+              </p>
+            </div>
+          </div>
+        )}
         {/* Top bar */}
         <div className="px-4 py-2 border-b border-line flex-shrink-0 flex items-center gap-2 min-h-[48px]">
           <button
@@ -847,6 +897,7 @@ export default function StudioChat() {
               <EmptyState onPick={(t) => setDraft(t)} />
             )}
             <Composer
+              ref={composerRef}
               draft={draft}
               setDraft={setDraft}
               busy={isStreaming}
@@ -894,6 +945,7 @@ export default function StudioChat() {
             </div>
 
             <Composer
+              ref={composerRef}
               draft={draft}
               setDraft={setDraft}
               busy={isStreaming}

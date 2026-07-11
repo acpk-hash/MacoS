@@ -1,11 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useImperativeHandle, useRef, useState } from 'react'
 import type { Attachment } from '../stores/studioStore'
-import {
-  MAX_ATTACH_BYTES,
-  MAX_TEXT_BYTES,
-  compressImage,
-  dataUrlBytes,
-} from '../lib/attachments'
+import { attachmentsTextBytes, filesToAttachments } from '../lib/attachments'
 
 const MAX_TEXTAREA_H = 200 // ~8 lines
 
@@ -27,29 +22,41 @@ export interface ComposerProps {
   maxWidthClass?: string
 }
 
-export default function Composer({
-  draft,
-  setDraft,
-  onSend,
-  disabled = false,
-  busy = false,
-  onStop,
-  showToast,
-  placeholder,
-  footerHint = 'AI 也可能会出错，请核对重要信息。',
-  attachmentsEnabled = true,
-  requireContent = false,
-  renderPlusMenu,
-  paramsSlot,
-  focusToken,
-  maxWidthClass = 'max-w-3xl',
-}: ComposerProps) {
+/** Imperative surface：让页面级拖放遮罩把文件塞进当前 Composer。 */
+export interface ComposerHandle {
+  addFiles: (files: File[]) => void
+}
+
+const Composer = React.forwardRef<ComposerHandle, ComposerProps>(function Composer(
+  {
+    draft,
+    setDraft,
+    onSend,
+    disabled = false,
+    busy = false,
+    onStop,
+    showToast,
+    placeholder,
+    footerHint = 'AI 也可能会出错，请核对重要信息。',
+    attachmentsEnabled = true,
+    requireContent = false,
+    renderPlusMenu,
+    paramsSlot,
+    focusToken,
+    maxWidthClass = 'max-w-3xl',
+  },
+  ref,
+) {
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [dragOver, setDragOver] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
-  const textInputRef = useRef<HTMLInputElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [plusOpen, setPlusOpen] = useState(false)
+
+  // 供 addFiles 的总量预算读取最新附件（避免闭包里拿到旧值）。
+  const attachmentsRef = useRef<Attachment[]>(attachments)
+  attachmentsRef.current = attachments
 
   useEffect(() => {
     const el = textareaRef.current
@@ -68,37 +75,23 @@ export default function Composer({
     }
   }, [focusToken]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const addImageFile = async (file: File) => {
-    try {
-      const dataUrl = await compressImage(file)
-      if (dataUrlBytes(dataUrl) > MAX_ATTACH_BYTES) {
-        showToast('图片超过 10MB，已跳过')
-        return
-      }
-      setAttachments((prev) => [
-        ...prev,
-        { kind: 'image', name: file.name || '图片', data_url: dataUrl },
-      ])
-    } catch {
-      showToast('图片处理失败')
+  /** 任意文件统一入口：图片→压缩附件；文本类→内联；其余→提示跳过。 */
+  const addFiles = async (files: File[]) => {
+    if (!attachmentsEnabled || files.length === 0) return
+    const { attachments: added, warnings } = await filesToAttachments(
+      files,
+      attachmentsTextBytes(attachmentsRef.current),
+    )
+    if (added.length > 0) setAttachments((prev) => [...prev, ...added])
+    if (warnings.length > 0) {
+      const extra = warnings.length > 3 ? ' 等 ' + warnings.length + ' 条' : ''
+      showToast(warnings.slice(0, 3).join('；') + extra)
     }
   }
 
-  const addTextFile = async (file: File) => {
-    if (file.size > MAX_TEXT_BYTES) {
-      showToast('文本文件超过 200KB，已跳过')
-      return
-    }
-    try {
-      const text = await file.text()
-      setAttachments((prev) => [
-        ...prev,
-        { kind: 'text', name: file.name || '文本文件', text },
-      ])
-    } catch {
-      showToast('文本文件读取失败')
-    }
-  }
+  useImperativeHandle(ref, () => ({
+    addFiles: (files: File[]) => void addFiles(files),
+  }))
 
   const removeAttachment = (idx: number) => {
     setAttachments((prev) => prev.filter((_, i) => i !== idx))
@@ -132,31 +125,25 @@ export default function Composer({
     if (!attachmentsEnabled) return
     const items = e.clipboardData?.items
     if (!items) return
+    const files: File[] = []
     for (const item of items) {
       if (item.kind === 'file' && item.type.startsWith('image/')) {
         const file = item.getAsFile()
-        if (file) {
-          e.preventDefault()
-          void addImageFile(file)
-        }
+        if (file) files.push(file)
       }
+    }
+    if (files.length > 0) {
+      e.preventDefault()
+      void addFiles(files)
     }
   }
 
   const handleDrop = (e: React.DragEvent) => {
     if (!attachmentsEnabled) return
+    // preventDefault 同时向页面级遮罩标记「此处已处理」（defaultPrevented）。
     e.preventDefault()
     setDragOver(false)
-    const files = Array.from(e.dataTransfer?.files ?? [])
-    for (const file of files) {
-      if (file.type.startsWith('image/')) void addImageFile(file)
-      else if (
-        file.type.startsWith('text/') ||
-        /\.(txt|md|json|csv|log)$/i.test(file.name)
-      )
-        void addTextFile(file)
-      else showToast('不支持的文件类型：' + file.name)
-    }
+    void addFiles(Array.from(e.dataTransfer?.files ?? []))
   }
 
   const showPlus = !!renderPlusMenu || attachmentsEnabled
@@ -200,7 +187,9 @@ export default function Composer({
                 ) : (
                   <span aria-hidden="true">📄</span>
                 )}
-                <span className="max-w-[140px] truncate">{a.name}</span>
+                <span className="max-w-[140px] truncate" title={a.name}>
+                  {a.name}
+                </span>
                 <button
                   onClick={() => removeAttachment(i)}
                   className="ml-1 text-ink-dim hover:text-failed transition-colors"
@@ -229,7 +218,16 @@ export default function Composer({
                     {renderPlusMenu(() => setPlusOpen(false))}
                   </div>
                 ) : (
-                  <div className="absolute bottom-11 left-0 z-20 w-36 py-1 rounded-lg bg-surface-2 border border-line shadow-xl">
+                  <div className="absolute bottom-11 left-0 z-20 w-44 py-1 rounded-lg bg-surface-2 border border-line shadow-xl">
+                    <button
+                      onClick={() => {
+                        setPlusOpen(false)
+                        fileInputRef.current?.click()
+                      }}
+                      className="w-full text-left px-3 py-1.5 text-xs text-ink-muted hover:bg-elevated transition-colors"
+                    >
+                      添加文件（图片 / 文本）
+                    </button>
                     <button
                       onClick={() => {
                         setPlusOpen(false)
@@ -238,15 +236,6 @@ export default function Composer({
                       className="w-full text-left px-3 py-1.5 text-xs text-ink-muted hover:bg-elevated transition-colors"
                     >
                       上传图片
-                    </button>
-                    <button
-                      onClick={() => {
-                        setPlusOpen(false)
-                        textInputRef.current?.click()
-                      }}
-                      className="w-full text-left px-3 py-1.5 text-xs text-ink-muted hover:bg-elevated transition-colors"
-                    >
-                      上传文本文件
                     </button>
                   </div>
                 ))}
@@ -306,19 +295,18 @@ export default function Composer({
             className="hidden"
             onChange={(e) => {
               const files = Array.from(e.target.files ?? [])
-              files.forEach((f) => void addImageFile(f))
+              if (files.length > 0) void addFiles(files)
               e.target.value = ''
             }}
           />
           <input
-            ref={textInputRef}
+            ref={fileInputRef}
             type="file"
-            accept=".txt,.md,.json,.csv,.log,text/*"
             multiple
             className="hidden"
             onChange={(e) => {
               const files = Array.from(e.target.files ?? [])
-              files.forEach((f) => void addTextFile(f))
+              if (files.length > 0) void addFiles(files)
               e.target.value = ''
             }}
           />
@@ -326,4 +314,6 @@ export default function Composer({
       )}
     </div>
   )
-}
+})
+
+export default Composer

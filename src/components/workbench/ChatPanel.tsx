@@ -14,6 +14,12 @@ import ProviderGuideCard from '../ProviderGuideCard'
 import Composer from '../Composer'
 import type { Attachment } from '../../stores/studioStore'
 import { normalizeMathDelimiters } from '../../lib/mathDelimiters'
+import {
+  MAX_TOTAL_TEXT_BYTES,
+  isTextLikeFile,
+  readTextSmart,
+} from '../../lib/attachments'
+import { useWorkspaceStore } from '../../stores/workspaceStore'
 
 const REMARK_PLUGINS = [remarkGfm, remarkMath]
 const REHYPE_PLUGINS = [
@@ -368,6 +374,58 @@ function ProgressBar({
   )
 }
 
+// ── 拖入文件：工作目录内 → @相对路径引用；目录外 → 内联文本 ────────────────────
+
+type WbAttach =
+  | { id: string; kind: 'ref'; rel: string }
+  | { id: string; kind: 'inline'; name: string; text: string }
+
+function wbUuid(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID()
+  return 'wba-' + Math.random().toString(36).slice(2)
+}
+
+function normalizeEol(s: string): string {
+  return s.replace(/\r\n/g, '\n')
+}
+
+/** 判断拖入的文件是否就是工作目录里的某个文件：
+ *  按文件名搜索候选（ws_search），再逐个比对内容（ws_read_file）。
+ *  命中 → 返回相对路径（codex 可直接读）；否则 null → 内联兜底。 */
+async function matchWorkspaceFile(
+  fileName: string,
+  content: string,
+): Promise<string | null> {
+  if (useWorkspaceStore.getState().remote) return null // 远程(SSH)源不做本地判断
+  try {
+    const { invoke } = await import('@tauri-apps/api/core')
+    const hits = await invoke<Array<{ rel_path: string; line: number | null }>>(
+      'ws_search',
+      { query: fileName, max: 80 },
+    )
+    const lower = fileName.toLowerCase()
+    const cands = Array.from(
+      new Set(
+        hits
+          .filter((h) => h.line == null)
+          .map((h) => h.rel_path)
+          .filter((rel) => (rel.split('/').pop() ?? '').toLowerCase() === lower),
+      ),
+    ).slice(0, 6)
+    const want = normalizeEol(content)
+    for (const rel of cands) {
+      const fc = await invoke<{ content: string; too_large: boolean }>(
+        'ws_read_file',
+        { relPath: rel },
+      )
+      if (!fc.too_large && normalizeEol(fc.content) === want) return rel
+    }
+  } catch {
+    /* 判断失败 → 按内联兜底 */
+  }
+  return null
+}
+
 export default function ChatPanel({
   draft,
   setDraft,
@@ -390,6 +448,11 @@ export default function ChatPanel({
 
   const [autoScroll, setAutoScroll] = useState(true)
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  const [wbAtts, setWbAtts] = useState<WbAttach[]>([])
+  const [dropActive, setDropActive] = useState(false)
+  const dragDepth = useRef(0)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!autoScroll) return
@@ -419,13 +482,122 @@ export default function ChatPanel({
   const noModels = modelsLoaded && aggModels.length === 0
 
   const showToast = (msg: string) => useWorkbenchStore.setState({ notice: msg })
+
+  /** 拖入/选择的文件 → 根内 @引用 或 根外内联文本。 */
+  const handleFiles = async (files: File[]) => {
+    if (files.length === 0) return
+    const notices: string[] = []
+    const added: WbAttach[] = []
+    let used = wbAtts.reduce(
+      (n, a) => (a.kind === 'inline' ? n + a.text.length : n),
+      0,
+    )
+    for (const f of files) {
+      const name = f.name || '文件'
+      if (f.type.startsWith('image/')) {
+        notices.push(`「${name}」工作台暂不支持图片，已跳过`)
+        continue
+      }
+      if (!isTextLikeFile(f)) {
+        notices.push(`「${name}」暂不支持该类型，已跳过`)
+        continue
+      }
+      const res = await readTextSmart(f)
+      if ('error' in res) {
+        notices.push(`「${name}」${res.error}，已跳过`)
+        continue
+      }
+      // 根内检测（截断的文件无法比对内容，直接内联）。
+      const rel = res.truncated ? null : await matchWorkspaceFile(name, res.text)
+      if (rel) {
+        if (!wbAtts.some((a) => a.kind === 'ref' && a.rel === rel) &&
+            !added.some((a) => a.kind === 'ref' && a.rel === rel)) {
+          added.push({ id: wbUuid(), kind: 'ref', rel })
+        }
+        continue
+      }
+      if (used + res.text.length > MAX_TOTAL_TEXT_BYTES) {
+        notices.push(`「${name}」附件总量超出上限，已跳过`)
+        continue
+      }
+      used += res.text.length
+      if (res.truncated) {
+        notices.push(`「${name}」超过 200KB，已截断（建议放进工作目录后拖入）`)
+      }
+      added.push({
+        id: wbUuid(),
+        kind: 'inline',
+        name,
+        text: res.truncated ? res.text + '\n……（文件过长，已截断）' : res.text,
+      })
+    }
+    if (added.length > 0) setWbAtts((prev) => [...prev, ...added])
+    if (notices.length > 0) showToast(notices.slice(0, 3).join('；'))
+  }
+
+  const removeAtt = (id: string) => {
+    setWbAtts((prev) => prev.filter((a) => a.id !== id))
+  }
+
+  // 整个面板作为拖放区（用计数器避免子元素 enter/leave 抖动）。
+  const dragHasFiles = (e: React.DragEvent) =>
+    Array.from(e.dataTransfer?.types ?? []).includes('Files')
+  const onDragEnter = (e: React.DragEvent) => {
+    if (!dragHasFiles(e)) return
+    e.preventDefault()
+    dragDepth.current += 1
+    setDropActive(true)
+  }
+  const onDragOver = (e: React.DragEvent) => {
+    if (!dragHasFiles(e)) return
+    e.preventDefault()
+  }
+  const onDragLeave = (e: React.DragEvent) => {
+    if (!dragHasFiles(e)) return
+    dragDepth.current = Math.max(0, dragDepth.current - 1)
+    if (dragDepth.current === 0) setDropActive(false)
+  }
+  const onDrop = (e: React.DragEvent) => {
+    dragDepth.current = 0
+    setDropActive(false)
+    if (!dragHasFiles(e)) return
+    e.preventDefault()
+    void handleFiles(Array.from(e.dataTransfer?.files ?? []))
+  }
+
+  /** 发送：把 @引用与内联文件并入提示词。 */
   const onSend = (content: string) => {
     setAutoScroll(true)
-    void send(content)
+    const refs = wbAtts.filter((a) => a.kind === 'ref') as Array<
+      Extract<WbAttach, { kind: 'ref' }>
+    >
+    const inlines = wbAtts.filter((a) => a.kind === 'inline') as Array<
+      Extract<WbAttach, { kind: 'inline' }>
+    >
+    const parts: string[] = [content]
+    if (refs.length > 0) {
+      parts.push(
+        '相关文件（位于工作目录内，可直接读取）：' +
+          refs.map((r) => '@' + r.rel).join(' '),
+      )
+    }
+    for (const f of inlines) {
+      parts.push(
+        `[附带文件 ${f.name}（工作目录外，内容已内联）]\n\`\`\`\`\n${f.text}\n\`\`\`\``,
+      )
+    }
+    setWbAtts([])
+    void send(parts.join('\n\n'))
   }
 
   return (
-    <div className="w-[420px] flex-shrink-0 flex flex-col h-full glass border-l border-line">
+    <div
+      className="relative w-[420px] flex-shrink-0 flex flex-col h-full glass border-l border-line"
+      onDragEnter={onDragEnter}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
       {/* Header */}
       <div className="flex items-center gap-2 px-3 h-9 border-b border-line flex-shrink-0">
         <span className="text-[11px] text-sakura">✦</span>
@@ -453,6 +625,8 @@ export default function ChatPanel({
                 交代一个任务，AI 会直接在当前目录改代码、跑命令、写文件。
                 <br />
                 例如「修复 build 报错」或「给这个组件加暗色主题」。
+                <br />
+                也可以把文件拖进来一起交给 AI。
               </div>
             )
           ) : (
@@ -490,6 +664,42 @@ export default function ChatPanel({
         />
       )}
 
+      {/* 拖入的文件 chips：@引用（根内） / 内联（根外） */}
+      {wbAtts.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 px-3 py-2 border-t border-line bg-surface/40 flex-shrink-0">
+          {wbAtts.map((a) => (
+            <span
+              key={a.id}
+              className="flex items-center gap-1.5 pl-2 pr-1.5 py-1 rounded-chip bg-surface-2 border border-line text-[11px]"
+            >
+              {a.kind === 'ref' ? (
+                <span
+                  className="font-mono text-mint truncate max-w-[180px]"
+                  title={`工作目录内文件，将以 @${a.rel} 引用`}
+                >
+                  @{a.rel}
+                </span>
+              ) : (
+                <>
+                  <span aria-hidden="true">📄</span>
+                  <span className="text-ink-muted truncate max-w-[140px]" title={a.name}>
+                    {a.name}
+                  </span>
+                  <span className="text-[10px] text-ink-dim">内联</span>
+                </>
+              )}
+              <button
+                onClick={() => removeAtt(a.id)}
+                className="text-ink-dim hover:text-coral transition-colors"
+                title="移除"
+              >
+                ✕
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
       <Composer
         draft={draft}
         setDraft={setDraft}
@@ -501,6 +711,19 @@ export default function ChatPanel({
         requireContent
         footerHint={null}
         maxWidthClass="max-w-full"
+        renderPlusMenu={(close) => (
+          <div className="w-48 py-1 rounded-lg bg-surface-2 border border-line shadow-xl">
+            <button
+              onClick={() => {
+                close()
+                fileInputRef.current?.click()
+              }}
+              className="w-full text-left px-3 py-1.5 text-xs text-ink-muted hover:bg-elevated transition-colors"
+            >
+              添加文件（引用 / 内联）
+            </button>
+          </div>
+        )}
         placeholder={
           noModels
             ? '未配置模型服务——请到「设置」添加服务商'
@@ -510,9 +733,36 @@ export default function ChatPanel({
               : '会话未启动——请重新打开文件夹'
             : running
             ? '输入插话内容，Enter 发送（会打断当前任务）'
-            : '交代一个任务，Enter 发送'
+            : '交代一个任务，Enter 发送（可拖入文件）'
         }
       />
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? [])
+          if (files.length > 0) void handleFiles(files)
+          e.target.value = ''
+        }}
+      />
+
+      {/* 拖放遮罩 */}
+      {dropActive && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/55 backdrop-blur-[2px] pointer-events-none">
+          <div className="mx-4 px-5 py-6 rounded-card border-2 border-dashed border-lavender/70 bg-surface/90 text-center">
+            <div className="text-2xl mb-1.5" aria-hidden="true">📎</div>
+            <p className="text-[13px] text-ink font-medium">拖放文件到这里</p>
+            <p className="text-[11px] text-ink-dim mt-1 leading-5">
+              工作目录内的文件将以 @路径 引用
+              <br />
+              目录外的文本文件将内联其内容
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
