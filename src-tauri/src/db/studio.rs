@@ -229,6 +229,15 @@ impl Db {
         Ok(())
     }
 
+    /// Delete a single chat message by id.
+    pub fn chat_message_delete(&self, id: &str) -> SqlResult<()> {
+        self.conn.lock().unwrap().execute(
+            "DELETE FROM chat_messages WHERE id = ?1",
+            params![id],
+        )?;
+        Ok(())
+    }
+
     /// List all messages for a session ordered by `created_at ASC`.
     pub fn chat_messages_list(&self, session_id: &str) -> SqlResult<Vec<ChatMessageRow>> {
         let conn = self.conn.lock().unwrap();
@@ -491,6 +500,20 @@ mod tests {
         .unwrap();
         let rows = db.chat_messages_list("cs6").unwrap();
         assert_eq!(rows[0].attachments_json.as_deref(), Some(atts));
+    }
+
+    #[test]
+    fn chat_message_delete_removes_single_row() {
+        let db = new_db();
+        db.chat_session_create("cs8", "t", "m").unwrap();
+        db.chat_message_insert("d1", "cs8", "user", "a", None, None, "complete")
+            .unwrap();
+        db.chat_message_insert("d2", "cs8", "assistant", "b", None, None, "complete")
+            .unwrap();
+        db.chat_message_delete("d1").unwrap();
+        let rows = db.chat_messages_list("cs8").unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].id, "d2");
     }
 
     #[test]

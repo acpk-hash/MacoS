@@ -171,6 +171,20 @@ pub(crate) async fn chat_sessions_delete(
     Ok(())
 }
 
+/// Delete a single chat message from its session.
+#[tauri::command]
+pub(crate) async fn chat_message_delete(
+    message_id: String,
+    state: State<'_, crate::AppState>,
+) -> Result<(), String> {
+    state
+        .db
+        .chat_message_delete(&message_id)
+        .map_err(|e| e.to_string())?;
+    state.sync.notify_snapshot();
+    Ok(())
+}
+
 #[tauri::command]
 pub(crate) async fn chat_messages_list(
     session_id: String,

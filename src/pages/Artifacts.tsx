@@ -21,6 +21,13 @@ import {
 import ModelPicker from '../components/ModelPicker'
 import { Mascot } from '../components/ui'
 import { saveExport } from '../lib/exportChat'
+import type { Attachment } from '../stores/studioStore'
+import {
+  MAX_ATTACH_BYTES,
+  MAX_TEXT_BYTES,
+  compressImage,
+  dataUrlBytes,
+} from '../lib/attachments'
 
 const isTauri =
   typeof window !== 'undefined' &&
@@ -60,6 +67,7 @@ export default function Artifacts() {
     ask,
     stop,
     setHtml,
+    saveDraft,
     reset,
   } = useArtifactStore()
 
@@ -67,9 +75,12 @@ export default function Artifacts() {
   const [mode, setMode] = useState<Mode>('source')
   const [showSource, setShowSource] = useState(true)
   const [toast, setToast] = useState<string | null>(null)
+  const [attachments, setAttachments] = useState<Attachment[]>([])
 
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const toastTimer = useRef<number | null>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
+  const textInputRef = useRef<HTMLInputElement>(null)
 
   const showToast = (m: string) => {
     setToast(m)
@@ -110,11 +121,62 @@ export default function Artifacts() {
     return () => window.removeEventListener('message', onMsg)
   }, [html, setHtml])
 
+  // ── 参考文件附件（复用 attachments.ts：图片压缩转 data URL、文本内联） ──
+
+  const addImageFile = async (file: File) => {
+    try {
+      const dataUrl = await compressImage(file)
+      if (dataUrlBytes(dataUrl) > MAX_ATTACH_BYTES) {
+        showToast('图片超过 10MB，已跳过')
+        return
+      }
+      setAttachments((prev) => [
+        ...prev,
+        { kind: 'image', name: file.name || '图片', data_url: dataUrl },
+      ])
+    } catch {
+      showToast('图片处理失败')
+    }
+  }
+
+  const addTextFile = async (file: File) => {
+    if (file.size > MAX_TEXT_BYTES) {
+      showToast('文本文件超过 200KB，已跳过')
+      return
+    }
+    try {
+      const text = await file.text()
+      setAttachments((prev) => [
+        ...prev,
+        { kind: 'text', name: file.name || '文本文件', text },
+      ])
+    } catch {
+      showToast('文本文件读取失败')
+    }
+  }
+
+  const removeAttachment = (idx: number) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== idx))
+  }
+
   const submit = () => {
-    const t = draft.trim()
-    if (!t || streaming) return
+    let t = draft.trim()
+    if (streaming) return
+    // 只附了参考文件没打字：用一个默认指令直接生成。
+    if (!t && attachments.length > 0) {
+      t = '请基于附带的参考资料生成文档 / PPT。'
+    }
+    if (!t) return
     setDraft('')
-    void ask(t)
+    const atts = attachments
+    setAttachments([])
+    void ask(t, atts)
+  }
+
+  const handleSaveDraft = () => {
+    if (!html) return
+    const ok = saveDraft()
+    showToast(ok ? '已保存草稿（刷新 / 重启后自动恢复）' : '保存失败')
   }
 
   const exportHtml = async () => {
@@ -200,7 +262,19 @@ export default function Artifacts() {
           ) : (
             turns.map((t, i) =>
               t.role === 'user' ? (
-                <div key={i} className="flex justify-end">
+                <div key={i} className="flex flex-col items-end gap-1">
+                  {t.attachments && t.attachments.length > 0 && (
+                    <div className="flex flex-wrap gap-1 justify-end">
+                      {t.attachments.map((a, j) => (
+                        <span
+                          key={j}
+                          className="px-2 py-0.5 rounded-md bg-surface border border-line text-[11px] text-ink-muted"
+                        >
+                          {a.kind === 'image' ? '🖼' : '📄'} {a.name ?? '参考文件'}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   <div className="max-w-[90%] px-3 py-2 rounded-pop rounded-br-md bg-primary text-white text-[13px] leading-6 whitespace-pre-wrap break-words">
                     {t.content}
                   </div>
@@ -229,6 +303,53 @@ export default function Artifacts() {
 
         {/* 输入区 */}
         <div className="border-t border-line p-2.5 flex-shrink-0 space-y-2">
+          {attachments.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {attachments.map((a, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-surface border border-line text-[11px] text-ink-muted"
+                >
+                  {a.kind === 'image' && a.data_url ? (
+                    <img
+                      src={a.data_url}
+                      alt={a.name ?? ''}
+                      className="w-6 h-6 rounded object-cover"
+                    />
+                  ) : (
+                    <span aria-hidden="true">📄</span>
+                  )}
+                  <span className="max-w-[120px] truncate">{a.name}</span>
+                  <button
+                    onClick={() => removeAttachment(i)}
+                    className="text-ink-dim hover:text-red-600 transition-colors"
+                    title="移除"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => imageInputRef.current?.click()}
+              className="text-[11px] text-ink-muted hover:text-ink border border-line rounded-lg px-2 py-1 transition-colors"
+              title="附加参考图片（截图、示意图等）"
+            >
+              📎 图片
+            </button>
+            <button
+              onClick={() => textInputRef.current?.click()}
+              className="text-[11px] text-ink-muted hover:text-ink border border-line rounded-lg px-2 py-1 transition-colors"
+              title="附加参考文档（大纲、素材，.txt / .md / .json / .csv）"
+            >
+              📎 参考文档
+            </button>
+            <span className="text-[10px] text-ink-dim">
+              附件内容会随指令一起发给模型
+            </span>
+          </div>
           <ModelPicker
             models={aggModels}
             value={{ providerId: currentProviderId ?? '', modelId: currentModel }}
@@ -253,7 +374,7 @@ export default function Artifacts() {
             rows={3}
             placeholder={
               turns.length === 0
-                ? '例如：做一个 5 页关于 XX 的 PPT…'
+                ? '例如：做一个 5 页关于 XX 的 PPT…（可附大纲 / 图片作参考）'
                 : '继续对话让它改，如：把第 2 页标题改成…'
             }
             className="w-full resize-none bg-surface border border-line rounded-lg px-2.5 py-2 text-[13px] text-ink placeholder:text-ink-dim focus:outline-none focus:border-primary transition-colors"
@@ -269,7 +390,7 @@ export default function Artifacts() {
             ) : (
               <button
                 onClick={submit}
-                disabled={!currentModel || !draft.trim()}
+                disabled={!currentModel || (!draft.trim() && attachments.length === 0)}
                 className="flex-1 text-xs px-3 py-2 rounded-lg bg-primary text-white hover:bg-primary-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 {turns.length === 0 ? '生成' : '发送'}
@@ -368,6 +489,14 @@ export default function Artifacts() {
           <div className="flex-1" />
 
           <button
+            onClick={handleSaveDraft}
+            disabled={!html}
+            className="text-[11px] text-white bg-primary hover:bg-primary-hover rounded-lg px-2.5 py-1 disabled:opacity-40 transition-colors"
+            title="保存当前草稿到本机（含预览里的就地修改），刷新 / 重启后自动恢复"
+          >
+            保存
+          </button>
+          <button
             onClick={printDoc}
             disabled={!html}
             className="text-[11px] text-ink-muted hover:text-ink border border-line rounded-lg px-2 py-1 disabled:opacity-40 transition-colors"
@@ -378,7 +507,8 @@ export default function Artifacts() {
           <button
             onClick={() => void exportHtml()}
             disabled={!html}
-            className="text-[11px] text-white bg-primary hover:bg-primary-hover rounded-lg px-2.5 py-1 disabled:opacity-40 transition-colors"
+            className="text-[11px] text-ink-muted hover:text-ink border border-line rounded-lg px-2 py-1 disabled:opacity-40 transition-colors"
+            title="另存为 .html 文件（可离线打开）"
           >
             导出 HTML
           </button>
@@ -409,6 +539,32 @@ export default function Artifacts() {
           )}
         </div>
       </div>
+
+      {/* 隐藏的文件选择框（参考附件用） */}
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? [])
+          files.forEach((f) => void addImageFile(f))
+          e.target.value = ''
+        }}
+      />
+      <input
+        ref={textInputRef}
+        type="file"
+        accept=".txt,.md,.json,.csv,.log,.html,text/*"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? [])
+          files.forEach((f) => void addTextFile(f))
+          e.target.value = ''
+        }}
+      />
 
       {/* Toast */}
       {toast && (

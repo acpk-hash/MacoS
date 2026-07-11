@@ -9,7 +9,7 @@
 
 import { create } from 'zustand'
 import { extractHtml, ensureHtmlDocument } from '../lib/artifactHtml'
-import type { AggModel } from './studioStore'
+import type { AggModel, Attachment } from './studioStore'
 
 const isTauri =
   typeof window !== 'undefined' &&
@@ -43,7 +43,42 @@ interface StudioEvent {
 export interface ArtifactTurn {
   role: 'user' | 'assistant'
   content: string
+  /** 用户轮附带的参考文件元信息（仅展示名称，内容已并入发送消息）。 */
+  attachments?: { kind: string; name?: string }[]
 }
+
+// ── 草稿持久化（localStorage，刷新/重启不丢） ────────────────────────
+
+const DRAFT_KEY = 'agentboard.artifact.draft.v1'
+
+interface DraftSnapshot {
+  sessionId: string | null
+  turns: ArtifactTurn[]
+  html: string
+  savedAt: number
+}
+
+function loadDraft(): DraftSnapshot | null {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY)
+    if (!raw) return null
+    const d = JSON.parse(raw) as DraftSnapshot
+    if (typeof d.html !== 'string' || !Array.isArray(d.turns)) return null
+    return d
+  } catch {
+    return null
+  }
+}
+
+function clearDraft(): void {
+  try {
+    localStorage.removeItem(DRAFT_KEY)
+  } catch {
+    /* ignore */
+  }
+}
+
+const initialDraft = loadDraft()
 
 /** 强约束 system 提示：只回一个完整、离线、自包含的 HTML 文档。 */
 export const ARTIFACT_SYSTEM_PROMPT = `你是一个「文档 / PPT 的 HTML 生成器」。请严格遵守以下规则：
@@ -68,12 +103,14 @@ interface ArtifactStore {
 
   loadModels: () => Promise<void>
   setModelSel: (providerId: string, modelId: string) => void
-  /** 用户提交一个需求/修改指令 → 让模型产出/更新 HTML。 */
-  ask: (prompt: string) => Promise<void>
+  /** 用户提交一个需求/修改指令（可附参考文件）→ 让模型产出/更新 HTML。 */
+  ask: (prompt: string, attachments?: Attachment[]) => Promise<void>
   stop: () => Promise<void>
   /** 中栏 Monaco 或可视化编辑直接改 HTML 字符串（不触发模型）。 */
   setHtml: (html: string) => void
-  /** 清空，开始一个新的文档会话。 */
+  /** 把当前草稿（html + 对话 + 会话 id）持久化到本机，刷新不丢。 */
+  saveDraft: () => boolean
+  /** 清空，开始一个新的文档会话（同时丢弃已保存草稿）。 */
   reset: () => void
 
   _delta: (messageId: string, text: string) => void
@@ -90,9 +127,9 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
   currentModel: '',
   currentProviderId: null,
 
-  sessionId: null,
-  turns: [],
-  html: '',
+  sessionId: initialDraft?.sessionId ?? null,
+  turns: initialDraft?.turns ?? [],
+  html: initialDraft?.html ?? '',
   streaming: false,
   error: null,
 
@@ -130,7 +167,7 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
     set({ currentModel: modelId, currentProviderId: providerId })
   },
 
-  ask: async (prompt) => {
+  ask: async (prompt, attachments = []) => {
     if (!isTauri) return
     const text = prompt.trim()
     if (!text) return
@@ -166,16 +203,27 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
       : text
 
     set((s) => ({
-      turns: [...s.turns, { role: 'user', content: text }],
+      turns: [
+        ...s.turns,
+        {
+          role: 'user',
+          content: text,
+          attachments: attachments.length
+            ? attachments.map((a) => ({ kind: a.kind, name: a.name }))
+            : undefined,
+        },
+      ],
       streaming: true,
       error: null,
     }))
 
+    // 附件直接交给后端 chat_send：文本附件内联进用户消息，图片作为
+    // image_url 内容块发给模型（见 src-tauri/src/studio.rs build_user_content）。
     try {
       await tauriInvoke<string>('chat_send', {
         sessionId: sid,
         userContent,
-        attachments: [],
+        attachments,
         model,
         providerId: providerId ?? null,
       })
@@ -196,8 +244,25 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
 
   setHtml: (html) => set({ html }),
 
+  saveDraft: () => {
+    const s = get()
+    try {
+      const snap: DraftSnapshot = {
+        sessionId: s.sessionId,
+        turns: s.turns,
+        html: s.html,
+        savedAt: Date.now(),
+      }
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(snap))
+      return true
+    } catch {
+      return false
+    }
+  },
+
   reset: () => {
     streamBuf.clear()
+    clearDraft()
     set({ sessionId: null, turns: [], html: '', streaming: false, error: null })
   },
 

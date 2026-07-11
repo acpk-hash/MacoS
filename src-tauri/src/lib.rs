@@ -1087,6 +1087,7 @@ pub fn run() {
             studio::chat_sessions_rename,
             studio::chat_sessions_delete,
             studio::chat_messages_list,
+            studio::chat_message_delete,
             studio::chat_send,
             studio::chat_stop,
             studio::image_generate,

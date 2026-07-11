@@ -124,6 +124,8 @@ interface StudioStore {
   newSession: () => void
   renameSession: (id: string, title: string) => Promise<void>
   deleteSession: (id: string) => Promise<void>
+  /** Delete a single message (both locally and in the DB). */
+  deleteMessage: (id: string) => Promise<void>
   setModel: (model: string) => void
   /** Select a model together with its owning provider (used by ModelPicker). */
   setModelSel: (providerId: string, modelId: string) => void
@@ -326,6 +328,15 @@ export const useStudioStore = create<StudioStore>((set, get) => ({
     })
   },
 
+  deleteMessage: async (id) => {
+    try {
+      await tauriInvoke<void>('chat_message_delete', { messageId: id })
+    } catch (e) {
+      console.warn('[studioStore] deleteMessage failed:', e)
+    }
+    set((s) => ({ messages: s.messages.filter((m) => m.id !== id) }))
+  },
+
   setModel: (model) => {
     set((s) => ({
       currentModel: model,
@@ -408,6 +419,21 @@ export const useStudioStore = create<StudioStore>((set, get) => ({
         model,
         providerId: providerId ?? null,
       })
+      // chat_send resolves after the stream finishes. Re-sync from the DB so
+      // optimistic frontend ids are replaced by persisted ids (per-message
+      // delete needs the real DB id).
+      if (get().activeSessionId === sid && !get().streaming[sid]) {
+        try {
+          const rows = await tauriInvoke<ChatMessageRow[]>('chat_messages_list', {
+            sessionId: sid,
+          })
+          if (get().activeSessionId === sid && !get().streaming[sid]) {
+            set({ messages: rows })
+          }
+        } catch {
+          /* keep optimistic state */
+        }
+      }
     } catch (e) {
       get()._applyError(sid, placeholder.id, String(e))
     }

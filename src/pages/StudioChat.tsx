@@ -329,6 +329,7 @@ const MessageItem = React.memo(function MessageItem({
   streaming,
   sessionTitle,
   onRegenerate,
+  onDelete,
   showToast,
 }: {
   msg: ChatMessageRow
@@ -336,6 +337,7 @@ const MessageItem = React.memo(function MessageItem({
   streaming: boolean
   sessionTitle: string
   onRegenerate: () => void
+  onDelete: () => void
   showToast: (msg: string) => void
 }) {
   const [copied, setCopied] = useState(false)
@@ -366,13 +368,22 @@ const MessageItem = React.memo(function MessageItem({
   if (msg.role === 'user') {
     const atts = parseAttachments(msg.attachments_json)
     return (
-      <div className="flex flex-col items-end">
+      <div className="group flex flex-col items-end">
         <AttachmentPreview atts={atts} />
         {msg.content && (
           <div className="max-w-[85%] px-4 py-2.5 rounded-pop rounded-br-md bg-grad-primary shadow-glow-primary text-white text-[15px] leading-7 whitespace-pre-wrap break-words">
             {msg.content}
           </div>
         )}
+        <div className="mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={onDelete}
+            className="text-xs text-ink-dim hover:text-red-600 transition-colors"
+            title="删除这条消息"
+          >
+            删除
+          </button>
+        </div>
       </div>
     )
   }
@@ -397,28 +408,39 @@ const MessageItem = React.memo(function MessageItem({
       </div>
 
       {/* Action row */}
-      {!isError && msg.status !== 'streaming' && msg.content !== '' && (
+      {msg.status !== 'streaming' && (msg.content !== '' || isError) && (
         <div className="flex items-center gap-3 mt-1.5 text-ink-dim opacity-0 group-hover:opacity-100 transition-opacity">
-          <button
-            onClick={copyMessage}
-            className="text-xs hover:text-ink-muted transition-colors"
-          >
-            {copied ? '已复制' : '复制'}
-          </button>
-          <ExportMenu
-            label="导出"
-            title="导出本条消息"
-            onMd={() => void exportOne('md')}
-            onHtml={() => void exportOne('html')}
-          />
-          {isLastAssistant && (
-            <button
-              onClick={onRegenerate}
-              className="text-xs hover:text-ink-muted transition-colors"
-            >
-              重新生成
-            </button>
+          {!isError && (
+            <>
+              <button
+                onClick={copyMessage}
+                className="text-xs hover:text-ink-muted transition-colors"
+              >
+                {copied ? '已复制' : '复制'}
+              </button>
+              <ExportMenu
+                label="导出"
+                title="导出本条消息"
+                onMd={() => void exportOne('md')}
+                onHtml={() => void exportOne('html')}
+              />
+              {isLastAssistant && (
+                <button
+                  onClick={onRegenerate}
+                  className="text-xs hover:text-ink-muted transition-colors"
+                >
+                  重新生成
+                </button>
+              )}
+            </>
           )}
+          <button
+            onClick={onDelete}
+            className="text-xs hover:text-red-600 transition-colors"
+            title="删除这条消息"
+          >
+            删除
+          </button>
         </div>
       )}
     </div>
@@ -648,6 +670,7 @@ export default function StudioChat() {
     newSession,
     renameSession,
     deleteSession,
+    deleteMessage,
     setModelSel,
     send,
     regenerate,
@@ -851,6 +874,7 @@ export default function StudioChat() {
                       streaming={isStreaming}
                       sessionTitle={activeSession?.title || '新对话'}
                       onRegenerate={() => void regenerate()}
+                      onDelete={() => void deleteMessage(msg.id)}
                       showToast={showToast}
                     />
                   ))}
