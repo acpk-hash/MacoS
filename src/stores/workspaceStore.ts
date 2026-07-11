@@ -7,7 +7,7 @@
 // G2c：新增「远程数据源」——当 remote 非空时，文件树/编辑器的所有文件操作
 // 改走 ssh_*（SFTP）命令；本地与远程复用同一套树/编辑器 UI。
 import { create } from 'zustand'
-import { languageForExt } from '../lib/monacoSetup'
+import { languageForFile } from '../lib/monacoSetup'
 
 const isTauri =
   typeof window !== 'undefined' &&
@@ -399,11 +399,10 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     }
     try {
       const res = await fsInvoke<WsFileContent>(get().remote, 'read_file', { relPath: rel })
-      const ext = name.includes('.') ? name.split('.').pop() ?? '' : ''
       const tab: OpenTab = {
         relPath: rel,
         name,
-        language: languageForExt(ext),
+        language: languageForFile(name),
         content: res.content,
         savedContent: res.content,
         encoding: res.encoding,

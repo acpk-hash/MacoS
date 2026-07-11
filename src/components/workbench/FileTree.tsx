@@ -1,7 +1,9 @@
-// 左栏文件树（G2b/G2c）。ws_list_dir / ssh_list_dir 懒加载 + 顶部搜索 + 右键增删改。
+// 左栏文件树（G2b/G2c）。ws_list_dir / ssh_list_dir 懒加载 + 顶部搜索。
+// P3：右键菜单升级为自绘深色菜单——复制绝对/相对路径 + 新建/重命名/删除
+// （原 window.prompt 指令式交互仅保留在名称输入环节）。
 // AI 改动过的文件（workspaceStore.aiTouched）显示小圆点标记。
 // 顶部可切换「本地 / 已连远程主机」数据源（G2c）。
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useWorkspaceStore, type WsEntry } from '../../stores/workspaceStore'
 import { useSshStore } from '../../stores/sshStore'
 import StatusDot from '../ui/StatusDot'
@@ -28,7 +30,164 @@ function fileGlyph(ext: string): string {
   return '›'
 }
 
-function Row({ entry, depth }: { entry: WsEntry; depth: number }) {
+/** 复制到剪贴板：优先 navigator.clipboard，失败回退 execCommand。 */
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch {
+    try {
+      const ta = document.createElement('textarea')
+      ta.value = text
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      const ok = document.execCommand('copy')
+      ta.remove()
+      return ok
+    } catch {
+      return false
+    }
+  }
+}
+
+/** 工作根 + rel_path 拼绝对路径：本地按根的分隔符风格，远程恒用 '/'。 */
+function absPath(root: string, rel: string, isRemote: boolean): string {
+  if (!rel) return root
+  if (isRemote) return root.replace(/\/+$/, '') + '/' + rel
+  const winStyle = root.includes('\\') || /^[a-zA-Z]:/.test(root)
+  if (winStyle) return root.replace(/[\\/]+$/, '') + '\\' + rel.replace(/\//g, '\\')
+  return root.replace(/\/+$/, '') + '/' + rel
+}
+
+interface MenuState {
+  x: number
+  y: number
+  entry: WsEntry
+}
+
+/** 右键上下文菜单（深色）：点击外部 / Esc / 窗口失焦即关闭。 */
+function ContextMenu({ menu, onClose }: { menu: MenuState; onClose: () => void }) {
+  const root = useWorkspaceStore((s) => s.root)
+  const remote = useWorkspaceStore((s) => s.remote)
+  const createNode = useWorkspaceStore((s) => s.createNode)
+  const renameNode = useWorkspaceStore((s) => s.renameNode)
+  const deleteNode = useWorkspaceStore((s) => s.deleteNode)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('mousedown', onDown)
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('blur', onClose)
+    return () => {
+      window.removeEventListener('mousedown', onDown)
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('blur', onClose)
+    }
+  }, [onClose])
+
+  const entry = menu.entry
+  // 文件 → 在其所在目录新建；文件夹 → 在其内部新建。
+  const parent = entry.is_dir
+    ? entry.rel_path
+    : entry.rel_path.split('/').slice(0, -1).join('/')
+
+  const doCopy = async (text: string, label: string) => {
+    onClose()
+    if (await copyText(text)) useWorkspaceStore.setState({ notice: `已复制${label}` })
+    else useWorkspaceStore.setState({ error: '复制失败：无法访问剪贴板' })
+  }
+
+  const itemCls =
+    'w-full text-left px-3 py-1.5 text-[12px] text-ink-muted hover:bg-surface-2 hover:text-ink transition-colors'
+
+  // 视口边缘防溢出（菜单约 190×230）。
+  const left = Math.max(4, Math.min(menu.x, window.innerWidth - 200))
+  const top = Math.max(4, Math.min(menu.y, window.innerHeight - 240))
+
+  return (
+    <div
+      ref={ref}
+      onContextMenu={(e) => e.preventDefault()}
+      className="fixed z-50 min-w-[176px] py-1 rounded-md border border-line bg-elevated shadow-lg shadow-black/40"
+      style={{ left, top }}
+    >
+      <div className="px-3 py-1 text-[10.5px] text-ink-dim truncate max-w-[240px] select-none">
+        {entry.name}
+      </div>
+      <div className="my-1 border-t border-line" />
+      <button
+        className={itemCls}
+        onClick={() => void doCopy(absPath(root ?? '', entry.rel_path, !!remote), '绝对路径')}
+      >
+        复制绝对路径
+      </button>
+      <button className={itemCls} onClick={() => void doCopy(entry.rel_path || '.', '相对路径')}>
+        复制相对路径
+      </button>
+      <div className="my-1 border-t border-line" />
+      <button
+        className={itemCls}
+        onClick={() => {
+          onClose()
+          const name = window.prompt('新文件名称', '')
+          if (name) void createNode(parent, name, false)
+        }}
+      >
+        新建文件
+      </button>
+      <button
+        className={itemCls}
+        onClick={() => {
+          onClose()
+          const name = window.prompt('新文件夹名称', '')
+          if (name) void createNode(parent, name, true)
+        }}
+      >
+        新建文件夹
+      </button>
+      <button
+        className={itemCls}
+        onClick={() => {
+          onClose()
+          const name = window.prompt('重命名为', entry.name)
+          if (name) void renameNode(entry.rel_path, name)
+        }}
+      >
+        重命名
+      </button>
+      <div className="my-1 border-t border-line" />
+      <button
+        className="w-full text-left px-3 py-1.5 text-[12px] text-coral hover:bg-coral/10 transition-colors"
+        onClick={() => {
+          onClose()
+          if (window.confirm(`确认删除「${entry.name}」？`)) {
+            void deleteNode(entry.rel_path, entry.is_dir)
+          }
+        }}
+      >
+        删除
+      </button>
+    </div>
+  )
+}
+
+function Row({
+  entry,
+  depth,
+  onMenu,
+}: {
+  entry: WsEntry
+  depth: number
+  onMenu: (e: React.MouseEvent, entry: WsEntry) => void
+}) {
   const expanded = useWorkspaceStore((s) => s.expanded.has(entry.rel_path))
   const loading = useWorkspaceStore((s) => s.loadingDirs.has(entry.rel_path))
   const active = useWorkspaceStore((s) => s.activeTab === entry.rel_path)
@@ -36,32 +195,6 @@ function Row({ entry, depth }: { entry: WsEntry; depth: number }) {
   const children = useWorkspaceStore((s) => s.children[entry.rel_path])
   const toggleDir = useWorkspaceStore((s) => s.toggleDir)
   const openFile = useWorkspaceStore((s) => s.openFile)
-  const createNode = useWorkspaceStore((s) => s.createNode)
-  const deleteNode = useWorkspaceStore((s) => s.deleteNode)
-  const renameNode = useWorkspaceStore((s) => s.renameNode)
-
-  const onContext = (e: React.MouseEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    const action = window.prompt(
-      `对「${entry.name}」：nf=新建文件 / nd=新建文件夹 / rn=重命名 / del=删除`,
-      entry.is_dir ? 'nf' : 'rn',
-    )
-    if (!action) return
-    const a = action.trim().toLowerCase()
-    if (a === 'nf' || a === 'nd') {
-      const parent = entry.is_dir
-        ? entry.rel_path
-        : entry.rel_path.split('/').slice(0, -1).join('/')
-      const name = window.prompt(a === 'nd' ? '新文件夹名称' : '新文件名称', '')
-      if (name) void createNode(parent, name, a === 'nd')
-    } else if (a === 'rn') {
-      const name = window.prompt('重命名为', entry.name)
-      if (name) void renameNode(entry.rel_path, name)
-    } else if (a === 'del') {
-      if (window.confirm(`确认删除「${entry.name}」？`)) void deleteNode(entry.rel_path, entry.is_dir)
-    }
-  }
 
   const heavy = entry.is_dir && HEAVY.has(entry.name)
 
@@ -73,7 +206,7 @@ function Row({ entry, depth }: { entry: WsEntry; depth: number }) {
             ? void toggleDir(entry.rel_path)
             : void openFile(entry.rel_path, entry.name)
         }
-        onContextMenu={onContext}
+        onContextMenu={(e) => onMenu(e, entry)}
         title={entry.rel_path}
         className={[
           'w-full flex items-center gap-1 py-[3px] pr-2 text-left transition-colors group rounded-md',
@@ -118,7 +251,9 @@ function Row({ entry, depth }: { entry: WsEntry; depth: number }) {
               空目录
             </div>
           ) : (
-            children.map((c) => <Row key={c.rel_path} entry={c} depth={depth + 1} />)
+            children.map((c) => (
+              <Row key={c.rel_path} entry={c} depth={depth + 1} onMenu={onMenu} />
+            ))
           )}
         </div>
       )}
@@ -142,6 +277,13 @@ export default function FileTree() {
   const switchToLocal = useWorkspaceStore((s) => s.switchToLocal)
   const conns = useSshStore((s) => s.conns)
   const [q, setQ] = useState('')
+  const [menu, setMenu] = useState<MenuState | null>(null)
+
+  const onMenu = (e: React.MouseEvent, entry: WsEntry) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setMenu({ x: e.clientX, y: e.clientY, entry })
+  }
 
   const submitSearch = (e: React.FormEvent) => {
     e.preventDefault()
@@ -264,11 +406,13 @@ export default function FileTree() {
             ))
           )
         ) : rootChildren ? (
-          rootChildren.map((c) => <Row key={c.rel_path} entry={c} depth={0} />)
+          rootChildren.map((c) => <Row key={c.rel_path} entry={c} depth={0} onMenu={onMenu} />)
         ) : (
           <p className="text-[11px] text-ink-dim text-center mt-4">加载中…</p>
         )}
       </div>
+
+      {menu && <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
     </div>
   )
 }

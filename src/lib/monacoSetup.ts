@@ -73,26 +73,44 @@ monaco.editor.defineTheme(MONACO_THEME, {
 
 loader.config({ monaco })
 
+// ── 多语言映射（P3）───────────────────────────────────────────────
+//
+// 顶部 `import * as monaco from 'monaco-editor'` 走的是包入口
+// esm/vs/editor/editor.main.js，它已经 import 了
+// `basic-languages/monaco.contribution`——即 monaco 自带的全部 ~80 种
+// monarch 语法高亮均已注册（tokenizer 按语言懒加载，vite 拆成小 chunk，
+// 不会把主 bundle 撑爆）。这里只需把扩展名/文件名映射到 language id。
+// 注意：basic-languages 提供语法着色，不是 IntelliSense/LSP。
+
 /** Map a lowercase file extension to a Monaco language id. */
 export function languageForExt(ext: string): string {
   const e = ext.toLowerCase()
   const map: Record<string, string> = {
+    // Web / 脚本
     ts: 'typescript',
     tsx: 'typescript',
+    mts: 'typescript',
+    cts: 'typescript',
     js: 'javascript',
     jsx: 'javascript',
     mjs: 'javascript',
     cjs: 'javascript',
     json: 'json',
     jsonc: 'json',
+    ipynb: 'json',
     html: 'html',
     htm: 'html',
+    vue: 'html',
     css: 'css',
     scss: 'scss',
     less: 'less',
     md: 'markdown',
     markdown: 'markdown',
+    mdx: 'mdx',
+    rst: 'restructuredtext',
+    // 系统 / 编译语言
     py: 'python',
+    pyw: 'python',
     rs: 'rust',
     go: 'go',
     java: 'java',
@@ -100,27 +118,113 @@ export function languageForExt(ext: string): string {
     h: 'c',
     cpp: 'cpp',
     cc: 'cpp',
+    cxx: 'cpp',
     hpp: 'cpp',
+    hh: 'cpp',
+    hxx: 'cpp',
     cs: 'csharp',
+    fs: 'fsharp',
+    fsi: 'fsharp',
+    fsx: 'fsharp',
+    m: 'objective-c',
+    mm: 'objective-c',
+    kt: 'kotlin',
+    kts: 'kotlin',
+    swift: 'swift',
+    scala: 'scala',
+    sbt: 'scala',
+    dart: 'dart',
+    jl: 'julia',
+    pas: 'pascal',
+    pp: 'pascal',
+    // 动态 / 函数式
     php: 'php',
     rb: 'ruby',
+    lua: 'lua',
+    r: 'r',
+    pl: 'perl',
+    pm: 'perl',
+    ex: 'elixir',
+    exs: 'elixir',
+    clj: 'clojure',
+    cljs: 'clojure',
+    cljc: 'clojure',
+    edn: 'clojure',
+    coffee: 'coffee',
+    tcl: 'tcl',
+    vb: 'vb',
+    // Shell / 运维
     sh: 'shell',
     bash: 'shell',
     zsh: 'shell',
+    fish: 'shell',
+    ps1: 'powershell',
+    psm1: 'powershell',
+    psd1: 'powershell',
+    bat: 'bat',
+    cmd: 'bat',
+    dockerfile: 'dockerfile',
+    hcl: 'hcl',
+    tf: 'hcl',
+    tfvars: 'hcl',
+    bicep: 'bicep',
+    // 配置 / 数据
     yml: 'yaml',
     yaml: 'yaml',
-    toml: 'ini',
+    toml: 'ini', // monaco 无 toml monarch，ini 高亮最接近
     ini: 'ini',
+    conf: 'ini',
+    cfg: 'ini',
+    properties: 'ini',
+    env: 'ini',
     xml: 'xml',
     svg: 'xml',
+    xsl: 'xml',
+    plist: 'xml',
+    csproj: 'xml',
     sql: 'sql',
-    kt: 'kotlin',
-    swift: 'swift',
-    dart: 'dart',
-    vue: 'html',
-    lua: 'lua',
-    r: 'r',
-    dockerfile: 'dockerfile',
+    mysql: 'mysql',
+    pgsql: 'pgsql',
+    graphql: 'graphql',
+    gql: 'graphql',
+    proto: 'protobuf',
+    // 模板 / 其他
+    cshtml: 'razor',
+    hbs: 'handlebars',
+    handlebars: 'handlebars',
+    pug: 'pug',
+    jade: 'pug',
+    twig: 'twig',
+    liquid: 'liquid',
+    sol: 'solidity',
+    wgsl: 'wgsl',
+    sv: 'systemverilog',
+    svh: 'systemverilog',
   }
   return map[e] ?? 'plaintext'
+}
+
+/**
+ * 由完整文件名判断 Monaco language id：先看特殊文件名（Dockerfile、
+ * .env、Gemfile 等无扩展名/点开头的文件），再回退到扩展名映射。
+ */
+export function languageForFile(fileName: string): string {
+  const name = fileName.toLowerCase()
+  const special: Record<string, string> = {
+    dockerfile: 'dockerfile',
+    containerfile: 'dockerfile',
+    gemfile: 'ruby',
+    rakefile: 'ruby',
+    '.gitignore': 'ini',
+    '.gitattributes': 'ini',
+    '.editorconfig': 'ini',
+    '.npmrc': 'ini',
+    '.prettierrc': 'json',
+    '.eslintrc': 'json',
+  }
+  if (special[name]) return special[name]
+  if (name.startsWith('dockerfile.')) return 'dockerfile'
+  if (name === '.env' || name.startsWith('.env.')) return 'ini'
+  const ext = name.includes('.') ? name.split('.').pop() ?? '' : ''
+  return languageForExt(ext)
 }
