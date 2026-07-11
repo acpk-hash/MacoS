@@ -56,6 +56,19 @@ interface AgentInstallResult {
 
 type Tab = 'agents' | 'skills'
 
+// ── 分类色（深色主题友好；未知分类回退主题色） ─────────────────────────────
+
+const CATEGORY_COLORS: Record<string, string> = {
+  编程开发: '#4EA1FF',
+  写作内容: '#B48EFF',
+  数据分析: '#3ECFB2',
+  研究学习: '#FFB454',
+  办公效率: '#7DD87D',
+  网络工具: '#5AC8E8',
+  设计创意: '#FF8FAB',
+  密码学安全: '#E8C55A',
+}
+
 // ── Toast ─────────────────────────────────────────────────────────────────────
 
 function Toast({ message, onClose }: { message: string; onClose: () => void }) {
@@ -196,7 +209,24 @@ function ItemCard({
     >
       <div className="flex items-start justify-between gap-2">
         <h3 className="text-sm font-semibold text-ink leading-snug">{name}</h3>
-        <span className="text-[10px] text-primary bg-primary-tint px-2 py-0.5 rounded-full flex-shrink-0">
+        <span
+          className={
+            'text-[10px] px-2 py-0.5 rounded-full flex-shrink-0 inline-flex items-center gap-1 ' +
+            (CATEGORY_COLORS[category] ? '' : 'text-primary bg-primary-tint')
+          }
+          style={
+            CATEGORY_COLORS[category]
+              ? {
+                  color: CATEGORY_COLORS[category],
+                  backgroundColor: CATEGORY_COLORS[category] + '22',
+                }
+              : undefined
+          }
+        >
+          <span
+            className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+            style={{ backgroundColor: CATEGORY_COLORS[category] ?? 'currentColor' }}
+          />
           {category}
         </span>
       </div>
@@ -417,6 +447,9 @@ export default function Market() {
             placeholder="搜索名称 / 描述 / 标签…"
             className="flex-1 min-w-[180px] text-xs border border-line bg-surface-2 text-ink rounded-btn px-3 py-1.5 outline-none focus:border-primary placeholder:text-ink-dim"
           />
+          {!loading && !loadError && (
+            <span className="text-[11px] text-ink-dim flex-shrink-0">共 {filtered.length} 条</span>
+          )}
         </div>
 
         {/* 内容 */}
