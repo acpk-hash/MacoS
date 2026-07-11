@@ -31,7 +31,7 @@
 //!   data.cost, data.contextUsage{tokens,contextWindow,percent}, data.sessionId.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -240,7 +240,17 @@ impl PiEngine {
         if model.is_empty() {
             return Err("请指定模型".to_string());
         }
-        if dir.trim().is_empty() || !std::path::Path::new(&dir).is_dir() {
+        if dir.trim().is_empty() {
+            return Err("请选择工作目录".to_string());
+        }
+        // Normalize to a legal Windows absolute path *before* validating and
+        // spawning: bare drive ("D:"), forward slashes ("D:/x") and verbatim
+        // ("\\?\...") forms either crash node (`EISDIR: lstat 'D:'` in
+        // resolveMainPath) or resolve against an unrelated drive-relative cwd.
+        let dir = normalize_spawn_path(Path::new(&dir))
+            .to_string_lossy()
+            .to_string();
+        if !Path::new(&dir).is_dir() {
             return Err(format!("工作目录不存在: {dir}"));
         }
 
@@ -420,6 +430,16 @@ async fn spawn_pi(
     use tokio::process::Command;
 
     let (node_program, cli) = resolve_pi_runtime(&db, &app)?;
+    // node cannot take a verbatim ("\\?\") path as its main script — its
+    // realpath root parser mis-splits it and dies with `EISDIR: lstat 'D:'` —
+    // and a bare-drive cwd ("D:") is drive-relative. Normalize everything we
+    // hand to the child process (Tauri resource resolution yields verbatim
+    // paths because it canonicalizes current_exe).
+    let node_program = normalize_spawn_path(&node_program);
+    let cli = normalize_spawn_path(&cli);
+    let cwd = normalize_spawn_path(Path::new(&cwd))
+        .to_string_lossy()
+        .to_string();
     let (base_url, key, wire_api) = resolve_provider_creds(&db, &provider_id)?;
 
     // Build a temp agent dir with a generated models.json (no key on disk).
@@ -454,7 +474,13 @@ async fn spawn_pi(
         .stderr(Stdio::piped())
         .kill_on_drop(true)
         .spawn()
-        .map_err(|e| format!("启动 pi 失败（node 未安装？）: {e}"))?;
+        .map_err(|e| {
+            format!(
+                "启动 pi 失败: {e}（node={}, cli={}, cwd={cwd}）",
+                node_program.display(),
+                cli.display()
+            )
+        })?;
 
     let child_id = child.id();
     let mut stdin = child.stdin.take().expect("stdin piped");
@@ -510,10 +536,15 @@ async fn spawn_pi(
             let _ = child.kill().await;
             let tail = stderr_tail.lock().await.join("\n");
             let _ = tokio::fs::remove_dir_all(&agent_dir).await;
+            let diag = format!(
+                "node={}, cli={}, cwd={cwd}",
+                node_program.display(),
+                cli.display()
+            );
             return Err(if tail.trim().is_empty() {
-                format!("pi 启动超时（{HANDSHAKE_TIMEOUT_SECS}s 内无响应）")
+                format!("pi 启动超时（{HANDSHAKE_TIMEOUT_SECS}s 内无响应）（{diag}）")
             } else {
-                format!("pi 启动失败: {tail}")
+                format!("pi 启动失败: {tail}（{diag}）")
             });
         }
     };
@@ -1078,6 +1109,43 @@ fn bundled_pi_runtime(app: &AppHandle) -> Option<(PathBuf, PathBuf)> {
     }
 }
 
+/// Normalize a path we are about to hand to a child process (node) into a
+/// plain, legal Windows absolute path:
+///
+/// - strips the verbatim prefix (`\\?\C:\x` → `C:\x`, `\\?\UNC\srv\share` →
+///   `\\srv\share`) — node's `resolveMainPath` → `realpathSync` mis-splits
+///   verbatim roots and dies with `EISDIR: illegal operation on a directory,
+///   lstat 'D:'` (reproduced with bundled node v24.12.0);
+/// - converts forward slashes to backslashes (`D:/x` → `D:\x`);
+/// - completes a bare drive to its root (`D:` → `D:\`; a bare drive letter is
+///   *drive-relative* on Windows and resolves against an unrelated cwd).
+///
+/// Non-Windows: returned unchanged.
+fn normalize_spawn_path(p: &Path) -> PathBuf {
+    #[cfg(windows)]
+    {
+        let s = p.to_string_lossy();
+        let s = s.trim();
+        let mut s = if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+            format!(r"\\{rest}")
+        } else if let Some(rest) = s.strip_prefix(r"\\?\") {
+            rest.to_string()
+        } else {
+            s.to_string()
+        };
+        s = s.replace('/', "\\");
+        let b = s.as_bytes();
+        if b.len() == 2 && b[0].is_ascii_alphabetic() && b[1] == b':' {
+            s.push('\\');
+        }
+        PathBuf::from(s)
+    }
+    #[cfg(not(windows))]
+    {
+        p.to_path_buf()
+    }
+}
+
 /// Candidate global-npm locations for `dist/cli.js`.
 fn global_pi_candidates() -> Vec<PathBuf> {
     let rel = ["@earendil-works", "pi-coding-agent", "dist", "cli.js"];
@@ -1130,6 +1198,28 @@ async fn kill_child_id(child_id: Option<u32>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn normalize_spawn_path_fixes_bare_drive_slashes_and_verbatim() {
+        let n = |s: &str| {
+            normalize_spawn_path(Path::new(s))
+                .to_string_lossy()
+                .to_string()
+        };
+        // Bare drive / forward-slash drive root → real drive root.
+        assert_eq!(n("D:"), r"D:\");
+        assert_eq!(n("D:/"), r"D:\");
+        // Forward slashes → backslashes.
+        assert_eq!(n("D:/some/dir"), r"D:\some\dir");
+        // Already-good paths unchanged.
+        assert_eq!(n(r"D:\some\dir"), r"D:\some\dir");
+        // Verbatim prefix stripped (node EISDIR 'D:' root cause).
+        assert_eq!(n(r"\\?\D:\some\dir"), r"D:\some\dir");
+        assert_eq!(n(r"\\?\D:\"), r"D:\");
+        // Verbatim UNC → plain UNC.
+        assert_eq!(n(r"\\?\UNC\srv\share\d"), r"\\srv\share\d");
+    }
 
     #[test]
     fn normalize_base_url_variants() {

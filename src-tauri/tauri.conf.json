@@ -1,6 +1,6 @@
 {
   "productName": "AgentBoard",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "identifier": "com.agentboard.app",
   "build": {
     "frontendDist": "../dist",
@@ -26,6 +26,10 @@
       "icons/icon.ico"
     ],
     "windows": {
+      "webviewInstallMode": {
+        "type": "offlineInstaller",
+        "silent": true
+      },
       "nsis": {
         "languages": [
           "SimpChinese",
