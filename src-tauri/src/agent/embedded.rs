@@ -175,54 +175,74 @@ impl EmbeddedAdapter {
     }
 
     /// Resolve codex.exe for the engine's exec-server: settings override →
-    /// known install dir → `where/which codex`. Errors clearly when not found.
+    /// known install dirs → `where/which codex`. Errors clearly when not found.
     pub(crate) async fn resolve_codex_exe(&self) -> Result<String, CodexError> {
-        if let Some(p) = &self.codex_exe_path {
-            if PathBuf::from(p).exists() {
-                return Ok(p.clone());
-            }
-        }
-        // Known install location (Codex desktop app / npm global on Windows).
-        #[cfg(windows)]
-        if let Some(local) = std::env::var_os("LOCALAPPDATA") {
-            let base = PathBuf::from(local).join("OpenAI").join("Codex").join("bin");
-            if let Ok(rd) = std::fs::read_dir(&base) {
-                for e in rd.flatten() {
-                    let cand = e.path().join("codex.exe");
-                    if cand.exists() {
-                        return Ok(cand.to_string_lossy().into_owned());
-                    }
-                }
-            }
-        }
-        // Fall back to PATH lookup.
-        #[cfg(windows)]
-        let probe = Command::new("where").arg("codex").output().await;
-        #[cfg(not(windows))]
-        let probe = Command::new("which").arg("codex").output().await;
-        if let Ok(out) = probe {
-            if out.status.success() {
-                let text = String::from_utf8_lossy(&out.stdout);
-                for line in text.lines() {
-                    let line = line.trim();
-                    if line.to_ascii_lowercase().ends_with("codex.exe")
-                        || (!cfg!(windows) && line.ends_with("codex"))
-                    {
-                        return Ok(line.to_string());
-                    }
-                }
-                if let Some(first) = text.lines().next() {
-                    if !first.trim().is_empty() {
-                        return Ok(first.trim().to_string());
-                    }
-                }
-            }
-        }
-        Err(CodexError::Engine(
-            "找不到 codex 可执行文件（引擎的 exec-server 需要它）。请安装 codex 或在设置中指定 codex_exe_path。"
-                .to_string(),
-        ))
+        locate_codex_exe(self.codex_exe_path.as_deref())
+            .await
+            .map_err(CodexError::Engine)
     }
+}
+
+/// Locate a real `codex` executable for the engine's exec-server. Shared by
+/// the agent-board embedded adapter and the workbench codex engine.
+///
+/// Order: explicit path → Codex desktop install (`%LOCALAPPDATA%/OpenAI/
+/// Codex/bin/*/codex.exe`) → npm global vendor binary → PATH lookup.
+pub(crate) async fn locate_codex_exe(explicit: Option<&str>) -> Result<String, String> {
+    if let Some(p) = explicit {
+        if PathBuf::from(p).exists() {
+            return Ok(p.to_string());
+        }
+    }
+    // Known install location (Codex desktop app on Windows).
+    #[cfg(windows)]
+    if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+        let base = PathBuf::from(local).join("OpenAI").join("Codex").join("bin");
+        if let Ok(rd) = std::fs::read_dir(&base) {
+            for e in rd.flatten() {
+                let cand = e.path().join("codex.exe");
+                if cand.exists() {
+                    return Ok(cand.to_string_lossy().into_owned());
+                }
+            }
+        }
+    }
+    // npm global install ships the native binary under a vendor dir.
+    #[cfg(windows)]
+    if let Some(appdata) = std::env::var_os("APPDATA") {
+        let cand = PathBuf::from(appdata)
+            .join("npm/node_modules/@openai/codex/node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc/bin/codex.exe");
+        if cand.exists() {
+            return Ok(cand.to_string_lossy().into_owned());
+        }
+    }
+    // Fall back to PATH lookup.
+    #[cfg(windows)]
+    let probe = Command::new("where").arg("codex").output().await;
+    #[cfg(not(windows))]
+    let probe = Command::new("which").arg("codex").output().await;
+    if let Ok(out) = probe {
+        if out.status.success() {
+            let text = String::from_utf8_lossy(&out.stdout);
+            for line in text.lines() {
+                let line = line.trim();
+                if line.to_ascii_lowercase().ends_with("codex.exe")
+                    || (!cfg!(windows) && line.ends_with("codex"))
+                {
+                    return Ok(line.to_string());
+                }
+            }
+            if let Some(first) = text.lines().next() {
+                if !first.trim().is_empty() {
+                    return Ok(first.trim().to_string());
+                }
+            }
+        }
+    }
+    Err(
+        "找不到 codex 可执行文件（引擎的 exec-server 需要它）。请安装 codex 或在设置中指定 codex_exe_path。"
+            .to_string(),
+    )
 }
 
 // -- Engine process spawn + driver -------------------------------------------

@@ -190,9 +190,14 @@ fn ensure_default(db: &Db, candidate: &str) {
 /// clearly non-conversational (embeddings, audio, review bots, ...) are marked
 /// `"other"`; image/video generators get their own class so the media pages
 /// can still offer them; everything else is `"chat"`.
+///
+/// 幽灵模型（选中即 400「not supported when using Codex with a ChatGPT
+/// account」）也归入 `"other"`：aiboys 中继的 /models 会混入 `gpt-5.6*`、
+/// `codex-auto-review`、audio/realtime 预览等根本跑不通的 id，它们一旦进入
+/// 聊天下拉就会让 对话/画布/工作台 全部报错（2026-07 实测）。
 pub(crate) fn classify_model(id: &str) -> &'static str {
     let l = id.to_ascii_lowercase();
-    const NON_CHAT: [&str; 8] = [
+    const NON_CHAT: [&str; 11] = [
         "auto-review",
         "embedding",
         "embed-",
@@ -201,8 +206,17 @@ pub(crate) fn classify_model(id: &str) -> &'static str {
         "rerank",
         "moderation",
         "transcribe",
+        // 幽灵模型家族（跑不通，见上）。
+        "gpt-5.6",
+        "audio",
+        "realtime",
     ];
     if NON_CHAT.iter().any(|m| l.contains(m)) {
+        return "other";
+    }
+    // `-luna/-sol/-terra` 后缀是同一批幽灵模型的变体。
+    const GHOST_SUFFIXES: [&str; 3] = ["-luna", "-sol", "-terra"];
+    if GHOST_SUFFIXES.iter().any(|s| l.ends_with(s)) {
         return "other";
     }
     if l.contains("sora") || l.contains("video") || l.contains("veo-") {
@@ -298,6 +312,45 @@ fn agg_from_status(status: &[ProviderModels]) -> Vec<AggModel> {
         }
     }
     out
+}
+
+/// Preferred fallback model when a persisted/requested model turns out to be
+/// unusable (ghost id, media model, ...). gpt-5.5 is the most reliable chat
+/// model on the user's relay (2026-07 实测).
+pub(crate) const FALLBACK_CHAT_MODEL: &str = "gpt-5.5";
+
+/// Pick the best chat model out of an aggregated list: exact `gpt-5.5` first,
+/// then any `gpt-5.5*` variant, then the first chat model.
+pub(crate) fn pick_chat_fallback(agg: &[AggModel]) -> Option<String> {
+    let chat: Vec<&AggModel> = agg.iter().filter(|m| m.kind == "chat").collect();
+    if let Some(m) = chat.iter().find(|m| m.model_id == FALLBACK_CHAT_MODEL) {
+        return Some(m.model_id.clone());
+    }
+    if let Some(m) = chat
+        .iter()
+        .find(|m| m.model_id.starts_with(FALLBACK_CHAT_MODEL))
+    {
+        return Some(m.model_id.clone());
+    }
+    chat.first().map(|m| m.model_id.clone())
+}
+
+/// Validate a requested/persisted chat model; replace ghost / non-chat ids
+/// with a usable fallback (prefer `gpt-5.5`). Old sessions may have recorded
+/// broken models like `gpt-5.6` — dispatching those would 400 and kill the
+/// whole page, so every dispatch path funnels through this.
+pub(crate) async fn sanitize_chat_model(state: &crate::AppState, model: &str) -> String {
+    let m = model.trim();
+    if !m.is_empty() && classify_model(m) == "chat" {
+        return m.to_string();
+    }
+    // Bad model: try the live aggregated list, else the static fallback.
+    if let Ok(status) = providers_models_cached(state).await {
+        if let Some(good) = pick_chat_fallback(&agg_from_status(&status)) {
+            return good;
+        }
+    }
+    FALLBACK_CHAT_MODEL.to_string()
 }
 
 /// Cached wrapper around [`collect_providers_models`] (TTL `MODELS_TTL`;
@@ -587,6 +640,53 @@ mod tests {
         assert_eq!(classify_model("sora-2"), "video");
     }
 
+    /// The exact ghost ids observed on the aiboys relay must be filtered out of
+    /// the chat pickers — selecting them 400s ("not supported when using Codex
+    /// with a ChatGPT account") and used to break 对话/画布/工作台.
+    #[test]
+    fn classify_model_filters_relay_ghosts() {
+        for ghost in [
+            "gpt-5.6",
+            "gpt-5.6-luna",
+            "gpt-5.6-sol",
+            "gpt-5.6-terra",
+            "codex-auto-review",
+            "gpt-4o-audio-preview",
+            "gpt-4o-realtime-preview",
+        ] {
+            assert_eq!(classify_model(ghost), "other", "ghost must be other: {ghost}");
+        }
+        // Known-good chat models must survive the ghost rules untouched.
+        for good in [
+            "gpt-5.5",
+            "gpt-5.4",
+            "gpt-5.4-mini",
+            "gpt-5.2",
+            "gpt-5.3-codex",
+            "gpt-5.3-codex-spark",
+        ] {
+            assert_eq!(classify_model(good), "chat", "must stay chat: {good}");
+        }
+    }
+
+    #[test]
+    fn pick_chat_fallback_prefers_gpt55() {
+        let mk = |id: &str, kind: &str| AggModel {
+            provider_id: "p".into(),
+            provider_label: "P".into(),
+            model_id: id.into(),
+            kind: kind.into(),
+        };
+        // Exact gpt-5.5 wins even when listed later.
+        let agg = vec![mk("gpt-5.2", "chat"), mk("gpt-5.5", "chat")];
+        assert_eq!(pick_chat_fallback(&agg).as_deref(), Some("gpt-5.5"));
+        // No gpt-5.5 → first chat model; image models never picked.
+        let agg = vec![mk("gpt-image-2", "image"), mk("gpt-5.4", "chat")];
+        assert_eq!(pick_chat_fallback(&agg).as_deref(), Some("gpt-5.4"));
+        // Nothing usable → None.
+        assert_eq!(pick_chat_fallback(&[mk("sora-2", "video")]), None);
+    }
+
     #[test]
     fn agg_from_status_drops_failures_and_junk() {
         let status = vec![
@@ -690,6 +790,56 @@ mod tests {
         .expect("chat_stream should succeed");
         println!("[live] chat model={chat_model} reply={:?}", outcome.text);
         assert!(!outcome.text.trim().is_empty(), "expected a non-empty reply");
+    }
+
+    /// LIVE (real user DB + credential store): the chat page's exact dispatch
+    /// path — default provider creds, ghost filtering, fallback = gpt-5.5,
+    /// then a streaming chat round-trip on gpt-5.5.
+    /// Run with:
+    /// `cargo test -p agentboard --lib providers::tests::live_default_provider_gpt55_chat_stream -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn live_default_provider_gpt55_chat_stream() {
+        let db = Db::open().expect("open real app db");
+        let creds = resolve_creds(&db, None).expect("default provider creds");
+
+        // Model list: ghosts must classify as other; fallback must be gpt-5.5.
+        let status = collect_providers_models(&db).await.expect("status");
+        let s = status.iter().find(|s| s.ok).expect("an ok provider");
+        let ghosts: Vec<&ProviderModelEntry> = s
+            .models
+            .iter()
+            .filter(|m| m.id.contains("gpt-5.6") || m.id.contains("audio") || m.id.contains("realtime") || m.id.contains("auto-review"))
+            .collect();
+        assert!(
+            ghosts.iter().all(|m| m.kind == "other"),
+            "all ghosts must be filtered: {:?}",
+            ghosts.iter().map(|m| (&m.id, &m.kind)).collect::<Vec<_>>()
+        );
+        let agg = agg_from_status(&status);
+        let fallback = pick_chat_fallback(&agg).expect("chat fallback");
+        println!("[live-chat] ghosts filtered: {} 个; fallback={fallback}", ghosts.len());
+        assert_eq!(fallback, FALLBACK_CHAT_MODEL);
+
+        // Streaming round-trip on gpt-5.5 (the chat page default).
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let deltas = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let d2 = deltas.clone();
+        let outcome = relay::chat_stream(
+            &creds,
+            FALLBACK_CHAT_MODEL,
+            vec![serde_json::json!({ "role": "user", "content": "用一句话介绍你自己" })],
+            cancel,
+            move |_| {
+                d2.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            },
+        )
+        .await
+        .expect("gpt-5.5 chat_stream must succeed");
+        let n = deltas.load(std::sync::atomic::Ordering::Relaxed);
+        println!("[live-chat] deltas={n} reply={:?}", outcome.text);
+        assert!(n > 0, "must stream at least one delta");
+        assert!(!outcome.text.trim().is_empty(), "non-empty reply");
     }
 
     /// Live: a bad key must produce an explicit per-provider error (HTTP code

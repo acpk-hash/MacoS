@@ -242,7 +242,9 @@ export const useStudioStore = create<StudioStore>((set, get) => ({
         const chatModels = aggModels.filter((m) => m.kind === 'chat')
         const keep =
           !!s.currentModel && chatModels.some((m) => m.modelId === s.currentModel)
-        const first = chatModels[0]
+        // 默认模型优先 gpt-5.5（该中继最稳的 chat 模型），否则取第一个。
+        const first =
+          chatModels.find((m) => m.modelId === 'gpt-5.5') ?? chatModels[0]
         return {
           aggModels,
           models,

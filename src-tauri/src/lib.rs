@@ -6,7 +6,6 @@ pub mod feishu;
 pub mod litsearch;
 pub mod market;
 pub mod mcp;
-pub mod pi_engine;
 pub mod providers;
 pub mod relay;
 pub mod research;
@@ -16,6 +15,7 @@ pub mod stats;
 pub mod studio;
 pub mod sync;
 pub mod wecom;
+pub mod workbench;
 pub mod workspace_fs;
 
 use std::sync::Arc;
@@ -44,7 +44,7 @@ pub(crate) struct AppState {
     bridge: bridge::BridgeManager,
     studio: studio::StudioState,
     sync: sync::SyncManager,
-    pi: pi_engine::PiEngine,
+    workbench: workbench::WorkbenchEngine,
     ws: workspace_fs::WorkspaceState,
     ssh: ssh_remote::SshState,
 }
@@ -839,11 +839,13 @@ async fn open_external_url(url: String) -> Result<(), String> {
     spawn.map(|_| ()).map_err(|e| e.to_string())
 }
 
-// ── Workbench (local pi engine, F4a) ──────────────────────────────────────────
+// ── Workbench (embedded codex engine) ─────────────────────────────────────────
 
-/// Open a workbench session: launch a pi RPC engine in `dir` using the F1
-/// provider `provider_id` (defaults to the configured default) + `model`.
-/// Emits events on the `workbench-event` channel. Returns the new session id.
+/// Open a workbench session: launch the bundled codex engine in `dir` using
+/// the F1 provider `provider_id` (defaults to the configured default) +
+/// `model`. Persisted ghost models (e.g. `gpt-5.6`) are replaced with a
+/// usable chat model before dispatch. Emits events on the `workbench-event`
+/// channel. Returns the new session id.
 #[tauri::command]
 async fn workbench_open(
     dir: String,
@@ -851,9 +853,10 @@ async fn workbench_open(
     model: String,
     state: State<'_, AppState>,
     app: AppHandle,
-) -> Result<pi_engine::WorkbenchOpenResult, String> {
+) -> Result<workbench::WorkbenchOpenResult, String> {
+    let model = providers::sanitize_chat_model(&state, &model).await;
     state
-        .pi
+        .workbench
         .open(state.db.clone(), app, dir, provider_id, model)
         .await
 }
@@ -861,19 +864,19 @@ async fn workbench_open(
 /// Send a fresh prompt (starts a new turn).
 #[tauri::command]
 async fn workbench_prompt(text: String, state: State<'_, AppState>) -> Result<(), String> {
-    state.pi.prompt(&state.db, text).await
+    state.workbench.prompt(&state.db, text).await
 }
 
-/// Steer the running turn with an additional instruction.
+/// Steer the running turn with an additional instruction (codex queues it).
 #[tauri::command]
 async fn workbench_steer(text: String, state: State<'_, AppState>) -> Result<(), String> {
-    state.pi.steer(text).await
+    state.workbench.steer(text).await
 }
 
 /// Abort the current turn (progress-bar stop button).
 #[tauri::command]
 async fn workbench_abort(state: State<'_, AppState>) -> Result<(), String> {
-    state.pi.abort().await
+    state.workbench.abort().await
 }
 
 /// Switch the workbench model/provider (restarts the engine on the same cwd).
@@ -883,39 +886,49 @@ async fn workbench_set_model(
     model: String,
     state: State<'_, AppState>,
     app: AppHandle,
-) -> Result<pi_engine::WorkbenchOpenResult, String> {
+) -> Result<workbench::WorkbenchOpenResult, String> {
+    let model = providers::sanitize_chat_model(&state, &model).await;
     state
-        .pi
+        .workbench
         .set_model(state.db.clone(), app, provider_id, model)
         .await
 }
 
-/// List models available to the running pi engine.
+/// List chat models usable in the workbench (from the provider system —
+/// the codex engine consumes whatever the generated config names).
 #[tauri::command]
 async fn workbench_models(
     state: State<'_, AppState>,
-) -> Result<Vec<pi_engine::WorkbenchModel>, String> {
-    state.pi.models().await
+) -> Result<Vec<workbench::WorkbenchModel>, String> {
+    let agg = providers::providers_models(state).await?;
+    Ok(agg
+        .into_iter()
+        .filter(|m| m.kind == "chat")
+        .map(|m| workbench::WorkbenchModel {
+            provider: m.provider_label,
+            id: m.model_id,
+        })
+        .collect())
 }
 
-/// Fetch the latest token usage (also persisted).
+/// Fetch the latest token usage (persisted continuously by the reader task).
 #[tauri::command]
 async fn workbench_stats(
     state: State<'_, AppState>,
-) -> Result<pi_engine::WorkbenchStats, String> {
-    state.pi.stats(&state.db).await
+) -> Result<workbench::WorkbenchStats, String> {
+    state.workbench.stats(&state.db).await
 }
 
 /// Export the session transcript to HTML; returns the file path.
 #[tauri::command]
 async fn workbench_export_html(state: State<'_, AppState>) -> Result<String, String> {
-    state.pi.export_html(&state.db).await
+    state.workbench.export_html(&state.db).await
 }
 
-/// Close the workbench session (stops the pi engine).
+/// Close the workbench session (stops the codex engine).
 #[tauri::command]
 async fn workbench_close(state: State<'_, AppState>) -> Result<(), String> {
-    state.pi.close().await;
+    state.workbench.close().await;
     Ok(())
 }
 
@@ -1028,7 +1041,7 @@ pub fn run() {
             bridge: bridge::BridgeManager::new(),
             studio: studio::StudioState::new(),
             sync: sync::SyncManager::new(),
-            pi: pi_engine::PiEngine::new(),
+            workbench: workbench::WorkbenchEngine::new(),
             ws: workspace_fs::WorkspaceState::new(),
             ssh: ssh_remote::SshState::new(),
         })

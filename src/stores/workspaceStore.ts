@@ -1,6 +1,6 @@
 // 工作区文件系统 / 编辑器状态（G2b）。
 //
-// 与 workbenchStore（pi 引擎接线）解耦：这里只管「打开文件夹 → 文件树 +
+// 与 workbenchStore（codex 引擎接线）解耦：这里只管「打开文件夹 → 文件树 +
 // 多标签 Monaco 编辑器」。pi 的 AI 会话仍由 workbenchStore 驱动；页面把两者
 // 组合起来（选目录时同时调 ws_open_folder 和 workbench_open）。
 //

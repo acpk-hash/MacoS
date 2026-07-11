@@ -1,5 +1,5 @@
 // 统一工作区（G2b）— Trae/Cursor 式三栏 IDE：文件树 + Monaco 编辑器 + AI 对话。
-// 复用 workbenchStore 的 pi 引擎接线，文件系统/编辑器状态在 workspaceStore。
+// 复用 workbenchStore 的内置 codex 引擎接线，文件系统/编辑器状态在 workspaceStore。
 // G2c：底部面板接入 SSH 远程，顶栏新增「扩展」入口（MCP 工具 + 技能）。
 import { useEffect, useRef, useState } from 'react'
 import { useWorkbenchStore, type WorkbenchStats } from '../stores/workbenchStore'
@@ -113,7 +113,7 @@ export default function Workbench() {
   const [extOpen, setExtOpen] = useState(false)
   const prevSig = useRef<Map<string, string>>(new Map())
 
-  // 打开一个目录：同时接文件系统（树/编辑器）与 pi 引擎（AI 在该目录工作）。
+  // 打开一个目录：同时接文件系统（树/编辑器）与 codex 引擎（AI 在该目录工作）。
   const openDir = async (path: string) => {
     await openFolder(path)
     await useWorkbenchStore.getState().open(path)

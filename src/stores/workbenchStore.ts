@@ -357,7 +357,9 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
       set((s) => {
         const keep =
           !!s.currentModel && aggModels.some((m) => m.modelId === s.currentModel)
-        const first = aggModels[0]
+        // 默认模型优先 gpt-5.5（该中继最稳的 chat 模型），否则取第一个。
+        const first =
+          aggModels.find((m) => m.modelId === 'gpt-5.5') ?? aggModels[0]
         return {
           aggModels,
           modelsLoaded: true,

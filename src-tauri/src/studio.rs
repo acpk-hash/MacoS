@@ -213,6 +213,10 @@ pub(crate) async fn chat_send(
 ) -> Result<String, String> {
     let db = state.db.clone();
 
+    // 老会话可能记着已下架的幽灵模型（如 gpt-5.6，调用即 400）——派发前
+    // 强制校验，坏模型回退到可用 chat 模型（优先 gpt-5.5）。
+    let model = crate::providers::sanitize_chat_model(&state, &model).await;
+
     // Ensure the session exists (create lazily so the frontend can send without
     // an explicit create step).
     if db
