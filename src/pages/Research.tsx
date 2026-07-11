@@ -18,6 +18,9 @@ import {
   type RunArtifact,
   type ResearchTab,
   type LitPaper,
+  type LitAnalyzeResult,
+  type LitPaperExtras,
+  type LitFigure,
 } from '../stores/researchStore'
 
 const NL = String.fromCharCode(10)
@@ -475,7 +478,8 @@ function DashboardTab() {
 
 // -- 文献搜索（v0.8）-----------------------------------------------------------
 
-const DEFAULT_ANALYZE_INSTRUCTION = '总结这些文献的核心方法与研究缺口'
+const DEFAULT_ANALYZE_INSTRUCTION =
+  '按标准模板逐篇详细分析这些文献，并给出横向对比与研究缺口'
 const LIT_REMARK_PLUGINS = [remarkGfm]
 
 /** 在系统浏览器打开链接（永不在 webview 内跳转）。 */
@@ -550,6 +554,102 @@ function LitMarkdown({ text }: { text: string }) {
         {text}
       </ReactMarkdown>
     </div>
+  )
+}
+
+/** 单张论文图：加载失败时退化为 caption + 原始链接。 */
+function LitFigureView({ fig }: { fig: LitFigure }) {
+  const [failed, setFailed] = useState(false)
+  return (
+    <figure className="my-2">
+      {failed ? (
+        <button
+          onClick={() => void openExternal(fig.url)}
+          className="text-[11.5px] text-primary underline underline-offset-2 text-left break-all"
+        >
+          图片加载失败，点击在浏览器打开：{fig.url}
+        </button>
+      ) : (
+        <img
+          src={fig.url}
+          alt={fig.caption || '论文图片'}
+          loading="lazy"
+          onError={() => setFailed(true)}
+          className="max-w-full rounded-lg border border-line bg-white"
+        />
+      )}
+      {fig.caption && (
+        <figcaption className="text-[11px] text-ink-dim leading-4 mt-1">
+          {fig.caption}
+        </figcaption>
+      )}
+    </figure>
+  )
+}
+
+/** 分析结果尾部：逐篇内联展示抓到的图表与开源代码链接。 */
+function FigureAppendix({ papers }: { papers: LitPaperExtras[] }) {
+  if (!papers.some((p) => p.figures.length > 0 || p.code_links.length > 0)) {
+    return null
+  }
+  return (
+    <div className="border-t border-line pt-3 mt-4">
+      <h2 className="text-[14px] font-semibold text-ink mb-2">论文图表与代码链接</h2>
+      {papers.map((p, i) =>
+        p.figures.length === 0 && p.code_links.length === 0 ? null : (
+          <section key={i} className="mb-5">
+            <h3 className="text-[12.5px] font-semibold text-ink mb-1.5">
+              [{i + 1}] {p.title}
+              {p.note && (
+                <span className="ml-2 text-[10.5px] font-normal text-ink-dim">
+                  {p.note}
+                </span>
+              )}
+            </h3>
+            {p.code_links.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {p.code_links.map((l) => (
+                  <button
+                    key={l}
+                    onClick={() => void openExternal(l)}
+                    className="text-[10.5px] px-2 py-0.5 rounded bg-surface-2 border border-line text-ink-muted hover:text-primary hover:border-primary/60 transition-colors font-mono"
+                    title={l}
+                  >
+                    {l.replace('https://', '')}
+                  </button>
+                ))}
+              </div>
+            )}
+            {p.figures.map((f, j) => (
+              <LitFigureView key={j} fig={f} />
+            ))}
+          </section>
+        ),
+      )}
+    </div>
+  )
+}
+
+/** 导出用完整 Markdown：分析正文 + 图表/代码链接附录。 */
+function analysisToMarkdown(r: LitAnalyzeResult): string {
+  const sections: string[] = []
+  r.papers.forEach((p, i) => {
+    const lines: string[] = []
+    if (p.note) lines.push('资料级别: ' + p.note)
+    if (p.code_links.length > 0) lines.push('代码链接: ' + p.code_links.join(' , '))
+    for (const f of p.figures) {
+      lines.push('![' + (f.caption || '图') + '](' + f.url + ')')
+    }
+    if (lines.length > 0) {
+      sections.push('### [' + (i + 1) + '] ' + p.title + NL + NL + lines.join(NL + NL))
+    }
+  })
+  if (sections.length === 0) return r.analysis
+  return (
+    r.analysis +
+    NL + NL + '---' + NL + NL +
+    '## 附录：图表与代码链接' + NL + NL +
+    sections.join(NL + NL)
   )
 }
 
@@ -632,7 +732,7 @@ function LitSearchTab() {
   const [instruction, setInstruction] = useState(DEFAULT_ANALYZE_INSTRUCTION)
   const [modelKey, setModelKey] = useState('')
   const [analyzing, setAnalyzing] = useState(false)
-  const [analysis, setAnalysis] = useState<string | null>(null)
+  const [analysis, setAnalysis] = useState<LitAnalyzeResult | null>(null)
   const [analyzeError, setAnalyzeError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
@@ -692,13 +792,13 @@ function LitSearchTab() {
     setAnalyzeError(null)
     setAnalysis(null)
     try {
-      const text = await litAnalyze(
+      const res = await litAnalyze(
         selectedPapers,
         instruction.trim() || DEFAULT_ANALYZE_INSTRUCTION,
         model,
         providerId,
       )
-      setAnalysis(text)
+      setAnalysis(res)
     } catch (e) {
       setAnalyzeError('分析失败：' + String(e))
     } finally {
@@ -709,7 +809,7 @@ function LitSearchTab() {
   const copyAnalysis = async () => {
     if (!analysis) return
     try {
-      await navigator.clipboard.writeText(analysis)
+      await navigator.clipboard.writeText(analysisToMarkdown(analysis))
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     } catch {
@@ -845,7 +945,9 @@ function LitSearchTab() {
                     {copied ? '已复制' : '复制'}
                   </button>
                   <button
-                    onClick={() => void saveExport('文献分析', 'md', analysis)}
+                    onClick={() =>
+                      void saveExport('文献分析', 'md', analysisToMarkdown(analysis))
+                    }
                     className={toolBtn}
                   >
                     导出 .md
@@ -895,16 +997,24 @@ function LitSearchTab() {
             </div>
             <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3">
               {analyzing ? (
-                <div className="text-[12px] text-ink-dim">
-                  模型分析中，请稍候…（勾选文献越多耗时越长）
+                <div className="text-[12px] text-ink-dim space-y-1.5">
+                  <div>
+                    正在抓取论文原文（ar5iv 全文 / 重要图表 / 开源代码链接）并生成逐篇结构化分析…
+                  </div>
+                  <div>全文抓取 + 详细报告耗时较长，勾选越多越慢，请耐心等待。</div>
                 </div>
               ) : analyzeError ? (
                 <div className="text-[12px] text-failed">{analyzeError}</div>
               ) : analysis ? (
-                <LitMarkdown text={analysis} />
+                <div>
+                  <LitMarkdown text={analysis.analysis} />
+                  <FigureAppendix papers={analysis.papers} />
+                </div>
               ) : (
                 <div className="text-[12px] text-ink-dim">
-                  将把勾选文献的标题与摘要发送给所选模型，按上方指令生成 Markdown 分析报告。
+                  将自动抓取勾选文献的原文（arXiv 走 ar5iv HTML 全文，抓不到自动退回摘要并注明）、
+                  重要图表与开源代码链接，随后按固定模板逐篇生成详细报告：摘要 / 背景知识 /
+                  Idea Overview / 是否开源 / 方法要点 / 实现与效果 / 重要图表；多篇时附横向对比。
                 </div>
               )}
             </div>

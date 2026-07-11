@@ -112,6 +112,27 @@ export interface LitPaper {
   source: string
 }
 
+/** Mirrors Rust litsearch::LitFigure (figure image URL + caption). */
+export interface LitFigure {
+  url: string
+  caption: string
+}
+
+/** Mirrors Rust litsearch::LitPaperExtras (per-paper fetched material). */
+export interface LitPaperExtras {
+  title: string
+  /** 资料级别，如 "全文（ar5iv HTML 抓取）" / "仅摘要（全文抓取失败）"。 */
+  note: string
+  code_links: string[]
+  figures: LitFigure[]
+}
+
+/** Mirrors Rust litsearch::LitAnalyzeResult. */
+export interface LitAnalyzeResult {
+  analysis: string
+  papers: LitPaperExtras[]
+}
+
 export type ResearchTab = 'agents' | 'skills' | 'pipelines' | 'dashboard' | 'lit'
 
 // -- Store ------------------------------------------------------------------
@@ -156,7 +177,7 @@ interface ResearchStore {
     instruction: string,
     model: string,
     providerId: string | null,
-  ) => Promise<string>
+  ) => Promise<LitAnalyzeResult>
 
   clearNotice: () => void
 }
@@ -250,7 +271,7 @@ export const useResearchStore = create<ResearchStore>((set) => ({
   litSearch: (query, source, limit) =>
     tauriInvoke<LitPaper[]>('lit_search', { query, source, limit }),
   litAnalyze: (papers, instruction, model, providerId) =>
-    tauriInvoke<string>('lit_analyze', {
+    tauriInvoke<LitAnalyzeResult>('lit_analyze', {
       papers,
       instruction,
       model,
