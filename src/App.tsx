@@ -10,6 +10,7 @@ import Workbench from './pages/Workbench'
 import Sediment from './pages/Sediment'
 import Artifacts from './pages/Artifacts'
 import Research from './pages/Research'
+import Market from './pages/Market'
 import Login from './pages/Login'
 import { useAuthStore } from './stores/authStore'
 
@@ -39,6 +40,7 @@ export default function App() {
           <Route path="workbench" element={<Workbench />} />
           <Route path="sediment" element={<Sediment />} />
           <Route path="research" element={<Research />} />
+          <Route path="market" element={<Market />} />
           <Route path="canvas" element={<Canvas />} />
           <Route path="settings" element={<Settings />} />
         </Route>

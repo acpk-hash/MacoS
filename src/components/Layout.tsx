@@ -29,6 +29,11 @@ const researchItems = [
   { to: '/research', label: '科研', title: '科研 · Agent/Skill 库 · 流水线 · 仪表盘' },
 ]
 
+// "市场" group: 浏览 VPS 市场并一键安装 Agent / Skills。
+const marketItems = [
+  { to: '/market', label: '市场', title: '市场 · Agent/Skills 一键安装' },
+]
+
 // Bottom utility links.
 const navItems = [{ to: '/settings', label: '设置' }]
 
@@ -157,6 +162,14 @@ export default function Layout() {
         <nav className="flex flex-col gap-1 w-full px-2">
           <GroupTitle>科研</GroupTitle>
           {researchItems.map((item) => (
+            <NavEntry key={item.to} item={item} />
+          ))}
+        </nav>
+
+        {/* 市场 group */}
+        <nav className="flex flex-col gap-1 w-full px-2">
+          <GroupTitle>市场</GroupTitle>
+          {marketItems.map((item) => (
             <NavEntry key={item.to} item={item} />
           ))}
         </nav>

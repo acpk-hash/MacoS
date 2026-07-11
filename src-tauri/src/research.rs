@@ -40,7 +40,7 @@ fn agents_root(db: &Db) -> PathBuf {
     PathBuf::from(s)
 }
 
-fn skills_root(db: &Db) -> PathBuf {
+pub(crate) fn skills_root(db: &Db) -> PathBuf {
     let s = db
         .settings_get(SKILLS_ROOT_KEY)
         .ok()

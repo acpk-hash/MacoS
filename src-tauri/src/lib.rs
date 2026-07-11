@@ -4,6 +4,7 @@ pub mod db;
 pub mod engine_config;
 pub mod feishu;
 pub mod litsearch;
+pub mod market;
 pub mod mcp;
 pub mod pi_engine;
 pub mod providers;
@@ -1131,6 +1132,11 @@ pub fn run() {
             research::research_run_pipeline,
             litsearch::lit_search,
             litsearch::lit_analyze,
+            market::market_index,
+            market::market_fetch,
+            market::market_install_skill,
+            market::market_install_agent,
+            market::market_installed,
             workspace_fs::ws_open_folder,
             workspace_fs::ws_list_dir,
             workspace_fs::ws_read_file,
