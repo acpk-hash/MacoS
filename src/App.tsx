@@ -7,6 +7,7 @@ import StudioChat from './pages/StudioChat'
 import StudioGen from './pages/StudioGen'
 import Canvas from './pages/Canvas'
 import Workbench from './pages/Workbench'
+import RemoteHermes from './pages/RemoteHermes'
 import Sediment from './pages/Sediment'
 import Dashboard from './pages/Dashboard'
 import Artifacts from './pages/Artifacts'
@@ -39,6 +40,7 @@ export default function App() {
           <Route path="studio/gen" element={<StudioGen />} />
           <Route path="artifacts" element={<Artifacts />} />
           <Route path="workbench" element={<Workbench />} />
+          <Route path="remote" element={<RemoteHermes />} />
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="sediment" element={<Sediment />} />
           <Route path="research" element={<Research />} />

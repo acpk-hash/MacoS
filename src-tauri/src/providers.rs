@@ -124,15 +124,31 @@ pub fn key_delete(provider_id: &str) -> Result<(), String> {
 
 // -- Credential resolution ---------------------------------------------------
 
+/// Providers that may run WITHOUT an API key. The remote Hermes endpoint
+/// (self-hosted, auth optional on its API_SERVER) is the only such provider:
+/// a missing key resolves to an empty bearer instead of an error.
+fn key_optional(provider_id: &str) -> bool {
+    provider_id == crate::hermes::HERMES_PROVIDER_ID
+}
+
+/// Turn a stored (possibly absent) key into the key actually used for calls.
+/// Regular providers require a non-empty key; key-optional providers (remote
+/// Hermes) fall back to an empty bearer.
+pub(crate) fn resolve_key(provider_id: &str, stored: Option<String>) -> Result<String, String> {
+    match stored.filter(|k| !k.trim().is_empty()) {
+        Some(k) => Ok(k),
+        None if key_optional(provider_id) => Ok(String::new()),
+        None => Err("该服务商未设置 API Key".to_string()),
+    }
+}
+
 /// Build relay credentials for a specific provider (base_url + stored key).
 fn creds_for_provider(db: &Db, provider_id: &str) -> Result<RelayCreds, String> {
     let row = db
         .provider_get(provider_id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("服务商不存在: {provider_id}"))?;
-    let key = key_get(provider_id)?
-        .filter(|k| !k.trim().is_empty())
-        .ok_or_else(|| "该服务商未设置 API Key".to_string())?;
+    let key = resolve_key(provider_id, key_get(provider_id)?)?;
     Ok(RelayCreds::new(row.base_url, key, row.wire_api))
 }
 
@@ -165,9 +181,8 @@ pub fn resolve_creds(db: &Db, provider_id: Option<&str>) -> Result<RelayCreds, S
             row.label
         ));
     }
-    let key = key_get(&row.id)?
-        .filter(|k| !k.trim().is_empty())
-        .ok_or_else(|| format!("默认服务商「{}」未设置 API Key，请在设置中填写", row.label))?;
+    let key = resolve_key(&row.id, key_get(&row.id)?)
+        .map_err(|_| format!("默认服务商「{}」未设置 API Key，请在设置中填写", row.label))?;
     Ok(RelayCreds::new(row.base_url, key, row.wire_api))
 }
 
@@ -265,13 +280,8 @@ async fn collect_providers_models(db: &Db) -> Result<Vec<ProviderModels>, String
             models: Vec::new(),
             error: None,
         };
-        let key = match key_get(&row.id) {
-            Ok(Some(k)) if !k.trim().is_empty() => k,
-            Ok(_) => {
-                status.error = Some("未设置 API Key".to_string());
-                out.push(status);
-                continue;
-            }
+        let key = match key_get(&row.id).and_then(|k| resolve_key(&row.id, k)) {
+            Ok(k) => k,
             Err(e) => {
                 status.error = Some(e);
                 out.push(status);
@@ -618,6 +628,21 @@ mod tests {
             .unwrap();
         let err = creds_for_provider(&db, "nokey").unwrap_err();
         assert!(err.contains("API Key"), "should complain about missing key: {err}");
+    }
+
+    /// 普通服务商必须有 Key；远端 Hermes（可不鉴权）缺 Key 时回退空 bearer。
+    #[test]
+    fn resolve_key_requires_key_except_hermes() {
+        // Regular provider: real key passes, missing/blank key errors.
+        assert_eq!(resolve_key("p1", Some("sk-x".into())).unwrap(), "sk-x");
+        let err = resolve_key("p1", None).unwrap_err();
+        assert!(err.contains("API Key"), "missing key must be reported: {err}");
+        assert!(resolve_key("p1", Some("   ".into())).is_err());
+        // Hermes: key optional — missing resolves to empty bearer; a real key wins.
+        let hid = crate::hermes::HERMES_PROVIDER_ID;
+        assert_eq!(resolve_key(hid, None).unwrap(), "");
+        assert_eq!(resolve_key(hid, Some("  ".into())).unwrap(), "");
+        assert_eq!(resolve_key(hid, Some("hk-1".into())).unwrap(), "hk-1");
     }
 
     #[test]

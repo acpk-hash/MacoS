@@ -3,6 +3,7 @@ pub mod bridge;
 pub mod db;
 pub mod engine_config;
 pub mod feishu;
+pub mod hermes;
 pub mod litsearch;
 pub mod market;
 pub mod mcp;
@@ -1152,6 +1153,11 @@ pub fn run() {
             providers::provider_test,
             providers::providers_models,
             providers::providers_models_status,
+            hermes::hermes_config_get,
+            hermes::hermes_config_set,
+            hermes::hermes_test,
+            hermes::hermes_send,
+            hermes::hermes_stop,
             workbench_open,
             workbench_prompt,
             workbench_steer,

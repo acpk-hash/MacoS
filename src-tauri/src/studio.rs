@@ -49,6 +49,8 @@ pub struct StudioState {
     /// the aggregated `providers_models` list is derived from it).
     pub(crate) providers_models_cache:
         Mutex<Option<(Instant, Vec<crate::providers::ProviderModels>)>>,
+    /// 远端 Hermes 面板的在途请求取消令牌（单并发，见 `hermes::hermes_send`）。
+    pub(crate) hermes_cancel: Mutex<Option<CancellationToken>>,
 }
 
 impl StudioState {
@@ -58,6 +60,7 @@ impl StudioState {
             video_cache: Mutex::new(None),
             cancels: Mutex::new(HashMap::new()),
             providers_models_cache: Mutex::new(None),
+            hermes_cancel: Mutex::new(None),
         }
     }
 }
@@ -766,7 +769,8 @@ fn build_messages(rows: &[ChatMessageRow]) -> Vec<Value> {
 
 /// Build the `content` field for a user message. Returns a plain string when
 /// there are no attachments, otherwise an array of OpenAI content parts.
-fn build_user_content(text: &str, attachments: &[Attachment]) -> Value {
+/// Shared with the remote Hermes delegation path (`hermes::hermes_send`).
+pub(crate) fn build_user_content(text: &str, attachments: &[Attachment]) -> Value {
     if attachments.is_empty() {
         return Value::String(text.to_string());
     }

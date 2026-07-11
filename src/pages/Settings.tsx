@@ -269,12 +269,24 @@ function ProvidersSection() {
                     <span className="text-[10px] text-ink-dim bg-elevated/60 px-1.5 py-0.5 rounded">
                       {p.wire_api}
                     </span>
+                    {p.id === 'hermes-remote' && (
+                      <span
+                        className="text-[10px] text-sky bg-elevated/60 px-1.5 py-0.5 rounded"
+                        title="远端 Hermes Agent 端点（在 设置 → 远端处理 (Hermes) 中管理）"
+                      >
+                        远端 Agent
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-ink-dim truncate">{p.base_url}</p>
                   <p className="text-xs mt-0.5">
                     {p.has_key ? (
                       <span className="text-done">
                         Key 已设置（{p.key_mask}）
+                      </span>
+                    ) : p.id === 'hermes-remote' ? (
+                      <span className="text-ink-dim">
+                        Key 未设置（Hermes 未开鉴权时可留空）
                       </span>
                     ) : (
                       <span className="text-awaiting">Key 未设置</span>
@@ -2374,7 +2386,268 @@ function SyncSection() {
 
 // ── Settings page ─────────────────────────────────────────────────────────────
 
-type SectionId = 'engine' | 'mcp' | 'sync' | 'feishu' | 'wecom' | 'skills' | 'market'
+// ── Remote Hermes Section（远端处理端点配置） ─────────────────────────────────
+
+/** Mirrors Rust hermes::HermesConfig. */
+interface HermesConfigInfo {
+  configured: boolean
+  base_url: string
+  model: string
+  enabled: boolean
+  has_key: boolean
+  key_mask: string
+}
+
+const HERMES_REPO_URL = 'https://github.com/NousResearch/hermes-agent'
+
+function HermesSection() {
+  const [cfg, setCfg] = useState<HermesConfigInfo | null>(null)
+  const [form, setForm] = useState({ base_url: '', model: '', key: '' })
+  const [enabled, setEnabled] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [test, setTest] = useState<TestResult | 'loading' | null>(null)
+
+  const load = useCallback(async () => {
+    try {
+      const c = await tauriInvoke<HermesConfigInfo>('hermes_config_get')
+      setCfg(c)
+      setForm({ base_url: c.base_url, model: c.model, key: '' })
+      setEnabled(c.configured ? c.enabled : true)
+    } catch (e) {
+      console.error('hermes_config_get failed:', e)
+    }
+  }, [])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  const runTest = async () => {
+    setTest('loading')
+    try {
+      const res = await tauriInvoke<TestResult>('hermes_test')
+      setTest(res)
+    } catch (e) {
+      setTest({ success: false, message: String(e), elapsed_ms: 0 })
+    }
+  }
+
+  /** 保存配置；key 留空 = 不修改已存 Key。testAfter 时保存后立即测试连接。 */
+  const save = async (testAfter: boolean) => {
+    if (!form.base_url.trim()) {
+      setError('请填写 Hermes 端点 URL（如 http://your-host:8642/v1）')
+      return
+    }
+    setBusy(true)
+    setError('')
+    try {
+      await tauriInvoke('hermes_config_set', {
+        baseUrl: form.base_url.trim(),
+        model: form.model.trim(),
+        key: form.key.trim() ? form.key.trim() : null,
+        enabled,
+      })
+      setForm((f) => ({ ...f, key: '' }))
+      await load()
+      if (testAfter) await runTest()
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /** 清除已存的 API Key（Hermes 未开鉴权时无需 Key）。 */
+  const clearKey = async () => {
+    if (!cfg?.configured) return
+    setBusy(true)
+    setError('')
+    try {
+      await tauriInvoke('hermes_config_set', {
+        baseUrl: cfg.base_url,
+        model: cfg.model,
+        key: '',
+        enabled: cfg.enabled,
+      })
+      await load()
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const inputCls =
+    'w-full bg-surface-2 border border-line rounded-lg px-3 py-2 text-sm text-ink placeholder-ink-dim focus:outline-none focus:border-lavender transition-colors'
+
+  return (
+    <div className="space-y-4">
+      {/* 说明 / 部署指引 */}
+      <div className="glass rounded-card p-4 space-y-2">
+        <div className="flex items-center gap-2">
+          <h3 className="text-xs font-semibold text-ink-muted uppercase tracking-wider">
+            远端处理 (Hermes)
+          </h3>
+          <span className="text-[10px] text-sky bg-sakura/40 px-1.5 py-0.5 rounded">
+            远端 Agent
+          </span>
+        </div>
+        <p className="text-xs text-ink-dim leading-relaxed">
+          Hermes Agent 是 Nous Research 开源（MIT）的远端 agent：部署在你自己的服务器上
+          （内存 ≥ 1–2GB），自带记忆与 skills，暴露 OpenAI 兼容 API（默认端口 8642）。
+          配置好端点后，可在侧栏「Agent → 远端」把任务与文件委派到远端处理，
+          它也会作为一个特殊服务商进入模型下拉。
+        </p>
+        <p className="text-xs text-ink-dim leading-relaxed">
+          部署：
+          <button
+            onClick={() =>
+              void tauriInvoke('open_external_url', { url: HERMES_REPO_URL })
+            }
+            className="text-sky underline underline-offset-2 mx-1"
+          >
+            github.com/NousResearch/hermes-agent
+          </button>
+          按 README 一键安装或 Docker 启动，开启 API 服务器后把地址填到下面即可。
+          <span className="text-ink-muted">
+            API Key 仅保存在本机凭据管理器，不会上传；Hermes 未开鉴权时可留空。
+          </span>
+        </p>
+      </div>
+
+      {/* 端点表单 */}
+      <div className="glass rounded-card p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-semibold text-ink-muted uppercase tracking-wider">
+            端点配置
+          </h3>
+          {cfg?.configured && (
+            <button
+              onClick={() => setEnabled((v) => !v)}
+              className={
+                'relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ' +
+                (enabled ? 'bg-sakura' : 'bg-elevated')
+              }
+              title={enabled ? '已启用（点击禁用，保存后生效）' : '已禁用（点击启用，保存后生效）'}
+              aria-label="Toggle hermes enabled"
+            >
+              <span
+                className={
+                  'absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ' +
+                  (enabled ? 'translate-x-4' : 'translate-x-0.5')
+                }
+              />
+            </button>
+          )}
+        </div>
+
+        {error && <p className="text-xs text-failed">{error}</p>}
+
+        <div>
+          <label className="block text-xs text-ink-dim mb-1">端点 URL</label>
+          <input
+            type="text"
+            value={form.base_url}
+            onChange={(e) => setForm((f) => ({ ...f, base_url: e.target.value }))}
+            placeholder="http://your-host:8642/v1 或 https://your-host:8642/v1"
+            className={inputCls}
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs text-ink-dim mb-1">
+            API Key（可选）
+            {cfg?.has_key && (
+              <span className="text-done ml-1">已设置（{cfg.key_mask}），留空=不修改</span>
+            )}
+          </label>
+          <input
+            type="password"
+            value={form.key}
+            onChange={(e) => setForm((f) => ({ ...f, key: e.target.value }))}
+            placeholder={cfg?.has_key ? '留空保持不变' : 'Hermes API_SERVER 未开鉴权时可留空'}
+            autoComplete="new-password"
+            className={inputCls}
+          />
+          {cfg?.has_key && (
+            <button
+              onClick={() => void clearKey()}
+              disabled={busy}
+              className="text-xs text-ink-dim hover:text-failed disabled:opacity-40 mt-1 transition-colors"
+            >
+              清除已存 Key
+            </button>
+          )}
+        </div>
+
+        <div>
+          <label className="block text-xs text-ink-dim mb-1">模型名（可选）</label>
+          <input
+            type="text"
+            value={form.model}
+            onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}
+            placeholder="留空 = 自动使用端点返回的第一个模型"
+            className={inputCls}
+          />
+        </div>
+
+        <div className="flex gap-2 justify-end pt-1">
+          <button
+            onClick={() => void save(false)}
+            disabled={busy}
+            className="px-3 py-1.5 text-xs bg-elevated hover:bg-elevated disabled:opacity-40 text-ink rounded transition-colors"
+          >
+            {busy ? '保存中…' : '仅保存'}
+          </button>
+          <button
+            onClick={() => void save(true)}
+            disabled={busy}
+            className="px-3 py-1.5 text-xs bg-sakura hover:bg-sakura disabled:opacity-40 text-white rounded transition-colors"
+          >
+            {busy ? '保存中…' : '保存并测试连接'}
+          </button>
+          {cfg?.configured && (
+            <button
+              onClick={() => void runTest()}
+              disabled={test === 'loading'}
+              className="px-3 py-1.5 text-xs text-sky hover:text-sky disabled:text-ink-dim border border-line rounded transition-colors"
+            >
+              {test === 'loading' ? '测试中…' : '测试连接'}
+            </button>
+          )}
+        </div>
+
+        {test && test !== 'loading' && (
+          <p
+            className={
+              'text-xs rounded px-2 py-1 break-words ' +
+              (test.success ? 'bg-green-900/30 text-done' : 'bg-red-900/30 text-failed')
+            }
+          >
+            {test.message}
+          </p>
+        )}
+
+        {cfg && !cfg.configured && (
+          <p className="text-xs text-ink-dim">
+            尚未配置端点。部署好 Hermes 后填上地址，即可在「Agent → 远端」委派任务。
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+type SectionId =
+  | 'engine'
+  | 'hermes'
+  | 'mcp'
+  | 'sync'
+  | 'feishu'
+  | 'wecom'
+  | 'skills'
+  | 'market'
 
 interface Section {
   id: SectionId
@@ -2387,6 +2660,12 @@ const SECTIONS: Section[] = [
     id: 'engine',
     title: '推理引擎',
     description: '配置默认引擎、工作目录、推理深度与确认策略。',
+  },
+  {
+    id: 'hermes',
+    title: '远端处理 (Hermes)',
+    description:
+      '配置远端 Hermes Agent 端点（OpenAI 兼容，默认端口 8642），把任务与文件委派到你自己的服务器上处理。',
   },
   {
     id: 'mcp',
@@ -2478,6 +2757,7 @@ export default function Settings() {
           // Active section content
           <div>
             {activeSection === 'engine' && <EngineSection />}
+            {activeSection === 'hermes' && <HermesSection />}
             {activeSection === 'mcp' && <McpSection />}
             {activeSection === 'sync' && <SyncSection />}
             {activeSection === 'feishu' && <FeishuSection />}

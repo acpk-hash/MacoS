@@ -19,6 +19,7 @@ const agentItems = [
   { to: '/board', label: '看板', title: '任务看板' },
   { to: '/chat', label: '会话', title: 'Agent 会话' },
   { to: '/canvas', label: '画布', hint: '执行流', title: '画布 · 执行流(只读查看视图)' },
+  { to: '/remote', label: '远端', hint: 'Hermes', title: '远端 Hermes · 把任务/文件委派到远端 Agent 处理' },
 ]
 
 // "沉淀" group (Hermes-style local asset library: 运行历史 / 技能库).
