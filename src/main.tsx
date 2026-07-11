@@ -11,6 +11,7 @@ import { initAgentEventListener } from './stores/agentStore'
 import { initStudioEventListener } from './stores/studioStore'
 import { initArtifactEventListener } from './stores/artifactStore'
 import { initWorkbenchEventListener } from './stores/workbenchStore'
+import { initAuth } from './stores/authStore'
 
 // Register the Tauri "agent-event" listener once before any component mounts.
 // No-ops in browser / non-Tauri contexts.
@@ -21,6 +22,8 @@ initStudioEventListener().catch(console.warn)
 initArtifactEventListener().catch(console.warn)
 // Register the "workbench-event" listener (F4 local workbench / pi engine) once.
 initWorkbenchEventListener().catch(console.warn)
+// Probe login state (sync_status) once — the App gate waits on `checked`.
+initAuth().catch(console.warn)
 
 const rootEl = document.getElementById('root')!
 createRoot(rootEl).render(

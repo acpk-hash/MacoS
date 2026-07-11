@@ -5,6 +5,7 @@ import {
   type ProviderModelsStatus,
   type ProviderTestResult,
 } from '../stores/providerStore'
+import { useAuthStore } from '../stores/authStore'
 
 // ── Tauri invoke helper ───────────────────────────────────────────────────────
 
@@ -2114,74 +2115,93 @@ function WecomSection() {
   )
 }
 
-// ── Mobile Sync Section (A3) ──────────────────────────────────────────────────
+// ── 账号与同步 Section（A3 长连接 + v0.8 账号门户） ───────────────────────────
 
-interface SyncDeviceInfo {
-  id: string
-  kind: string
-  name: string
-}
+// 绑定占位（v0.8）：真实 OAuth / 短信登录需要对应平台资质（短信服务 / 微信
+// 开放平台 / QQ 互联），资质到位后再接入；本期仅提供 UI 框架与路线说明。
+const BIND_ITEMS = [
+  {
+    key: 'phone',
+    label: '手机号',
+    desc: '手机号 + 短信验证码登录',
+    note: '手机号绑定需要配置短信服务平台，即将开放。',
+  },
+  {
+    key: 'wechat',
+    label: '微信',
+    desc: '微信扫码快捷登录',
+    note: '微信绑定需要接入微信开放平台（应用资质审核），即将开放。',
+  },
+  {
+    key: 'qq',
+    label: 'QQ',
+    desc: 'QQ 快捷登录',
+    note: 'QQ 绑定需要接入 QQ 互联平台（应用资质审核），即将开放。',
+  },
+] as const
 
-interface SyncStatusInfo {
-  enabled: boolean
-  logged_in: boolean
-  /** disabled | disconnected | connecting | connected | reconnecting */
-  state: string
-  username: string | null
-  device_count: number
-  devices: SyncDeviceInfo[]
-  last_error: string | null
+function BindSection() {
+  const [openKey, setOpenKey] = useState<string | null>(null)
+
+  return (
+    <div>
+      <p className="text-xs font-semibold text-ink-muted uppercase tracking-wider mb-2">
+        账号绑定
+      </p>
+      <div className="space-y-1.5">
+        {BIND_ITEMS.map((b) => (
+          <div key={b.key} className="bg-surface border border-line rounded-lg px-3 py-2.5">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm text-ink">{b.label}</p>
+                <p className="text-xs text-ink-dim mt-0.5">{b.desc}</p>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <span className="text-xs text-ink-dim bg-surface-2 px-1.5 py-0.5 rounded">
+                  未绑定
+                </span>
+                <button
+                  onClick={() => setOpenKey((k) => (k === b.key ? null : b.key))}
+                  className="text-xs text-primary hover:text-primary-hover transition-colors"
+                >
+                  绑定
+                </button>
+              </div>
+            </div>
+            {openKey === b.key && (
+              <p className="mt-2 text-xs text-ink-muted bg-primary-tint border border-lavender/40 rounded px-2 py-1.5 leading-relaxed">
+                {b.note}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 function SyncSection() {
-  const [status, setStatus] = useState<SyncStatusInfo | null>(null)
-  const [form, setForm] = useState({ username: '', password: '' })
+  const status = useAuthStore((s) => s.status)
+  const refresh = useAuthStore((s) => s.refresh)
+  const authLogout = useAuthStore((s) => s.logout)
+  const openPortal = useAuthStore((s) => s.openPortal)
   const [submitting, setSubmitting] = useState(false)
   const [toggling, setToggling] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
 
-  const loadStatus = useCallback(async () => {
-    try {
-      const info = await tauriInvoke<SyncStatusInfo>('sync_status')
-      setStatus(info)
-    } catch (e) {
-      console.error('sync_status failed:', e)
-    }
-  }, [])
-
+  // 账号状态由 authStore 统一维护（与门户/侧栏一致）；这里加快轮询以便
+  // 设备列表与连接状态及时刷新。
   useEffect(() => {
-    loadStatus()
-    const timer = setInterval(loadStatus, 3000)
+    void refresh()
+    const timer = setInterval(() => void refresh(), 3000)
     return () => clearInterval(timer)
-  }, [loadStatus])
-
-  const doAuth = async (register: boolean) => {
-    if (!form.username.trim() || !form.password) {
-      setActionError('请输入用户名和密码')
-      return
-    }
-    setSubmitting(true)
-    setActionError(null)
-    try {
-      await tauriInvoke(register ? 'sync_register' : 'sync_login', {
-        username: form.username.trim(),
-        password: form.password,
-      })
-      setForm({ username: '', password: '' })
-      await loadStatus()
-    } catch (e) {
-      setActionError(String(e))
-    } finally {
-      setSubmitting(false)
-    }
-  }
+  }, [refresh])
 
   const doLogout = async () => {
     setSubmitting(true)
     setActionError(null)
     try {
-      await tauriInvoke('sync_logout')
-      await loadStatus()
+      await authLogout()
     } catch (e) {
       setActionError(String(e))
     } finally {
@@ -2194,7 +2214,7 @@ function SyncSection() {
     setToggling(true)
     try {
       await tauriInvoke('sync_set_enabled', { enabled: !status.enabled })
-      await loadStatus()
+      await refresh()
     } catch (e) {
       console.error('sync_set_enabled failed:', e)
     } finally {
@@ -2228,7 +2248,8 @@ function SyncSection() {
       {/* Data-scope notice */}
       <div className="bg-primary-tint border border-lavender/40 rounded-lg p-3">
         <p className="text-xs text-sky/90 leading-relaxed">
-          同步任务、进度与对话内容到你的手机；对话正文会同步（API 密钥绝不上传，附件仅同步文本与文件名、大图不上传）。
+          登录同一账号的设备间同步任务、进度与对话内容；数据按账号隔离，各账号互不可见。
+          对话正文会同步（API 密钥绝不上传，附件仅同步文本与文件名、大图不上传）。
         </p>
       </div>
 
@@ -2239,7 +2260,7 @@ function SyncSection() {
           <div className="bg-surface border border-line rounded-lg p-3 space-y-3">
             <div className="flex items-center justify-between">
               <div className="min-w-0">
-                <p className="text-xs text-ink-dim">账号</p>
+                <p className="text-xs text-ink-dim">当前账号</p>
                 <p className="text-sm font-medium text-ink truncate">
                   {status.username ?? '—'}
                 </p>
@@ -2305,6 +2326,9 @@ function SyncSection() {
             )}
           </div>
 
+          {/* 绑定占位（手机号 / 微信 / QQ） */}
+          <BindSection />
+
           {/* Guidance */}
           <div className="bg-surface rounded-lg p-3">
             <p className="text-xs text-ink-muted leading-relaxed">
@@ -2321,64 +2345,27 @@ function SyncSection() {
           >
             {submitting ? '处理中…' : '退出登录'}
           </button>
+          <p className="text-xs text-ink-dim -mt-2">
+            退出后回到本地模式：本地数据保留，仅停止跨端同步。
+          </p>
           {actionError && <p className="text-xs text-red-600">{actionError}</p>}
         </div>
       ) : (
-        // ── Logged out ───────────────────────────────────────────────────────
+        // ── Logged out（本地模式）：登录/注册统一走账号门户，不再放重复表单 ──
         <div className="space-y-4">
-          <p className="text-xs text-ink-dim leading-relaxed">
-            使用官方同步服务器登录后，桌面端会把任务与进度实时推送到你的手机。
-            服务器地址固定为官方服务器，后续版本再开放自建。
-          </p>
-
-          <div className="space-y-3">
-            <div>
-              <label className="block text-xs text-ink-dim mb-1">用户名</label>
-              <input
-                type="text"
-                value={form.username}
-                onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
-                placeholder="3-32 位（字母/数字/_.-）"
-                autoComplete="username"
-                className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm
-                           text-ink placeholder-ink-dim focus:outline-none focus:border-lavender
-                           transition-colors"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-ink-dim mb-1">密码</label>
-              <input
-                type="password"
-                value={form.password}
-                onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-                placeholder="至少 8 位"
-                autoComplete="current-password"
-                className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm
-                           text-ink placeholder-ink-dim focus:outline-none focus:border-lavender
-                           transition-colors"
-              />
-            </div>
+          <div className="bg-surface border border-line rounded-lg p-3">
+            <p className="text-sm font-medium text-ink">本地模式（未登录）</p>
+            <p className="text-xs text-ink-dim mt-1 leading-relaxed">
+              当前所有数据仅保存在本机。登录账号后，本机已有的任务与对话会自动上传到该账号，
+              手机端登录同一账号即可同步查看与远程派发。
+            </p>
           </div>
-
-          <div className="flex gap-2">
-            <button
-              onClick={() => doAuth(true)}
-              disabled={submitting}
-              className="px-4 py-2 bg-sakura hover:bg-sakura disabled:opacity-40
-                         text-white text-sm rounded-lg transition-colors"
-            >
-              {submitting ? '处理中…' : '注册并登录'}
-            </button>
-            <button
-              onClick={() => doAuth(false)}
-              disabled={submitting}
-              className="px-4 py-2 bg-elevated hover:bg-elevated disabled:bg-surface-2
-                         text-ink text-sm rounded-lg transition-colors"
-            >
-              {submitting ? '处理中…' : '登录'}
-            </button>
-          </div>
-          {actionError && <p className="text-xs text-red-600 break-words">{actionError}</p>}
+          <button
+            onClick={openPortal}
+            className="px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm rounded-lg transition-colors"
+          >
+            登录 / 注册账号
+          </button>
         </div>
       )}
     </div>
@@ -2408,8 +2395,8 @@ const SECTIONS: Section[] = [
   },
   {
     id: 'sync',
-    title: '手机同步',
-    description: '登录账号后将任务与进度实时推送到手机，并可远程派发任务。聊天原文与密钥永不上传。',
+    title: '账号与同步',
+    description: '登录/注册、账号绑定与跨端同步：同一账号下手机与电脑实时同步任务、进度与对话。',
   },
   {
     id: 'feishu',

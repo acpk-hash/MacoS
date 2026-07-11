@@ -10,8 +10,22 @@ import Workbench from './pages/Workbench'
 import Sediment from './pages/Sediment'
 import Artifacts from './pages/Artifacts'
 import Research from './pages/Research'
+import Login from './pages/Login'
+import { useAuthStore } from './stores/authStore'
 
 export default function App() {
+  const { checked, loggedIn, localMode } = useAuthStore()
+
+  // 启动探测未完成前不闪门户（sync_status 是本地查询，通常瞬时完成）。
+  if (!checked) {
+    return <div className="min-h-screen bg-bg" />
+  }
+
+  // 账号门户：未登录且未选择本地模式 → 登录/注册（含「本地模式」入口）。
+  if (!loggedIn && !localMode) {
+    return <Login />
+  }
+
   return (
     <BrowserRouter>
       <Routes>
@@ -23,9 +37,9 @@ export default function App() {
           <Route path="studio/gen" element={<StudioGen />} />
           <Route path="artifacts" element={<Artifacts />} />
           <Route path="workbench" element={<Workbench />} />
-        <Route path="sediment" element={<Sediment />} />
+          <Route path="sediment" element={<Sediment />} />
           <Route path="research" element={<Research />} />
-        <Route path="canvas" element={<Canvas />} />
+          <Route path="canvas" element={<Canvas />} />
           <Route path="settings" element={<Settings />} />
         </Route>
       </Routes>

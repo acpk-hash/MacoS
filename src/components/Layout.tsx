@@ -1,5 +1,6 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import Logo from './Logo'
+import { useAuthStore } from '../stores/authStore'
 
 // "工作台" group (direct-API studio) — unchanged.
 const studioItems = [
@@ -62,6 +63,58 @@ function GroupTitle({ children }: { children: React.ReactNode }) {
   )
 }
 
+/** 侧栏底部账号块：已登录显示用户名+退出登录；本地模式显示登录入口。 */
+function AccountBlock() {
+  const { loggedIn, username, logout, openPortal } = useAuthStore()
+  const navigate = useNavigate()
+
+  if (loggedIn) {
+    const name = username ?? '账号'
+    return (
+      <div className="w-full px-2 flex flex-col items-center gap-1">
+        <button
+          onClick={() => navigate('/settings')}
+          title={`账号：${name} · 点击查看账号与同步设置`}
+          className="w-8 h-8 rounded-full bg-primary text-white text-sm font-bold
+                     flex items-center justify-center hover:bg-primary-hover transition-colors"
+        >
+          {name.charAt(0).toUpperCase()}
+        </button>
+        <span className="w-full text-[9px] text-ink-muted text-center truncate leading-tight" title={name}>
+          {name}
+        </span>
+        <button
+          onClick={() => void logout()}
+          title="退出登录（回本地模式，本地数据保留）"
+          className="text-[9px] text-ink-dim hover:text-failed transition-colors leading-none"
+        >
+          退出登录
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="w-full px-2 flex flex-col items-center gap-1">
+      <button
+        onClick={openPortal}
+        title="本地模式 · 点击登录以在手机和电脑间同步数据"
+        className="w-8 h-8 rounded-full bg-surface-2 border border-line text-ink-dim text-xs
+                   flex items-center justify-center hover:border-primary hover:text-primary transition-colors"
+      >
+        登
+      </button>
+      <span className="text-[9px] text-ink-dim text-center leading-tight">本地模式</span>
+      <button
+        onClick={openPortal}
+        className="text-[9px] text-primary hover:text-primary-hover transition-colors leading-none"
+      >
+        登录
+      </button>
+    </div>
+  )
+}
+
 export default function Layout() {
   return (
     <div className="flex h-screen text-ink">
@@ -117,6 +170,11 @@ export default function Layout() {
             <NavEntry key={item.to} item={item} />
           ))}
         </nav>
+
+        {/* 账号（底部固定） */}
+        <div className="mt-auto w-full">
+          <AccountBlock />
+        </div>
       </aside>
 
       {/* Main content area */}
