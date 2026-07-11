@@ -15,9 +15,7 @@
     ],
     "resources": {
       "../engine/target/release/agentboard-engine.exe": "agentboard-engine.exe",
-      "../engine-codex/codex.exe": "engine-codex/codex.exe",
-      "../engine-pi/node.exe": "engine-pi/node.exe",
-      "../engine-pi/pi": "engine-pi/pi"
+      "../engine-codex/codex.exe": "engine-codex/codex.exe"
     },
     "icon": [
       "icons/32x32.png",
