@@ -21,6 +21,7 @@ const agentItems = [
 
 // "沉淀" group (Hermes-style local asset library: 运行历史 / 技能库).
 const sedimentItems = [
+  { to: '/dashboard', label: '概览', title: '概览 · 运行与 Token 消耗仪表盘' },
   { to: '/sediment', label: '沉淀', title: '沉淀 · 运行历史 / 技能库' },
 ]
 

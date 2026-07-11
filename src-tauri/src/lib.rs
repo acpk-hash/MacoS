@@ -12,6 +12,7 @@ pub mod relay;
 pub mod research;
 pub mod sediment;
 pub mod ssh_remote;
+pub mod stats;
 pub mod studio;
 pub mod sync;
 pub mod wecom;
@@ -978,6 +979,39 @@ async fn sediment_delete(
     Ok(())
 }
 
+// ── Stats (M2 概览: 运行 + token 消耗只读聚合) ────────────────────────────────
+
+/// KPI totals for the dashboard: run counts, token sums, active days.
+#[tauri::command]
+async fn stats_overview(state: State<'_, AppState>) -> Result<stats::StatsOverview, String> {
+    stats::overview(&state.db)
+}
+
+/// Per-day token consumption time series. `bucket` defaults to `"day"`.
+#[tauri::command]
+async fn stats_token_series(
+    bucket: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Vec<stats::TokenSeriesPoint>, String> {
+    stats::token_series(&state.db, bucket.as_deref())
+}
+
+/// Token usage + run count grouped by workbench model, biggest first.
+#[tauri::command]
+async fn stats_by_model(state: State<'_, AppState>) -> Result<Vec<stats::ModelStat>, String> {
+    stats::by_model(&state.db)
+}
+
+/// Most recent runs for the dashboard table (reuses the sediment run merge).
+#[tauri::command]
+async fn stats_recent_runs(
+    limit: Option<i64>,
+    state: State<'_, AppState>,
+) -> Result<Vec<sediment::RunSummary>, String> {
+    let limit = limit.unwrap_or(10).clamp(1, 100);
+    sediment::collect_runs(&state.db, None, None, Some(limit), None)
+}
+
 // ── App entry point ───────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1119,6 +1153,10 @@ pub fn run() {
             sediment_skills,
             sediment_reuse,
             sediment_delete,
+            stats_overview,
+            stats_token_series,
+            stats_by_model,
+            stats_recent_runs,
             research::research_roots,
             research::research_agents,
             research::research_agent_read,
