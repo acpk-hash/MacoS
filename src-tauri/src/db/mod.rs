@@ -299,6 +299,10 @@ impl Db {
             conn.execute_batch(SCHEMA_V6)?;
             conn.execute_batch("PRAGMA user_version = 6")?;
         }
+        if version < 7 {
+            conn.execute_batch(kb::SCHEMA_V7)?;
+            conn.execute_batch("PRAGMA user_version = 7")?;
+        }
         Ok(())
     }
 
@@ -1700,3 +1704,6 @@ mod tests {
 
 mod studio;
 pub use studio::{ChatMessageRow, ChatSessionRow, GenMediaRow};
+
+mod kb;
+pub use kb::{Category, Paper, PaperSummary, ScanResult, Tag, TagRef};

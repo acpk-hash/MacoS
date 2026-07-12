@@ -1,6 +1,7 @@
 pub mod agent;
 pub mod bridge;
 pub mod db;
+pub mod kb;
 pub mod engine_config;
 pub mod feishu;
 pub mod hermes;
@@ -1232,6 +1233,22 @@ pub fn run() {
             pty::pty_write,
             pty::pty_resize,
             pty::pty_close,
+            kb::kb_list_papers,
+            kb::kb_get_paper,
+            kb::kb_import_dir,
+            kb::kb_upload_paper,
+            kb::kb_update_metadata,
+            kb::kb_set_category,
+            kb::kb_delete_paper,
+            kb::kb_list_categories,
+            kb::kb_add_category,
+            kb::kb_update_category,
+            kb::kb_delete_category,
+            kb::kb_list_tags,
+            kb::kb_add_tags,
+            kb::kb_remove_tag,
+            kb::kb_root_get,
+            kb::kb_root_set,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
