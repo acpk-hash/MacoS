@@ -537,10 +537,8 @@ pub(crate) async fn ws_open_system(
     }
     #[cfg(windows)]
     {
-        use crate::procext::NoWindowExt;
-        std::process::Command::new("explorer")
-            .arg(&path)
-            .no_window()
+        std::process::Command::new("cmd")
+            .args(["/c", "start", "", &path.to_string_lossy()])
             .spawn()
             .map_err(|e| e.to_string())?;
     }

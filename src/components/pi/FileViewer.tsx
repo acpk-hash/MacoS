@@ -46,7 +46,6 @@ function extOf(name: string): string {
 }
 
 const OFFICE_EXTS = new Set(['docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt', 'odt', 'ods', 'odp'])
-const MARKDOWN_EXTS = new Set(['md', 'markdown', 'mdx'])
 
 const fallback = (
   <div className="w-full h-full flex items-center justify-center text-[12px] text-ink-dim">
