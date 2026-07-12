@@ -2,6 +2,7 @@ pub mod agent;
 pub mod bridge;
 pub mod db;
 pub mod kb;
+pub mod kb_watch;
 pub mod engine_config;
 pub mod feishu;
 pub mod hermes;
@@ -1058,6 +1059,7 @@ pub fn run() {
             pty: pty::PtyState::new(),
         })
         .manage(subagents::SubagentManager::default())
+        .manage(kb_watch::KbWatcher::default())
         .setup(|app| {
             // NOTE: no provider seeding from ~/.codex here. The providers table
             // is user-managed only — auto-seeding a relay snapshot used to
@@ -1255,6 +1257,8 @@ pub fn run() {
             kb::kb_normalize_preview,
             kb::kb_normalize_apply,
             kb::kb_rename_undo,
+            kb_watch::kb_watch_start,
+            kb_watch::kb_watch_stop,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
