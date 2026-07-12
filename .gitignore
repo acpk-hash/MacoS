@@ -28,4 +28,6 @@ src-tauri/gen/
 *.tsbuildinfo
 vite.config.js
 vite.config.d.ts
-engine-codex/codex.exe
+# Full codex vendor tree staged by scripts/prepare-engine-codex.ps1
+# (bin/codex.exe + codex-resources/ helpers + codex-path/rg.exe)
+engine-codex/

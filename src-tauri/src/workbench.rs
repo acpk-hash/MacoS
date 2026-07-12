@@ -762,10 +762,20 @@ fn accumulate_usage(
 
 /// Generate the temp-CODEX_HOME `config.toml`. The API key is an `env_key`
 /// *reference* — the plaintext never lands on disk.
+///
+/// Sandbox: the integration runs codex directly against the user-picked
+/// folder, so the Windows sandbox is kept OFF — `sandbox_mode =
+/// "danger-full-access"` + `approval_policy = "never"` (codex 0.13x config
+/// keys; the Windows sandbox additionally stays disabled because no
+/// `[windows] sandbox` mode and no `[features]` windows_sandbox flags are
+/// set). This avoids the codex-windows-sandbox helper chain entirely
+/// (0xC0000142 STATUS_DLL_INIT_FAILED when helpers are missing/broken).
 fn build_config_toml(base_url: &str, model: &str) -> String {
     format!(
         r#"model = "{model}"
 model_provider = "agentboard"
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
 disable_response_storage = true
 
 [model_providers.agentboard]
@@ -847,8 +857,11 @@ fn resolve_engine_bin(db: &Db, app: Option<&AppHandle>) -> Result<PathBuf, Strin
 }
 
 /// Resolve codex.exe for the engine's exec-server: settings override →
-/// bundled resource (`engine-codex/codex.exe`) → shared locator (desktop
-/// install / npm vendor / PATH).
+/// bundled resource (`engine-codex/bin/codex.exe`, the full npm vendor
+/// layout with `codex-resources/` helpers one level up — codex resolves
+/// `codex-command-runner.exe` etc. relative to its own exe, so the whole
+/// vendor tree must ship together) → legacy single-file resource → shared
+/// locator (desktop install / npm vendor / PATH).
 async fn resolve_codex_exe(db: &Db, app: Option<&AppHandle>) -> Result<String, String> {
     let explicit = db
         .settings_get("codex_exe_path")
@@ -860,12 +873,13 @@ async fn resolve_codex_exe(db: &Db, app: Option<&AppHandle>) -> Result<String, S
         }
     }
     if let Some(app) = app {
-        if let Ok(res) = app
-            .path()
-            .resolve("engine-codex/codex.exe", BaseDirectory::Resource)
-        {
-            if res.exists() {
-                return Ok(normalize_spawn_path(&res).to_string_lossy().to_string());
+        // Full vendor layout (v0.9.2+): bin/codex.exe + ../codex-resources/.
+        // Legacy layout (≤v0.9.1): bare codex.exe without helpers.
+        for rel in ["engine-codex/bin/codex.exe", "engine-codex/codex.exe"] {
+            if let Ok(res) = app.path().resolve(rel, BaseDirectory::Resource) {
+                if res.exists() {
+                    return Ok(normalize_spawn_path(&res).to_string_lossy().to_string());
+                }
             }
         }
     }
@@ -1021,6 +1035,13 @@ mod tests {
         assert!(t.contains(r#"base_url = "https://relay.example.com/v1""#));
         // codex ≥0.13x only supports the responses wire.
         assert!(t.contains(r#"wire_api = "responses""#));
+        // No sandbox, no approval prompts: codex works the folder directly.
+        assert!(t.contains(r#"approval_policy = "never""#));
+        assert!(t.contains(r#"sandbox_mode = "danger-full-access""#));
+        // The Windows sandbox helper chain must stay off: no [windows]
+        // sandbox mode and no feature flags that would enable it.
+        assert!(!t.contains("[windows]"));
+        assert!(!t.contains("windows_sandbox"));
         // The key must be an env reference, never a literal secret.
         assert!(t.contains(&format!(r#"env_key = "{KEY_ENV}""#)));
         assert!(!t.to_lowercase().contains("sk-"));
@@ -1194,6 +1215,12 @@ mod tests {
     ///
     /// Run with:
     /// `cargo test -p agentboard --lib workbench::tests::live_codex_workbench_creates_file -- --ignored --nocapture`
+    ///
+    /// Path overrides for packaged-layout verification (both optional):
+    ///   - `AB_WB_LIVE_ENGINE` — agentboard-engine.exe to drive
+    ///   - `AB_WB_LIVE_CODEX`  — codex.exe handed to `--codex-exe`
+    /// e.g. point both at `src-tauri/target/release/` after `tauri build` to
+    /// exercise the exact resource layout the installer ships.
     #[tokio::test]
     #[ignore]
     async fn live_codex_workbench_creates_file() {
@@ -1204,8 +1231,14 @@ mod tests {
         let provider_id = resolve_provider_id(&db, None).expect("default provider");
         let (base_url, key, _wire) =
             resolve_provider_creds(&db, &provider_id).expect("provider creds");
-        let engine_bin = resolve_engine_bin(&db, None).expect("engine bin (build ../engine first)");
-        let codex_exe = locate_codex_exe(None).await.expect("codex exe");
+        let engine_bin = match std::env::var("AB_WB_LIVE_ENGINE") {
+            Ok(p) if !p.trim().is_empty() => PathBuf::from(p),
+            _ => resolve_engine_bin(&db, None).expect("engine bin (build ../engine first)"),
+        };
+        let codex_exe = match std::env::var("AB_WB_LIVE_CODEX") {
+            Ok(p) if !p.trim().is_empty() => p,
+            _ => locate_codex_exe(None).await.expect("codex exe"),
+        };
         let model = "gpt-5.5".to_string();
         println!("[live] provider={provider_id} model={model} engine={}", engine_bin.display());
         println!("[live] codex_exe={codex_exe}");
@@ -1245,7 +1278,7 @@ mod tests {
         stdin.flush().await.unwrap();
 
         let mut seen: Vec<String> = Vec::new();
-        let mut saw_write = false;
+        let mut saw_file_tool = false;
         let mut completed = false;
         let deadline = tokio::time::Instant::now() + Duration::from_secs(240);
         loop {
@@ -1276,8 +1309,11 @@ mod tests {
                 if kind != "assistant_delta" {
                     println!("[live-ev] {}", serde_json::to_string(&out).unwrap());
                 }
-                if kind == "tool_write" {
-                    saw_write = true;
+                // The model may create the file via apply_patch (tool_write)
+                // or a shell command (tool_bash) — both are the real product
+                // path; what matters is that a file-producing tool ran.
+                if kind == "tool_write" || kind == "tool_bash" {
+                    saw_file_tool = true;
                 }
                 if kind == "turn_completed" {
                     completed = true;
@@ -1301,7 +1337,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&work);
 
         assert!(completed, "turn must complete");
-        assert!(saw_write, "must observe a mapped tool_write event");
+        assert!(saw_file_tool, "must observe a mapped tool_write/tool_bash event");
         assert!(created, "engine must create hello.txt");
         assert!(content.trim() == "hello", "content must be hello: {content:?}");
     }
