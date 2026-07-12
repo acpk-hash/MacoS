@@ -22,9 +22,10 @@
 //! `settings.json` 固定 defaultProvider/defaultModel/thinkingLevel。
 //!
 //! ## node / pi dist 三级定位（参照 workbench 的 codex 定位）
-//! node：settings `pi_node_path` 覆盖 → PATH 里的 `node`。
+//! node：settings `pi_node_path` 覆盖 → Tauri resource `engine-pi/node.exe`
+//! （打包自带）→ PATH 里的 `node`。
 //! pi dist：settings `pi_dist_path` 覆盖（cli.js 或其所在目录）→ Tauri
-//! resource `engine-pi/`（将来打包位，resolve 不到就跳过）→ 全局 npm 安装
+//! resource `engine-pi/pi/dist/cli.js`（打包自带，resolve 不到就跳过）→ 全局 npm 安装
 //! （`%APPDATA%\npm\node_modules\@earendil-works\pi-coding-agent\dist\cli.js`）。
 
 use std::collections::HashMap;
@@ -139,7 +140,7 @@ pub(crate) async fn pi_open(
         .unwrap_or_else(|| DEFAULT_MODEL.to_string());
 
     // -- node + pi dist 定位 --
-    let node = resolve_node(&db);
+    let node = resolve_node(&db, Some(&app));
     let cli_js = resolve_pi_cli(&db, Some(&app))?;
 
     // -- pi 环境准备：app 数据目录下的会话专属 agent dir --
@@ -443,12 +444,22 @@ fn resolve_provider_creds(db: &Db, provider_id: &str) -> Result<(String, String,
     Ok((row.base_url, key, row.wire_api))
 }
 
-/// node 定位：settings `pi_node_path` 覆盖（存在才生效）→ PATH 里的 `node`。
-fn resolve_node(db: &Db) -> String {
+/// node 定位（三级 fallback）：
+/// 1. settings `pi_node_path` 覆盖（存在才生效）
+/// 2. Tauri resource `engine-pi/node.exe`（打包自带，离线自包含）
+/// 3. PATH 里的 `node`（dev 默认）
+fn resolve_node(db: &Db, app: Option<&AppHandle>) -> String {
     if let Ok(Some(p)) = db.settings_get("pi_node_path") {
         let p = p.trim().to_string();
         if !p.is_empty() && PathBuf::from(&p).exists() {
             return p;
+        }
+    }
+    if let Some(app) = app {
+        if let Ok(res) = app.path().resolve("engine-pi/node.exe", BaseDirectory::Resource) {
+            if res.exists() {
+                return normalize_spawn_path(&res).to_string_lossy().to_string();
+            }
         }
     }
     "node".to_string()
@@ -456,7 +467,7 @@ fn resolve_node(db: &Db) -> String {
 
 /// pi dist 定位（三级 fallback，返回 cli.js 的完整路径）：
 /// 1. settings `pi_dist_path`（可指 cli.js 本体，或其所在目录）
-/// 2. Tauri resource `engine-pi/`（将来打包位；resolve 不到就跳过）
+/// 2. Tauri resource `engine-pi/pi/dist/cli.js`（打包自带；resolve 不到就跳过）
 /// 3. 全局 npm 安装目录（dev 默认）
 fn resolve_pi_cli(db: &Db, app: Option<&AppHandle>) -> Result<PathBuf, String> {
     // 1) settings 覆盖。
@@ -473,7 +484,7 @@ fn resolve_pi_cli(db: &Db, app: Option<&AppHandle>) -> Result<PathBuf, String> {
     }
     // 2) 打包资源位。
     if let Some(app) = app {
-        for rel in ["engine-pi/dist/cli.js", "engine-pi/cli.js"] {
+        for rel in ["engine-pi/pi/dist/cli.js"] {
             if let Ok(res) = app.path().resolve(rel, BaseDirectory::Resource) {
                 if res.exists() {
                     return Ok(normalize_spawn_path(&res));

@@ -31,3 +31,6 @@ vite.config.d.ts
 # Full codex vendor tree staged by scripts/prepare-engine-codex.ps1
 # (bin/codex.exe + codex-resources/ helpers + codex-path/rg.exe)
 engine-codex/
+# Self-contained pi runtime staged by scripts/prepare-engine-pi.ps1
+# (node.exe + pi/dist + pi/node_modules)
+engine-pi/
