@@ -16,6 +16,7 @@ pub mod sediment;
 pub mod ssh_remote;
 pub mod stats;
 pub mod studio;
+mod subagents;
 pub mod sync;
 pub mod wecom;
 pub mod workbench;
@@ -1055,6 +1056,7 @@ pub fn run() {
             ssh: ssh_remote::SshState::new(),
             pty: pty::PtyState::new(),
         })
+        .manage(subagents::SubagentManager::default())
         .setup(|app| {
             // NOTE: no provider seeding from ~/.codex here. The providers table
             // is user-managed only — auto-seeding a relay snapshot used to
@@ -1176,6 +1178,9 @@ pub fn run() {
             workbench_stats,
             workbench_export_html,
             workbench_close,
+            subagents::subagent_spawn,
+            subagents::subagent_stop,
+            subagents::subagent_list,
             sediment_runs,
             sediment_run_detail,
             sediment_skills,
