@@ -1,8 +1,15 @@
 // /pi 中栏时间线：user 气泡 / assistant markdown 流式 / tool 可折叠单行 / system 条目。
 // markdown 渲染复用 ui/MarkdownLite（同一套 GFM/公式/高亮管线）。
-import { useEffect, useRef, useState } from 'react'
+// ②：assistant 正文与 tool 条目里的文件路径渲染为可点链接 → 右栏「文件」tab 预览。
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { usePiStore, type PiTimelineItem } from '../../stores/piStore'
 import { MarkdownLite } from '../ui/MarkdownLite'
+import {
+  linkifyPaths,
+  looksLikeFilePath,
+  pathFromToolArgs,
+  PI_OPEN_PREFIX,
+} from './pathLinks'
 
 const EMPTY_ITEMS: PiTimelineItem[] = []
 
@@ -62,9 +69,12 @@ function ToolRow({
   item: Extract<PiTimelineItem, { kind: 'tool' }>
   onToggle: () => void
 }) {
+  const openFileInPanel = usePiStore((s) => s.openFileInPanel)
   const { icon, tone } = toolIcon(item.toolName)
   const summary = argsSummary(item.args)
   const argsText = prettyArgs(item.args)
+  // edit/write/read 等的 path 参数 → 摘要渲染为可点链接（右栏预览）。
+  const pathArg = pathFromToolArgs(item.args)
   return (
     <div
       className={[
@@ -83,11 +93,34 @@ function ToolRow({
           {icon}
         </span>
         <span className="text-[12px] text-ink font-mono flex-shrink-0">{item.toolName}</span>
-        {summary && (
-          <span className="text-[11.5px] text-ink-dim font-mono truncate flex-1" title={summary}>
-            {summary}
-          </span>
-        )}
+        {summary &&
+          (pathArg && summary === pathArg ? (
+            <span
+              role="link"
+              tabIndex={0}
+              onClick={(e) => {
+                e.stopPropagation()
+                void openFileInPanel(pathArg)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.stopPropagation()
+                  void openFileInPanel(pathArg)
+                }
+              }}
+              className="text-[11.5px] text-sky hover:underline underline-offset-2 font-mono truncate flex-1 cursor-pointer"
+              title={`${pathArg}\n点击在右栏预览`}
+            >
+              {summary}
+            </span>
+          ) : (
+            <span
+              className="text-[11.5px] text-ink-dim font-mono truncate flex-1"
+              title={summary}
+            >
+              {summary}
+            </span>
+          ))}
         <span className="flex-shrink-0 ml-auto pl-2">
           {item.running ? (
             <span className="w-1.5 h-1.5 rounded-full bg-running animate-pulse inline-block" />
@@ -136,6 +169,40 @@ function ToolRow({
 
 // ── 单条渲染 ──────────────────────────────────────────────────────────────────
 
+/** assistant 正文：裸路径 linkify + 事件委托拦截 #pi-open: 链接与行内代码点击。 */
+function AssistantBody({ text, streaming }: { text: string; streaming: boolean }) {
+  const openFileInPanel = usePiStore((s) => s.openFileInPanel)
+
+  const onClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      const el = (e.target as HTMLElement).closest('a, code')
+      if (!el) return
+      if (el.tagName === 'A') {
+        const href = el.getAttribute('href') ?? ''
+        const i = href.indexOf(PI_OPEN_PREFIX)
+        if (i >= 0) {
+          e.preventDefault()
+          e.stopPropagation()
+          void openFileInPanel(decodeURIComponent(href.slice(i + PI_OPEN_PREFIX.length)))
+        }
+        return
+      }
+      // 行内代码：形似文件路径则尝试打开（代码块 pre>code 不拦截）。
+      if (el.parentElement?.tagName === 'PRE') return
+      const t = (el.textContent ?? '').trim()
+      if (looksLikeFilePath(t)) void openFileInPanel(t)
+    },
+    [openFileInPanel],
+  )
+
+  return (
+    <div className="mt-2" onClick={onClick}>
+      <MarkdownLite text={linkifyPaths(text)} />
+      {streaming && <Blink />}
+    </div>
+  )
+}
+
 function TimelineRow({
   item,
   sessionId,
@@ -154,12 +221,7 @@ function TimelineRow({
         </div>
       )
     case 'assistant':
-      return (
-        <div className="mt-2">
-          <MarkdownLite text={item.text} />
-          {item.streaming && <Blink />}
-        </div>
-      )
+      return <AssistantBody text={item.text} streaming={item.streaming} />
     case 'tool':
       return (
         <ToolRow item={item} onToggle={() => toggleToolCollapse(sessionId, item.id)} />

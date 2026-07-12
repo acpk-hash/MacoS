@@ -1,12 +1,17 @@
-// /pi 右栏（~300px，可折叠）：会话信息 + 改动文件列表。
-// 文件树 / diff 视图深化留下一阶段（本组件即为其挂载位）。
-import { useMemo } from 'react'
+// /pi 右栏（①）：tab 式——「文件」（默认，文件树 + 预览）+「会话信息」。
+// 「文件」tab = FilesPanel（workspaceStore 数据源，会话打开时 ws_open_folder(cwd)
+// 由 PiShell 初始化）；「会话信息」保留原会话/用量/改动文件区块，改动文件行
+// 可点 → openFileInPanel 在「文件」tab 中定位预览。
+import { lazy, Suspense, useMemo } from 'react'
 import { usePiStore, type PiTimelineItem, type PiUsage } from '../../stores/piStore'
+
+// FilesPanel → workspaceStore → monacoSetup（monaco 大依赖）：懒加载成独立 chunk。
+const FilesPanel = lazy(() => import('./FilesPanel'))
 
 const EMPTY_ITEMS: PiTimelineItem[] = []
 
 function baseName(p: string): string {
-  const parts = p.split(/[\\/]/)
+  const parts = p.split(/[\/]/)
   return parts[parts.length - 1] || p
 }
 
@@ -70,7 +75,7 @@ function collectTouchedFiles(
   return Array.from(map, ([path, kind]) => ({ path, kind }))
 }
 
-export default function RightPanel() {
+function InfoPane() {
   const session = usePiStore((s) =>
     s.sessions.find((x) => x.id === s.activeSessionId) ?? null,
   )
@@ -80,12 +85,13 @@ export default function RightPanel() {
   const items = usePiStore((s) =>
     s.activeSessionId ? s.timelineById[s.activeSessionId] ?? EMPTY_ITEMS : EMPTY_ITEMS,
   )
+  const openFileInPanel = usePiStore((s) => s.openFileInPanel)
 
   const files = useMemo(() => collectTouchedFiles(items), [items])
 
   if (!session) {
     return (
-      <div className="w-[300px] flex-shrink-0 h-full bg-surface border-l border-line flex items-center justify-center">
+      <div className="flex-1 flex items-center justify-center">
         <span className="text-[11.5px] text-ink-faint select-none">暂无会话</span>
       </div>
     )
@@ -95,7 +101,7 @@ export default function RightPanel() {
   const u: PiUsage | null = usage
 
   return (
-    <div className="w-[300px] flex-shrink-0 h-full bg-surface border-l border-line flex flex-col overflow-y-auto">
+    <div className="flex-1 min-h-0 overflow-y-auto">
       <Section title="会话信息">
         <InfoRow k="目录" v={baseName(session.cwd)} title={session.cwd} />
         <InfoRow k="模型" v={session.model || '默认'} title={session.model} />
@@ -126,10 +132,11 @@ export default function RightPanel() {
         ) : (
           <div className="space-y-0.5">
             {files.map((f) => (
-              <div
+              <button
                 key={f.path}
-                className="flex items-center gap-2 px-1.5 py-1 rounded-btn hover:bg-surface-2 text-[11.5px]"
-                title={f.path}
+                onClick={() => void openFileInPanel(f.path)}
+                className="w-full flex items-center gap-2 px-1.5 py-1 rounded-btn hover:bg-surface-2 text-[11.5px] text-left"
+                title={`${f.path}\n点击在「文件」tab 中预览`}
               >
                 <span
                   className={f.kind === 'write' ? 'text-mint' : 'text-gold'}
@@ -138,16 +145,52 @@ export default function RightPanel() {
                   {f.kind === 'write' ? '＋' : '✎'}
                 </span>
                 <span className="text-ink-muted truncate font-mono">{baseName(f.path)}</span>
-              </div>
+              </button>
             ))}
           </div>
         )}
       </Section>
+    </div>
+  )
+}
 
-      {/* 下一阶段：文件树 / diff 视图挂载位 */}
-      <div className="px-3 py-2.5 text-[10.5px] text-ink-faint select-none">
-        diff 视图与文件树将在下一阶段加入
+export default function RightPanel() {
+  const tab = usePiStore((s) => s.rightTab)
+  const setTab = usePiStore((s) => s.setRightTab)
+
+  const tabCls = (active: boolean) =>
+    [
+      'px-3 h-full flex items-center text-[11.5px] border-b-2 transition-colors',
+      active
+        ? 'border-primary text-ink'
+        : 'border-transparent text-ink-dim hover:text-ink',
+    ].join(' ')
+
+  return (
+    <div className="w-[340px] flex-shrink-0 h-full bg-surface border-l border-line flex flex-col min-h-0">
+      {/* tab 头 */}
+      <div className="flex-shrink-0 flex items-stretch h-9 border-b border-line select-none">
+        <button className={tabCls(tab === 'files')} onClick={() => setTab('files')}>
+          文件
+        </button>
+        <button className={tabCls(tab === 'info')} onClick={() => setTab('info')}>
+          会话信息
+        </button>
       </div>
+
+      {tab === 'files' ? (
+        <Suspense
+          fallback={
+            <div className="flex-1 flex items-center justify-center text-[11.5px] text-ink-dim">
+              加载文件面板…
+            </div>
+          }
+        >
+          <FilesPanel />
+        </Suspense>
+      ) : (
+        <InfoPane />
+      )}
     </div>
   )
 }

@@ -6,6 +6,9 @@
 // 事件通道 'pi-event'：payload { sessionId, event:<pi 原始 JSON> }。
 import { create } from 'zustand'
 
+// 注意：workspaceStore（→ monacoSetup → monaco-editor）只在 openFileInPanel
+// 里动态引入，避免把 monaco 拖进主 chunk（PiShell 是首屏页面）。
+
 // ── Tauri helpers ─────────────────────────────────────────────────────────────
 
 const isTauri =
@@ -166,6 +169,41 @@ function joinTextParts(content: unknown): string {
     .join('')
 }
 
+// ── 文件面板辅助 ──────────────────────────────────────────────────────────────
+
+/** 右栏「文件」tab 的预览目标（相对工作区根）。 */
+export interface PiFilePreview {
+  relPath: string
+  name: string
+  /** 定位行（来自 path:line 链接），CodeView 打开后 reveal。 */
+  line?: number
+}
+
+/** 绝对/相对路径 → 工作区 rel_path。越界/含 .. 返回 null。 */
+function toWsRel(root: string, p: string): string | null {
+  const s = p.replace(/\\/g, '/').replace(/^\.\//, '')
+  const r = root.replace(/\\/g, '/').replace(/\/+$/, '')
+  const sl = s.toLowerCase()
+  const rl = r.toLowerCase()
+  if (/^([a-zA-Z]:\/|\/)/.test(s)) {
+    if (sl === rl) return ''
+    if (sl.startsWith(rl + '/')) return s.slice(r.length + 1)
+    return null
+  }
+  if (s.split('/').some((seg) => seg === '..')) return null
+  return s
+}
+
+/** 剥离末尾的 :行[:列] 后缀，返回 { path, line }。 */
+export function splitLineSuffix(raw: string): { path: string; line?: number } {
+  const m = /^(.*?):(\d+)(?::\d+)?$/.exec(raw)
+  // Windows 盘符 "D:" 不是行号 —— 要求冒号前至少还有一个路径字符且含扩展名迹象。
+  if (m && m[1].length > 2 && /\.[A-Za-z0-9]{1,8}$/.test(m[1])) {
+    return { path: m[1], line: parseInt(m[2], 10) }
+  }
+  return { path: raw }
+}
+
 // ── Store 形状 ────────────────────────────────────────────────────────────────
 
 interface PiStore {
@@ -183,6 +221,27 @@ interface PiStore {
   usageById: Record<string, PiUsage>
   listening: boolean
   error: string | null
+
+  // ── 右栏（文件/会话信息）与底部条 UI 状态 ──
+  rightOpen: boolean
+  rightTab: 'files' | 'info'
+  /** 右栏「文件」tab 当前预览的文件（相对工作区根）。 */
+  preview: PiFilePreview | null
+  bottomOpen: boolean
+  bottomTab: 'terminal' | 'ssh'
+
+  setRightOpen: (v: boolean) => void
+  setRightTab: (tab: 'files' | 'info') => void
+  /** 文件树点击：直接以 rel_path 预览。 */
+  previewFile: (relPath: string, name: string, line?: number) => void
+  closePreview: () => void
+  setBottomOpen: (v: boolean) => void
+  setBottomTab: (tab: 'terminal' | 'ssh') => void
+  /**
+   * 对话内文件链接入口：接受绝对或相对（相对会话 cwd）路径，可带 :行 后缀。
+   * 打开右栏「文件」tab、在树中展开定位并预览；找不到时尝试 ws_search 兜底。
+   */
+  openFileInPanel: (path: string) => Promise<void>
 
   init: () => Promise<void>
   setCwd: (cwd: string) => void
@@ -291,6 +350,114 @@ export const usePiStore = create<PiStore>((set, get) => ({
   usageById: {},
   listening: false,
   error: null,
+
+  rightOpen: true,
+  rightTab: 'files',
+  preview: null,
+  bottomOpen: false,
+  bottomTab: 'terminal',
+
+  setRightOpen: (v) => set({ rightOpen: v }),
+  setRightTab: (tab) => set({ rightTab: tab }),
+  previewFile: (relPath, name, line) =>
+    set({ preview: { relPath, name, line }, rightTab: 'files', rightOpen: true }),
+  closePreview: () => set({ preview: null }),
+  setBottomOpen: (v) => set({ bottomOpen: v }),
+  setBottomTab: (tab) => set({ bottomTab: tab }),
+
+  openFileInPanel: async (rawPath) => {
+    const cleaned = rawPath.trim().replace(/^@/, '')
+    if (!cleaned) return
+    const { path, line } = splitLineSuffix(cleaned)
+    const { useWorkspaceStore } = await import('./workspaceStore')
+
+    // 确保工作区已按会话 cwd 打开（右栏文件树的数据源）。
+    const cwd = get().cwd
+    let ws = useWorkspaceStore.getState()
+    if (!ws.root && cwd) {
+      await ws.openFolder(cwd)
+      ws = useWorkspaceStore.getState()
+    }
+    const root = ws.root
+    if (!root) {
+      set({ error: '尚未打开工作区，无法预览文件' })
+      return
+    }
+
+    let rel = toWsRel(root, path)
+    if (rel == null || rel === '') {
+      // 绝对路径在工作区之外，或指向根本身。
+      if (rel === '') return
+      set({ error: `文件不在当前工作区内：${path}` })
+      return
+    }
+
+    // 逐级展开父目录（懒加载树）。若目标不存在且是裸文件名，用 ws_search 兜底。
+    const ensureDir = async (prefix: string) => {
+      if (!useWorkspaceStore.getState().children[prefix]) {
+        await useWorkspaceStore.getState().listDir(prefix)
+      }
+    }
+    const expandTo = async (relPath: string): Promise<boolean> => {
+      const segs = relPath.split('/')
+      const name = segs.pop() ?? relPath
+      await ensureDir('')
+      let prefix = ''
+      for (const s of segs) {
+        prefix = prefix ? `${prefix}/${s}` : s
+        await ensureDir(prefix)
+        if (!useWorkspaceStore.getState().children[prefix]) return false
+      }
+      const parent = segs.join('/')
+      const listing = useWorkspaceStore.getState().children[parent] ?? []
+      const found = listing.some((e) => !e.is_dir && e.name === name)
+      if (found) {
+        useWorkspaceStore.setState((st) => {
+          const expanded = new Set(st.expanded)
+          expanded.add('')
+          let pf = ''
+          for (const s of segs) {
+            pf = pf ? `${pf}/${s}` : s
+            expanded.add(pf)
+          }
+          return { expanded }
+        })
+      }
+      return found
+    }
+
+    let found = await expandTo(rel)
+    if (!found && !rel.includes('/') && !useWorkspaceStore.getState().remote) {
+      // 裸文件名：全库搜文件名，取 basename 精确匹配的首个命中。
+      try {
+        const { invoke } = await import('@tauri-apps/api/core')
+        const hits = await invoke<Array<{ rel_path: string; line: number | null }>>(
+          'ws_search',
+          { query: rel, max: 50 },
+        )
+        const hit = hits.find(
+          (h) => (h.rel_path.split('/').pop() ?? '').toLowerCase() === rel!.toLowerCase(),
+        )
+        if (hit) {
+          rel = hit.rel_path
+          found = await expandTo(rel)
+        }
+      } catch {
+        /* best effort */
+      }
+    }
+    if (!found) {
+      set({ error: `未在工作区中找到文件：${path}` })
+      return
+    }
+    const name = rel.split('/').pop() ?? rel
+    set({
+      preview: { relPath: rel, name, line },
+      rightTab: 'files',
+      rightOpen: true,
+      error: null,
+    })
+  },
 
   init: async () => {
     if (!isTauri || listenerStarted) return
