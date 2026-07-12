@@ -8,6 +8,7 @@ pub mod litsearch;
 pub mod market;
 pub mod mcp;
 pub mod providers;
+pub mod pty;
 pub mod relay;
 pub mod research;
 pub mod sediment;
@@ -48,6 +49,7 @@ pub(crate) struct AppState {
     workbench: workbench::WorkbenchEngine,
     ws: workspace_fs::WorkspaceState,
     ssh: ssh_remote::SshState,
+    pty: pty::PtyState,
 }
 
 /// Mark the sync snapshot dirty (task/session rows changed). No-op if sync is
@@ -1045,6 +1047,7 @@ pub fn run() {
             workbench: workbench::WorkbenchEngine::new(),
             ws: workspace_fs::WorkspaceState::new(),
             ssh: ssh_remote::SshState::new(),
+            pty: pty::PtyState::new(),
         })
         .setup(|app| {
             // NOTE: no provider seeding from ~/.codex here. The providers table
@@ -1213,6 +1216,10 @@ pub fn run() {
             ssh_remote::ssh_exec,
             ssh_remote::ssh_disconnect,
             ssh_remote::ssh_list_conns,
+            pty::pty_open,
+            pty::pty_write,
+            pty::pty_resize,
+            pty::pty_close,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

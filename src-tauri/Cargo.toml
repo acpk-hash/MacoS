@@ -41,6 +41,8 @@ russh-keys = "0.45"
 russh-sftp = "2"
 # russh's Handler trait is `#[async_trait]`, so impls must use it too.
 async-trait = "0.1"
+# 真交互式终端（P8）：跨平台 PTY（Windows 走 ConPTY），驱动工作台内嵌 shell。
+portable-pty = "0.9"
 
 [dev-dependencies]
 tempfile = "3"

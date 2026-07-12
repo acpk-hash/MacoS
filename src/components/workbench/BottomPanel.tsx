@@ -1,12 +1,17 @@
-// 底部面板（G2b/G2c）— 可折叠标签页：任务时间线 / 终端输出 / SSH 远程。
-// 任务与终端为只读日志视图；SSH 为可交互的远程连接 + 命令面板（G2c）。
-import { useMemo } from 'react'
+// 底部面板（G2b/G2c/P8）— 可折叠标签页：
+//   任务（AI 步骤时间线）/ 终端（真交互式 xterm+PTY）/ AI 日志（AI 命令只读
+//   输出，保留原功能）/ 规则（工作区 AGENTS.md）/ SSH 远程。
+// 终端首次打开后常驻挂载（切走仅 CSS 隐藏），避免切标签杀掉 shell。
+import { useEffect, useMemo, useState } from 'react'
 import { useWorkbenchStore } from '../../stores/workbenchStore'
+import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { useSshStore } from '../../stores/sshStore'
 import StatusDot from '../ui/StatusDot'
 import SshPanel from './SshPanel'
+import TerminalPane from './TerminalPane'
+import RulesPane from './RulesPane'
 
-export type BottomTab = 'tasks' | 'terminal' | 'ssh'
+export type BottomTab = 'tasks' | 'terminal' | 'ailog' | 'rules' | 'ssh'
 
 function baseName(p: string): string {
   const parts = p.split(/[\\/]/)
@@ -27,6 +32,14 @@ export default function BottomPanel({
   const entries = useWorkbenchStore((s) => s.entries)
   const running = useWorkbenchStore((s) => s.running)
   const sshCount = useSshStore((s) => s.conns.length)
+  // 本地 shell 永远起在本地工作根（远程浏览时也不切到 SFTP 根）。
+  const localRoot = useWorkspaceStore((s) => (s.remote ? s.localRoot : s.root))
+
+  // 终端懒启动 + 常驻：第一次切到终端标签才建 PTY，之后隐藏不销毁。
+  const [termStarted, setTermStarted] = useState(false)
+  useEffect(() => {
+    if (open && tab === 'terminal' && localRoot) setTermStarted(true)
+  }, [open, tab, localRoot])
 
   const steps = useMemo(
     () =>
@@ -60,6 +73,8 @@ export default function BottomPanel({
     </button>
   )
 
+  const termVisible = open && tab === 'terminal'
+
   return (
     <div
       className={[
@@ -70,7 +85,9 @@ export default function BottomPanel({
       {/* Tab bar */}
       <div className="flex items-center h-9 flex-shrink-0 border-b border-line/60">
         <Tab id="tasks" label="任务" count={steps.length} />
-        <Tab id="terminal" label="终端输出" count={bashes.length} />
+        <Tab id="terminal" label="终端" />
+        <Tab id="ailog" label="AI 日志" count={bashes.length} />
+        <Tab id="rules" label="规则" />
         <Tab id="ssh" label="SSH" count={sshCount} />
         <div className="flex-1" />
         {running && (
@@ -88,76 +105,98 @@ export default function BottomPanel({
         </button>
       </div>
 
-      {/* Body */}
-      {open &&
-        (tab === 'ssh' ? (
-          <div className="flex-1 min-h-0 px-3 py-2">
-            <SshPanel />
-          </div>
-        ) : (
-          <div className="flex-1 overflow-y-auto px-3 py-2">
-            {tab === 'tasks' &&
-              (steps.length === 0 ? (
-                <p className="text-[12px] text-ink-dim text-center mt-6">暂无任务步骤</p>
-              ) : (
-                <div className="flex flex-col gap-1">
-                  {steps.map((s, i) => (
-                    <div key={s.id} className="flex items-center gap-2 text-[12px]">
-                      <span className="text-ink-dim w-5 text-right">{i + 1}</span>
-                      {s.kind === 'tool_bash' && (
-                        <>
-                          <StatusDot
-                            status={s.exitCode == null || s.exitCode === 0 ? 'done' : 'failed'}
-                            size={7}
-                          />
-                          <span className="text-sky">运行</span>
-                          <span className="text-ink-muted font-mono truncate">{s.cmd}</span>
-                        </>
-                      )}
-                      {s.kind === 'tool_edit' && (
-                        <>
-                          <StatusDot status="done" size={7} />
-                          <span className="text-gold">编辑</span>
-                          <span className="text-ink-muted font-mono truncate">{baseName(s.path)}</span>
-                        </>
-                      )}
-                      {s.kind === 'tool_write' && (
-                        <>
-                          <StatusDot status="done" size={7} />
-                          <span className="text-mint">新建</span>
-                          <span className="text-ink-muted font-mono truncate">{baseName(s.path)}</span>
-                        </>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ))}
+      {/* 终端：常驻（首次进入后不再卸载，切走仅隐藏；key=root 换目录时重建 PTY） */}
+      {termStarted && localRoot && (
+        <div
+          className={[
+            'flex-1 min-h-0 px-2 pt-1.5 pb-1 bg-[#17171b]',
+            termVisible ? '' : 'hidden',
+          ].join(' ')}
+        >
+          <TerminalPane key={localRoot} cwd={localRoot} visible={termVisible} />
+        </div>
+      )}
+      {termVisible && !localRoot && (
+        <p className="text-[12px] text-ink-dim text-center mt-6">
+          请先打开一个本地文件夹，再使用终端。
+        </p>
+      )}
 
-            {tab === 'terminal' &&
-              (bashes.length === 0 ? (
-                <p className="text-[12px] text-ink-dim text-center mt-6">暂无命令输出</p>
-              ) : (
-                <div className="font-mono text-[12px] leading-relaxed">
-                  {bashes.map((b) => (
-                    <div key={b.id} className="mb-2">
-                      <div className="text-mint">
-                        <span className="text-ink-dim">$ </span>
-                        {b.cmd}
-                        {b.exitCode != null && b.exitCode !== 0 && (
-                          <span className="text-coral"> (exit {b.exitCode})</span>
-                        )}
-                      </div>
-                      {b.output.trim() && (
-                        <pre className="text-ink-muted whitespace-pre-wrap break-words mt-0.5">
-                          {b.output}
-                        </pre>
+      {/* 其它标签体 */}
+      {open && tab === 'ssh' && (
+        <div className="flex-1 min-h-0 px-3 py-2">
+          <SshPanel />
+        </div>
+      )}
+      {open && tab === 'rules' && (
+        <div className="flex-1 min-h-0 px-3 py-2">
+          <RulesPane />
+        </div>
+      )}
+      {open && (tab === 'tasks' || tab === 'ailog') && (
+        <div className="flex-1 overflow-y-auto px-3 py-2">
+          {tab === 'tasks' &&
+            (steps.length === 0 ? (
+              <p className="text-[12px] text-ink-dim text-center mt-6">暂无任务步骤</p>
+            ) : (
+              <div className="flex flex-col gap-1">
+                {steps.map((s, i) => (
+                  <div key={s.id} className="flex items-center gap-2 text-[12px]">
+                    <span className="text-ink-dim w-5 text-right">{i + 1}</span>
+                    {s.kind === 'tool_bash' && (
+                      <>
+                        <StatusDot
+                          status={s.exitCode == null || s.exitCode === 0 ? 'done' : 'failed'}
+                          size={7}
+                        />
+                        <span className="text-sky">运行</span>
+                        <span className="text-ink-muted font-mono truncate">{s.cmd}</span>
+                      </>
+                    )}
+                    {s.kind === 'tool_edit' && (
+                      <>
+                        <StatusDot status="done" size={7} />
+                        <span className="text-gold">编辑</span>
+                        <span className="text-ink-muted font-mono truncate">{baseName(s.path)}</span>
+                      </>
+                    )}
+                    {s.kind === 'tool_write' && (
+                      <>
+                        <StatusDot status="done" size={7} />
+                        <span className="text-mint">新建</span>
+                        <span className="text-ink-muted font-mono truncate">{baseName(s.path)}</span>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ))}
+
+          {tab === 'ailog' &&
+            (bashes.length === 0 ? (
+              <p className="text-[12px] text-ink-dim text-center mt-6">暂无 AI 命令输出</p>
+            ) : (
+              <div className="font-mono text-[12px] leading-relaxed">
+                {bashes.map((b) => (
+                  <div key={b.id} className="mb-2">
+                    <div className="text-mint">
+                      <span className="text-ink-dim">$ </span>
+                      {b.cmd}
+                      {b.exitCode != null && b.exitCode !== 0 && (
+                        <span className="text-coral"> (exit {b.exitCode})</span>
                       )}
                     </div>
-                  ))}
-                </div>
-              ))}
-          </div>
-        ))}
+                    {b.output.trim() && (
+                      <pre className="text-ink-muted whitespace-pre-wrap break-words mt-0.5">
+                        {b.output}
+                      </pre>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ))}
+        </div>
+      )}
     </div>
   )
 }
