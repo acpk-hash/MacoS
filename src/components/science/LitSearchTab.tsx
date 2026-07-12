@@ -24,6 +24,7 @@ import {
   type LitFigure,
 } from '../../stores/researchStore'
 import { useKbStore } from '../../stores/kbStore'
+import { useScienceStore } from '../../stores/scienceStore'
 import { saveExport } from '../../lib/exportChat'
 
 const NL = String.fromCharCode(10)
@@ -738,6 +739,18 @@ export default function LitSearchTab() {
             已选 {selectedPapers.length} / {papers.length} 篇
           </span>
           <div className="flex-1" />
+          <button
+            onClick={() => useScienceStore.getState().enterAnalysisFromLit(selectedPapers)}
+            disabled={selectedPapers.length === 0}
+            title={
+              selectedPapers.length === 0
+                ? '请先勾选文献'
+                : '把勾选文献送入「文献分析」工作台(原文预览 / 划线高亮 / 提问 / 报告)'
+            }
+            className={toolBtn + ' disabled:opacity-40'}
+          >
+            进入文献分析（{selectedPapers.length}）
+          </button>
           <button
             onClick={() => void doSaveToKb()}
             disabled={savingKb || selectedPapers.length === 0}

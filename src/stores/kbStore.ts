@@ -28,6 +28,10 @@ export interface PaperSummary {
   file_size: number | null
   added_at: number | null
   orig_filename: string | null
+  /** 1 = 已生成详细分析报告（「已详析」徽章）。 */
+  analyzed: number
+  /** 分析报告 .md 的绝对路径（kb_root/analysis/ 下），无则 null。 */
+  analysis_md_path: string | null
 }
 
 /** Mirrors Rust TagRef — tag reference attached to a paper. */
@@ -57,6 +61,10 @@ export interface Paper {
   managed: number
   added_at: number | null
   updated_at: number | null
+  /** 1 = 已生成详细分析报告。 */
+  analyzed: number
+  /** 分析报告 .md 的绝对路径，无则 null。 */
+  analysis_md_path: string | null
   tags: TagRef[]
 }
 
@@ -154,6 +162,8 @@ interface KbStore {
       doi?: string | null
       notes?: string | null
       starred?: boolean | null
+      analyzed?: boolean | null
+      analysisMdPath?: string | null
     },
   ) => Promise<void>
   setCategory: (paperId: string, categoryId: string | null) => Promise<void>
@@ -308,6 +318,8 @@ export const useKbStore = create<KbStore>((set, get) => ({
       doi: fields.doi ?? null,
       notes: fields.notes ?? null,
       starred: fields.starred ?? null,
+      analyzed: fields.analyzed ?? null,
+      analysisMdPath: fields.analysisMdPath ?? null,
     })
     if (get().selectedPaperId === id) {
       await get().getPaper(id)

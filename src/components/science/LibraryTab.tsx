@@ -24,6 +24,7 @@ import {
   type RenamePreview,
   type ApplyItem,
 } from '../../stores/kbStore'
+import { useScienceStore } from '../../stores/scienceStore'
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl
 
@@ -221,6 +222,75 @@ function KbTextPreview({ paperId }: { paperId: string }) {
       ) : (
         <MarkdownLite text={text} />
       )}
+    </div>
+  )
+}
+
+// -- Analysis report (.md) preview drawer --------------------------------------
+
+function AnalysisMdModal({
+  paperId,
+  title,
+  onClose,
+}: {
+  paperId: string
+  title: string
+  onClose: () => void
+}) {
+  const [text, setText] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    setText(null)
+    setError(null)
+    ;(async () => {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core')
+        const res = await invoke<{ base64: string; size: number }>('kb_read_bytes', {
+          id: paperId,
+          which: 'analysis',
+        })
+        const bin = atob(res.base64)
+        const data = new Uint8Array(bin.length)
+        for (let i = 0; i < bin.length; i++) data[i] = bin.charCodeAt(i)
+        if (alive) setText(new TextDecoder('utf-8').decode(data))
+      } catch (e) {
+        if (alive) setError(String(e))
+      }
+    })()
+    return () => {
+      alive = false
+    }
+  }, [paperId])
+
+  return (
+    <div className="fixed inset-0 z-50 flex bg-black/40" onClick={onClose}>
+      <div
+        className="ml-auto h-full w-full max-w-2xl bg-bg border-l border-line flex flex-col shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-line flex-shrink-0">
+          <span className="text-[13px] font-semibold text-ink flex-1 truncate">
+            分析报告 · {title}
+          </span>
+          <button
+            onClick={onClose}
+            className="text-ink-dim hover:text-ink text-lg leading-none px-1"
+          >
+            &#x2715;
+          </button>
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3">
+          {error ? (
+            <p className="text-[12px] text-failed">报告加载失败: {error}</p>
+          ) : text == null ? (
+            <p className="text-[12px] text-ink-dim">加载中...</p>
+          ) : (
+            <MarkdownLite text={text} />
+          )}
+        </div>
+      </div>
     </div>
   )
 }
@@ -902,11 +972,17 @@ function PaperRow({
   active,
   categories,
   onClick,
+  checked,
+  onToggle,
+  onPreviewMd,
 }: {
   paper: PaperSummary
   active: boolean
   categories: Category[]
   onClick: () => void
+  checked: boolean
+  onToggle: () => void
+  onPreviewMd: () => void
 }) {
   const catName = categories.find((c) => c.id === paper.category_id)?.name
 
@@ -918,6 +994,14 @@ function PaperRow({
       }
       onClick={onClick}
     >
+      <td className="pl-3 pr-1 py-2 w-8" onClick={(e) => e.stopPropagation()}>
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={onToggle}
+          className="h-3.5 w-3.5 accent-primary align-middle"
+        />
+      </td>
       <td className="px-3 py-2 max-w-0">
         <div className="flex items-center gap-1 min-w-0">
           {paper.starred === 1 && <span className="text-gold flex-shrink-0 text-[12px]">&#9733;</span>}
@@ -928,6 +1012,26 @@ function PaperRow({
             <span className="flex-shrink-0 ml-1 px-1.5 py-0.5 text-[10px] rounded bg-surface-2 text-ink-dim">
               {catName}
             </span>
+          )}
+          {paper.analyzed === 1 && (
+            <span
+              className="flex-shrink-0 ml-1 px-1.5 py-0.5 text-[10px] rounded bg-primary-tint text-primary"
+              title="已生成详细分析报告"
+            >
+              已详析
+            </span>
+          )}
+          {paper.analysis_md_path && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onPreviewMd()
+              }}
+              className="flex-shrink-0 ml-1 px-1.5 py-0.5 text-[10px] rounded bg-[#10a37f1a] text-done hover:underline"
+              title="查看分析报告 .md"
+            >
+              报告
+            </button>
           )}
         </div>
       </td>
@@ -957,6 +1061,29 @@ export default function LibraryTab() {
   const [importing, setImporting] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [showNormalize, setShowNormalize] = useState(false)
+  // 勾选送入「文献分析」工作台 + 分析报告预览
+  const [selIds, setSelIds] = useState<Set<string>>(new Set())
+  const [enteringAnalysis, setEnteringAnalysis] = useState(false)
+  const [previewMd, setPreviewMd] = useState<{ id: string; title: string } | null>(null)
+
+  const toggleSel = (id: string) => {
+    setSelIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const doEnterAnalysis = async () => {
+    if (selIds.size === 0 || enteringAnalysis) return
+    setEnteringAnalysis(true)
+    try {
+      await useScienceStore.getState().enterAnalysisFromKb(Array.from(selIds))
+    } finally {
+      setEnteringAnalysis(false)
+    }
+  }
 
   const tree = buildTree(store.categories)
   const rootCats = tree.get(null) ?? []
@@ -1120,6 +1247,14 @@ export default function LibraryTab() {
         >
           规范化命名
         </button>
+        <button
+          className={btnCls}
+          onClick={() => void doEnterAnalysis()}
+          disabled={selIds.size === 0 || enteringAnalysis}
+          title="把勾选条目送入「文献分析」工作台(原文预览 / 划线高亮 / 提问 / 报告)"
+        >
+          {enteringAnalysis ? '送入中...' : '进入文献分析（' + selIds.size + '）'}
+        </button>
         <div className="flex-1 min-w-[160px] max-w-xs">
           <input
             value={localQuery}
@@ -1217,6 +1352,7 @@ export default function LibraryTab() {
               <table className="w-full border-collapse text-[12px]">
                 <thead className="sticky top-0 z-10 bg-surface border-b border-line">
                   <tr className="text-ink-dim text-left">
+                    <th className="pl-3 pr-1 py-2 w-8"></th>
                     <th className="px-3 py-2 font-medium w-[35%]"><ThBtn col="title" label="标题" /></th>
                     <th className="px-3 py-2 font-medium w-[20%]"><ThBtn col="authors" label="作者" /></th>
                     <th className="px-3 py-2 font-medium w-[6%]"><ThBtn col="year" label="年" /></th>
@@ -1228,7 +1364,7 @@ export default function LibraryTab() {
                 <tbody>
                   {sortedPapers.length === 0 && !store.papersLoading ? (
                     <tr>
-                      <td colSpan={6} className="text-center py-12 text-ink-dim text-[12px]">
+                      <td colSpan={7} className="text-center py-12 text-ink-dim text-[12px]">
                         没有匹配的论文
                       </td>
                     </tr>
@@ -1240,6 +1376,14 @@ export default function LibraryTab() {
                         active={store.selectedPaperId === paper.id}
                         categories={store.categories}
                         onClick={() => store.selectPaper(paper.id)}
+                        checked={selIds.has(paper.id)}
+                        onToggle={() => toggleSel(paper.id)}
+                        onPreviewMd={() =>
+                          setPreviewMd({
+                            id: paper.id,
+                            title: paper.title || paper.orig_filename || '无标题',
+                          })
+                        }
                       />
                     ))
                   )}
@@ -1309,6 +1453,14 @@ export default function LibraryTab() {
         <NormalizeDialog
           papers={store.papers}
           onClose={() => setShowNormalize(false)}
+        />
+      )}
+
+      {previewMd && (
+        <AnalysisMdModal
+          paperId={previewMd.id}
+          title={previewMd.title}
+          onClose={() => setPreviewMd(null)}
         />
       )}
     </div>

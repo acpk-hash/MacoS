@@ -231,16 +231,29 @@ pub struct KbBytes {
     pub size: u64,
 }
 
+/// `which`: None/"file" reads the paper file itself; "analysis" reads the
+/// generated analysis .md (`analysis_md_path`). Optional so existing callers
+/// keep working without changes (and no new command needs registering).
 #[tauri::command]
-pub async fn kb_read_bytes(id: String, state: State<'_, AppState>) -> Result<KbBytes, String> {
+pub async fn kb_read_bytes(
+    id: String,
+    which: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<KbBytes, String> {
     let paper = state
         .db
         .kb_get_paper(&id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("论文不存在: {id}"))?;
-    let path = paper
-        .file_path
-        .ok_or_else(|| "该论文无文件路径".to_string())?;
+    let path = if which.as_deref() == Some("analysis") {
+        paper
+            .analysis_md_path
+            .ok_or_else(|| "该论文尚未生成分析报告".to_string())?
+    } else {
+        paper
+            .file_path
+            .ok_or_else(|| "该论文无文件路径".to_string())?
+    };
     let p = std::path::Path::new(&path);
     if !p.is_file() {
         return Err(format!("文件不存在: {path}"));
@@ -416,6 +429,11 @@ pub async fn kb_upload_paper(
 
 /// Update editable metadata fields for a paper.
 /// Only non-None fields are written.
+///
+/// `analyzed` / `analysis_md_path` mark a paper as deeply analyzed and record
+/// where the generated .md report lives (frontend passes camelCase
+/// `analysisMdPath`). They are optional extensions of this existing command —
+/// deliberately NOT new commands, so lib.rs stays untouched.
 #[tauri::command]
 pub async fn kb_update_metadata(
     id: String,
@@ -426,6 +444,8 @@ pub async fn kb_update_metadata(
     doi: Option<String>,
     notes: Option<String>,
     starred: Option<bool>,
+    analyzed: Option<bool>,
+    analysis_md_path: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     state
@@ -439,6 +459,8 @@ pub async fn kb_update_metadata(
             doi.as_deref(),
             notes.as_deref(),
             starred,
+            analyzed,
+            analysis_md_path.as_deref(),
         )
         .map_err(|e| e.to_string())
 }

@@ -76,6 +76,27 @@ CREATE INDEX IF NOT EXISTS idx_kb_paper_tags_paper ON kb_paper_tags(paper_id);
 CREATE INDEX IF NOT EXISTS idx_kb_paper_tags_tag   ON kb_paper_tags(tag_id);
 "#;
 
+// ── Analysis columns (idempotent, no user_version bump) ──────────────────────
+//
+// `analyzed` / `analysis_md_path` are added lazily via idempotent
+// `ALTER TABLE ... ADD COLUMN`: SQLite fails with "duplicate column name"
+// once the column exists, and that error is deliberately ignored. This keeps
+// `Db::migrate` untouched (no new schema version) while guaranteeing the
+// columns exist before any read/write that references them.
+
+/// Ensure the analysis columns exist on `kb_papers`. Safe to call on every
+/// KB operation: after the first run the ALTERs fail fast and are ignored.
+fn ensure_analysis_columns(conn: &rusqlite::Connection) {
+    let _ = conn.execute(
+        "ALTER TABLE kb_papers ADD COLUMN analyzed INTEGER DEFAULT 0",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE kb_papers ADD COLUMN analysis_md_path TEXT",
+        [],
+    );
+}
+
 // ── Row types ─────────────────────────────────────────────────────────────────
 
 /// Lightweight paper row returned by `kb_list_papers`.
@@ -91,6 +112,10 @@ pub struct PaperSummary {
     pub file_size: Option<i64>,
     pub added_at: Option<i64>,
     pub orig_filename: Option<String>,
+    /// 1 = a detailed analysis report has been generated for this paper.
+    pub analyzed: i64,
+    /// Absolute path of the generated analysis .md (under kb_root/analysis/).
+    pub analysis_md_path: Option<String>,
 }
 
 /// Full paper row (all fields + tag list) returned by `kb_get_paper`.
@@ -115,6 +140,10 @@ pub struct Paper {
     pub managed: i64,
     pub added_at: Option<i64>,
     pub updated_at: Option<i64>,
+    /// 1 = a detailed analysis report has been generated for this paper.
+    pub analyzed: i64,
+    /// Absolute path of the generated analysis .md (under kb_root/analysis/).
+    pub analysis_md_path: Option<String>,
     pub tags: Vec<TagRef>,
 }
 
@@ -166,6 +195,7 @@ impl Db {
         starred: Option<bool>,
     ) -> SqlResult<Vec<PaperSummary>> {
         let conn = self.conn.lock().unwrap();
+        ensure_analysis_columns(&conn);
 
         // Build dynamic WHERE clauses.
         let mut conds: Vec<String> = Vec::new();
@@ -193,7 +223,8 @@ impl Db {
 
         let sql = format!(
             "SELECT p.id, p.title, p.authors, p.year, p.venue, p.category_id, \
-                    p.starred, p.file_size, p.added_at, p.orig_filename \
+                    p.starred, p.file_size, p.added_at, p.orig_filename, \
+                    p.analyzed, p.analysis_md_path \
              FROM kb_papers p \
              {} \
              ORDER BY p.added_at DESC",
@@ -221,6 +252,8 @@ impl Db {
                     file_size: row.get(7)?,
                     added_at: row.get(8)?,
                     orig_filename: row.get(9)?,
+                    analyzed: row.get::<_, Option<i64>>(10)?.unwrap_or(0),
+                    analysis_md_path: row.get(11)?,
                 })
             },
         )?;
@@ -230,11 +263,12 @@ impl Db {
     /// Fetch a single paper by id plus its attached tags. Returns None if not found.
     pub fn kb_get_paper(&self, id: &str) -> SqlResult<Option<Paper>> {
         let conn = self.conn.lock().unwrap();
+        ensure_analysis_columns(&conn);
 
         let paper_opt: Option<Paper> = match conn.query_row(
             "SELECT id, title, authors, year, venue, abstract, doi, arxiv_id, eprint_id, \
                     orig_filename, file_path, file_size, category_id, starred, notes, managed, \
-                    added_at, updated_at \
+                    added_at, updated_at, analyzed, analysis_md_path \
              FROM kb_papers WHERE id = ?1",
             params![id],
             |row| {
@@ -257,6 +291,8 @@ impl Db {
                     managed: row.get(15)?,
                     added_at: row.get(16)?,
                     updated_at: row.get(17)?,
+                    analyzed: row.get::<_, Option<i64>>(18)?.unwrap_or(0),
+                    analysis_md_path: row.get(19)?,
                     tags: Vec::new(),
                 })
             },
@@ -344,9 +380,12 @@ impl Db {
         doi: Option<&str>,
         notes: Option<&str>,
         starred: Option<bool>,
+        analyzed: Option<bool>,
+        analysis_md_path: Option<&str>,
     ) -> SqlResult<()> {
         let now = now_ms();
         let conn = self.conn.lock().unwrap();
+        ensure_analysis_columns(&conn);
         if let Some(v) = title {
             conn.execute("UPDATE kb_papers SET title = ?1, updated_at = ?2 WHERE id = ?3", params![v, now, id])?;
         }
@@ -368,6 +407,13 @@ impl Db {
         if let Some(v) = starred {
             let flag: i64 = if v { 1 } else { 0 };
             conn.execute("UPDATE kb_papers SET starred = ?1, updated_at = ?2 WHERE id = ?3", params![flag, now, id])?;
+        }
+        if let Some(v) = analyzed {
+            let flag: i64 = if v { 1 } else { 0 };
+            conn.execute("UPDATE kb_papers SET analyzed = ?1, updated_at = ?2 WHERE id = ?3", params![flag, now, id])?;
+        }
+        if let Some(v) = analysis_md_path {
+            conn.execute("UPDATE kb_papers SET analysis_md_path = ?1, updated_at = ?2 WHERE id = ?3", params![v, now, id])?;
         }
         Ok(())
     }
@@ -720,4 +766,81 @@ pub struct FailedItem {
 pub struct ApplyResult {
     pub applied: i64,
     pub failed: Vec<FailedItem>,
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::super::Db;
+
+    /// Analysis columns are added idempotently (the ALTERs run on every call
+    /// and duplicate-column errors are ignored) and round-trip through
+    /// kb_update_metadata -> kb_get_paper / kb_list_papers.
+    #[test]
+    fn analysis_columns_idempotent_roundtrip() {
+        let db = Db::open_in_memory().expect("in-memory DB");
+        db.kb_insert_paper(
+            "p1",
+            Some("Paper One"),
+            Some("p1.pdf"),
+            "/papers/p1.pdf",
+            Some(1024),
+            Some(2024),
+            None,
+            None,
+            None,
+            None,
+            0,
+        )
+        .unwrap();
+
+        // First list triggers the idempotent ALTERs; defaults are 0 / NULL.
+        let l1 = db.kb_list_papers(None, None, None, None).unwrap();
+        assert_eq!(l1.len(), 1);
+        assert_eq!(l1[0].analyzed, 0);
+        assert!(l1[0].analysis_md_path.is_none());
+
+        // Second pass must not error even though the columns now exist.
+        let _ = db.kb_list_papers(None, None, None, None).unwrap();
+
+        db.kb_update_metadata(
+            "p1",
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(true),
+            Some("/kb/analysis/p1.md"),
+        )
+        .unwrap();
+
+        let p = db.kb_get_paper("p1").unwrap().expect("paper exists");
+        assert_eq!(p.analyzed, 1);
+        assert_eq!(p.analysis_md_path.as_deref(), Some("/kb/analysis/p1.md"));
+
+        let l2 = db.kb_list_papers(None, None, None, None).unwrap();
+        assert_eq!(l2[0].analyzed, 1);
+        assert_eq!(l2[0].analysis_md_path.as_deref(), Some("/kb/analysis/p1.md"));
+
+        // Updating an unrelated field leaves the analysis fields untouched.
+        db.kb_update_metadata(
+            "p1",
+            Some("Renamed"),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        let p2 = db.kb_get_paper("p1").unwrap().unwrap();
+        assert_eq!(p2.analyzed, 1);
+    }
 }

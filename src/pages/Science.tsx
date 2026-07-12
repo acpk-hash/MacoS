@@ -1,18 +1,21 @@
-// 科研板块 — 文献搜索 · 知识库（idea 库）· 自动科研（open-science 集成）。
-import { useEffect, useState } from 'react'
+// 科研板块 — 文献搜索 · 文献分析 · 知识库（idea 库） · idea 思考。
+// 自动科研 tab 已迁往顶级 Auto 页（AutoResearchTab 组件文件保留,供 Auto 页使用）。
+import { useEffect } from 'react'
 import LitSearchTab from '../components/science/LitSearchTab'
 import LibraryTab from '../components/science/LibraryTab'
-import AutoResearchTab from '../components/science/AutoResearchTab'
+import AnalysisTab from '../components/science/AnalysisTab'
+import IdeaTab from '../components/science/IdeaTab'
 import { useKbStore } from '../stores/kbStore'
-
-type SciTab = 'lit' | 'library' | 'auto'
+import { useScienceStore, type SciTab } from '../stores/scienceStore'
 
 export default function Science() {
-  const [tab, setTab] = useState<SciTab>('lit')
+  // tab 放 scienceStore:其他 tab 的「进入文献分析」可以直接切换,且切页返回不丢。
+  const tab = useScienceStore((s) => s.activeTab)
+  const setTab = useScienceStore((s) => s.setActiveTab)
 
-  // 进入知识库 tab 时拉取论文/分类/标签（与旧 Research 页一致）。
+  // 进入知识库 / idea 思考 tab 时拉取论文/分类/标签（与旧 Research 页一致）。
   useEffect(() => {
-    if (tab === 'library') {
+    if (tab === 'library' || tab === 'ideas') {
       const kb = useKbStore.getState()
       void kb.loadPapers()
       void kb.loadCategories()
@@ -40,14 +43,16 @@ export default function Science() {
         <div className="flex items-center gap-2">
           <h1 className="text-[15px] font-bold text-ink mr-2">科研</h1>
           <TabButton id="lit" label="文献搜索" />
+          <TabButton id="analysis" label="文献分析" />
           <TabButton id="library" label="知识库（idea 库）" />
-          <TabButton id="auto" label="自动科研" />
+          <TabButton id="ideas" label="idea 思考" />
         </div>
       </header>
 
       {tab === 'lit' && <LitSearchTab />}
+      {tab === 'analysis' && <AnalysisTab />}
       {tab === 'library' && <LibraryTab />}
-      {tab === 'auto' && <AutoResearchTab />}
+      {tab === 'ideas' && <IdeaTab />}
     </div>
   )
 }
