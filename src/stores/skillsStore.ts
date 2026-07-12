@@ -41,6 +41,17 @@ export interface LocalSkill {
   source: string
 }
 
+export interface PublicSkill {
+  id: string
+  name: string
+  description: string
+  author: string
+  source_url: string
+  install_url: string | null
+  stars: number
+  topics: string[]
+}
+
 interface SkillsStore {
   // 市场
   market: MarketEntry[]
@@ -62,6 +73,13 @@ interface SkillsStore {
   viewing: { name: string; content: string } | null
   viewLoading: boolean
 
+  // 公开搜索
+  publicQuery: string
+  publicResults: PublicSkill[]
+  publicSearching: boolean
+  publicError: string | null
+  publicInstalling: Record<string, boolean>
+
   loadMarket: () => Promise<void>
   loadInstalled: () => Promise<void>
   install: (id: string) => Promise<void>
@@ -71,6 +89,10 @@ interface SkillsStore {
   setQuery: (q: string) => void
   setCategory: (c: string | null) => void
   clearNotice: () => void
+
+  setPublicQuery: (q: string) => void
+  searchPublic: () => Promise<void>
+  installPublic: (skill: PublicSkill) => Promise<void>
 }
 
 /** 市场 id → 安装后的 skill 目录名（与后端 normalize_skill_name 同规则）。 */
@@ -98,6 +120,12 @@ export const useSkillsStore = create<SkillsStore>((set, get) => ({
 
   viewing: null,
   viewLoading: false,
+
+  publicQuery: '',
+  publicResults: [],
+  publicSearching: false,
+  publicError: null,
+  publicInstalling: {},
 
   loadMarket: async () => {
     if (!isTauri) {
@@ -172,4 +200,51 @@ export const useSkillsStore = create<SkillsStore>((set, get) => ({
   setQuery: (query) => set({ query }),
   setCategory: (category) => set({ category }),
   clearNotice: () => set({ notice: null }),
+
+  setPublicQuery: (publicQuery) => set({ publicQuery }),
+
+  searchPublic: async () => {
+    if (!isTauri) {
+      set({ publicError: '仅桌面端可用' })
+      return
+    }
+    const q = get().publicQuery.trim()
+    set({ publicSearching: true, publicError: null })
+    try {
+      const results = await tauriInvoke<PublicSkill[]>('skills_search_public', {
+        query: q,
+        source: null,
+      })
+      set({ publicResults: results, publicSearching: false })
+    } catch (e) {
+      set({ publicError: String(e), publicSearching: false })
+    }
+  },
+
+  installPublic: async (skill) => {
+    if (!isTauri || !skill.install_url) return
+    set((s) => ({
+      publicInstalling: { ...s.publicInstalling, [skill.id]: true },
+      notice: null,
+    }))
+    try {
+      await tauriInvoke<string>('skills_public_install', {
+        skillId: skill.id,
+        skillMdUrl: skill.install_url,
+      })
+      await get().loadInstalled()
+      const name = normalizedSkillName(skill.name)
+      set({
+        notice: `「${skill.name}」已安装 — 编码窗口输入 / 即可唤起（/skill:${name}）`,
+      })
+    } catch (e) {
+      set({ notice: `安装失败：${String(e)}` })
+    } finally {
+      set((s) => {
+        const publicInstalling = { ...s.publicInstalling }
+        delete publicInstalling[skill.id]
+        return { publicInstalling }
+      })
+    }
+  },
 }))

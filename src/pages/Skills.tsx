@@ -1,9 +1,10 @@
-// Skills 板块 — 技能市场：分类浏览 + 搜索 + 一键安装；已安装区可卸载/预览。
+// Skills 板块 — 技能市场 + 公开搜索：分类浏览 + 一键安装 + GitHub 公开 skill 搜索。
 // 安装到 app_data_dir/skills/<name>/SKILL.md，编码窗口输入 / 即可唤起。
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useSkillsStore, normalizedSkillName } from '../stores/skillsStore'
 import type { MarketEntry } from '../stores/skillsStore'
 import SkillMarketCard from '../components/skills/SkillMarketCard'
+import PublicSkillCard from '../components/skills/PublicSkillCard'
 import SkillContentModal from '../components/skills/SkillContentModal'
 import { Button, Chip } from '../components/ui'
 
@@ -20,6 +21,8 @@ function matches(e: MarketEntry, q: string): boolean {
   )
 }
 
+type SkillsTab = 'market' | 'public'
+
 export default function Skills() {
   const market = useSkillsStore((s) => s.market)
   const marketLoading = useSkillsStore((s) => s.marketLoading)
@@ -32,6 +35,12 @@ export default function Skills() {
   const viewing = useSkillsStore((s) => s.viewing)
   const viewLoading = useSkillsStore((s) => s.viewLoading)
 
+  const publicQuery = useSkillsStore((s) => s.publicQuery)
+  const publicResults = useSkillsStore((s) => s.publicResults)
+  const publicSearching = useSkillsStore((s) => s.publicSearching)
+  const publicError = useSkillsStore((s) => s.publicError)
+  const publicInstalling = useSkillsStore((s) => s.publicInstalling)
+
   const loadMarket = useSkillsStore((s) => s.loadMarket)
   const loadInstalled = useSkillsStore((s) => s.loadInstalled)
   const install = useSkillsStore((s) => s.install)
@@ -41,6 +50,11 @@ export default function Skills() {
   const setQuery = useSkillsStore((s) => s.setQuery)
   const setCategory = useSkillsStore((s) => s.setCategory)
   const clearNotice = useSkillsStore((s) => s.clearNotice)
+  const setPublicQuery = useSkillsStore((s) => s.setPublicQuery)
+  const searchPublic = useSkillsStore((s) => s.searchPublic)
+  const installPublic = useSkillsStore((s) => s.installPublic)
+
+  const [tab, setTab] = useState<SkillsTab>('market')
 
   useEffect(() => {
     void loadInstalled()
@@ -72,6 +86,14 @@ export default function Skills() {
     [market, query, category],
   )
 
+  const handlePublicSearch = useCallback(
+    (e?: React.FormEvent) => {
+      e?.preventDefault()
+      void searchPublic()
+    },
+    [searchPublic],
+  )
+
   return (
     <div className="flex h-full flex-col overflow-y-auto">
       <div className="px-8 pt-10 pb-6">
@@ -79,6 +101,18 @@ export default function Skills() {
         <p className="mt-1 text-sm text-ink-muted">
           技能市场 · 下载即用，编码窗口输入 <span className="font-mono text-ink">/</span> 唤起
         </p>
+        {/* ── 统计概览 ── */}
+        <div className="mt-3 flex flex-wrap gap-3">
+          <span className="rounded-btn border border-line bg-surface px-2.5 py-1 text-[11.5px] text-ink-muted">
+            本地已安装 <span className="font-semibold text-ink">{installed.length}</span>
+          </span>
+          <span className="rounded-btn border border-line bg-surface px-2.5 py-1 text-[11.5px] text-ink-muted">
+            市场 <span className="font-semibold text-ink">{market.length}</span>
+          </span>
+          <span className="rounded-btn border border-line bg-surface px-2.5 py-1 text-[11.5px] text-ink-muted">
+            公开搜索 <span className="font-semibold text-ink">{publicResults.length > 0 ? publicResults.length + '+' : 'GitHub'}</span>
+          </span>
+        </div>
       </div>
 
       {notice && (
@@ -131,68 +165,147 @@ export default function Skills() {
         )}
       </section>
 
-      {/* ── 市场 ── */}
-      <section className="flex-1 px-8 pb-10">
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <h2 className="text-[13px] font-semibold text-ink">
-            技能市场 <span className="font-normal text-ink-faint">（{market.length}）</span>
-          </h2>
-          <div className="flex-1" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="搜索名称 / 描述 / 分类 / 标签"
-            className="w-64 rounded-btn border border-line bg-surface px-2.5 py-1.5 text-[12px] text-ink placeholder:text-ink-faint outline-none focus:border-primary/60"
-          />
-          <Button size="sm" variant="ghost" disabled={marketLoading} onClick={() => void loadMarket()}>
-            {marketLoading ? '刷新中…' : '刷新'}
-          </Button>
-        </div>
+      {/* ── Tab 切换：市场 / 公开搜索 ── */}
+      <div className="mx-8 mb-4 flex gap-1 border-b border-line">
+        <button
+          onClick={() => setTab('market')}
+          className={`px-4 py-2 text-[13px] font-medium transition-colors ${
+            tab === 'market'
+              ? 'border-b-2 border-primary text-ink'
+              : 'text-ink-muted hover:text-ink'
+          }`}
+        >
+          技能市场 ({market.length})
+        </button>
+        <button
+          onClick={() => setTab('public')}
+          className={`px-4 py-2 text-[13px] font-medium transition-colors ${
+            tab === 'public'
+              ? 'border-b-2 border-primary text-ink'
+              : 'text-ink-muted hover:text-ink'
+          }`}
+        >
+          公开搜索
+        </button>
+      </div>
 
-        {categories.length > 0 && (
-          <div className="mb-4 flex flex-wrap gap-1.5">
-            <button onClick={() => setCategory(null)}>
-              <Chip tone={category == null ? 'primary' : 'neutral'}>
-                全部 {market.length}
-              </Chip>
-            </button>
-            {categories.map(([c, n]) => (
-              <button key={c} onClick={() => setCategory(category === c ? null : c)}>
-                <Chip tone={category === c ? 'primary' : 'neutral'}>
-                  {c} {n}
-                </Chip>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {marketError ? (
-          <div className="rounded-card border border-line bg-surface px-4 py-8 text-center">
-            <p className="text-[12.5px] text-failed">{marketError}</p>
-            <Button size="sm" variant="ghost" className="mt-3" onClick={() => void loadMarket()}>
-              重试
+      {tab === 'market' && (
+        /* ── 市场 ── */
+        <section className="flex-1 px-8 pb-10">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <h2 className="text-[13px] font-semibold text-ink">
+              技能市场 <span className="font-normal text-ink-faint">（{market.length}）</span>
+            </h2>
+            <div className="flex-1" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="搜索名称 / 描述 / 分类 / 标签"
+              className="w-64 rounded-btn border border-line bg-surface px-2.5 py-1.5 text-[12px] text-ink placeholder:text-ink-faint outline-none focus:border-primary/60"
+            />
+            <Button size="sm" variant="ghost" disabled={marketLoading} onClick={() => void loadMarket()}>
+              {marketLoading ? '刷新中…' : '刷新'}
             </Button>
           </div>
-        ) : marketLoading && market.length === 0 ? (
-          <p className="px-1 py-8 text-center text-[12.5px] text-ink-dim">正在拉取市场清单…</p>
-        ) : visible.length === 0 ? (
-          <p className="px-1 py-8 text-center text-[12.5px] text-ink-dim">
-            没有匹配的技能（换个关键词或分类试试）
-          </p>
-        ) : (
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {visible.map((e) => (
-              <SkillMarketCard
-                key={`${e.kind}-${e.id}`}
-                entry={e}
-                installed={installedNames.has(normalizedSkillName(e.id))}
-                installing={!!installing[e.id]}
-                onInstall={(id) => void install(id)}
+
+          {categories.length > 0 && (
+            <div className="mb-4 flex flex-wrap gap-1.5">
+              <button onClick={() => setCategory(null)}>
+                <Chip tone={category == null ? 'primary' : 'neutral'}>
+                  全部 {market.length}
+                </Chip>
+              </button>
+              {categories.map(([c, n]) => (
+                <button key={c} onClick={() => setCategory(category === c ? null : c)}>
+                  <Chip tone={category === c ? 'primary' : 'neutral'}>
+                    {c} {n}
+                  </Chip>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {marketError ? (
+            <div className="rounded-card border border-line bg-surface px-4 py-8 text-center">
+              <p className="text-[12.5px] text-failed">{marketError}</p>
+              <Button size="sm" variant="ghost" className="mt-3" onClick={() => void loadMarket()}>
+                重试
+              </Button>
+            </div>
+          ) : marketLoading && market.length === 0 ? (
+            <p className="px-1 py-8 text-center text-[12.5px] text-ink-dim">正在拉取市场清单…</p>
+          ) : visible.length === 0 ? (
+            <p className="px-1 py-8 text-center text-[12.5px] text-ink-dim">
+              没有匹配的技能（换个关键词或分类试试）
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {visible.map((e) => (
+                <SkillMarketCard
+                  key={`${e.kind}-${e.id}`}
+                  entry={e}
+                  installed={installedNames.has(normalizedSkillName(e.id))}
+                  installing={!!installing[e.id]}
+                  onInstall={(id) => void install(id)}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {tab === 'public' && (
+        /* ── 公开搜索 ── */
+        <section className="flex-1 px-8 pb-10">
+          <div className="mb-4">
+            <p className="mb-3 text-[12px] text-ink-muted">
+              搜索 GitHub 上公开的 AI agent skills（按 claude-skill / ai-skill / agent-skill topic 过滤）
+            </p>
+            <form onSubmit={handlePublicSearch} className="flex gap-2">
+              <input
+                value={publicQuery}
+                onChange={(e) => setPublicQuery(e.target.value)}
+                placeholder="输入关键词搜索公开 Skills（如 code review, testing, docs...）"
+                className="flex-1 rounded-btn border border-line bg-surface px-3 py-2 text-[12.5px] text-ink placeholder:text-ink-faint outline-none focus:border-primary/60"
               />
-            ))}
+              <Button
+                size="sm"
+                variant="soft"
+                disabled={publicSearching}
+                onClick={handlePublicSearch}
+              >
+                {publicSearching ? '搜索中…' : '搜索'}
+              </Button>
+            </form>
           </div>
-        )}
-      </section>
+
+          {publicError && (
+            <div className="mb-4 rounded-card border border-line bg-surface px-4 py-3 text-center">
+              <p className="text-[12.5px] text-failed">{publicError}</p>
+            </div>
+          )}
+
+          {publicSearching ? (
+            <p className="px-1 py-8 text-center text-[12.5px] text-ink-dim">正在搜索 GitHub…</p>
+          ) : publicResults.length === 0 ? (
+            <p className="px-1 py-8 text-center text-[12.5px] text-ink-dim">
+              输入关键词搜索公开 Skills，或直接点搜索浏览热门 Skills
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {publicResults.map((sk) => (
+                <PublicSkillCard
+                  key={sk.id}
+                  skill={sk}
+                  installed={installedNames.has(normalizedSkillName(sk.name))}
+                  installing={!!publicInstalling[sk.id]}
+                  onInstall={() => void installPublic(sk)}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       {viewing && (
         <SkillContentModal

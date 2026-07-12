@@ -62,6 +62,21 @@ pub struct LocalSkill {
     pub source: String,
 }
 
+/// 公开搜索结果（GitHub 仓库）。
+#[derive(Debug, Clone, Serialize)]
+pub struct PublicSkill {
+    /// GitHub full_name（`owner/repo`）。
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub author: String,
+    pub source_url: String,
+    /// raw.githubusercontent.com 上的 SKILL.md（可能不存在）。
+    pub install_url: Option<String>,
+    pub stars: u64,
+    pub topics: Vec<String>,
+}
+
 #[derive(Debug, Deserialize)]
 struct RawEntry {
     id: String,
@@ -444,6 +459,199 @@ pub(crate) async fn save_clipboard_file(
     fs::create_dir_all(&dir).map_err(|e| format!("创建粘贴目录失败: {e}"))?;
     let dest = dir.join(format!("{}.{ext}", uuid::Uuid::new_v4()));
     fs::write(&dest, &bytes).map_err(|e| format!("写入粘贴文件失败: {e}"))?;
+    Ok(dest.to_string_lossy().replace('\u{5c}', "/"))
+}
+
+// ── 公开搜索（GitHub API） ──────────────────────────────────────────────────
+
+/// GitHub search response shape (only the fields we need).
+#[derive(Debug, Deserialize)]
+struct GhSearchResponse {
+    #[serde(default)]
+    items: Vec<GhRepo>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GhRepo {
+    full_name: String,
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    html_url: String,
+    #[serde(default)]
+    stargazers_count: u64,
+    #[serde(default)]
+    topics: Vec<String>,
+    #[serde(default)]
+    owner: Option<GhOwner>,
+    #[serde(default)]
+    default_branch: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GhOwner {
+    #[serde(default)]
+    login: String,
+}
+
+/// Minimal percent-encoding for URL query strings (avoids adding a dependency).
+fn percent_encode_query(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() * 2);
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char);
+            }
+            b' ' => out.push('+'),
+            _ => {
+                out.push('%');
+                out.push_str(&format!("{b:02X}"));
+            }
+        }
+    }
+    out
+}
+
+/// Build a raw.githubusercontent.com SKILL.md URL guess for a repo.
+fn guess_skill_md_url(full_name: &str, default_branch: Option<&str>) -> String {
+    let branch = default_branch.unwrap_or("main");
+    format!(
+        "https://raw.githubusercontent.com/{full_name}/{branch}/SKILL.md"
+    )
+}
+
+/// Search GitHub repositories by query + skill-related topics.
+/// Combines results from multiple topic searches to maximize coverage.
+async fn github_search_skills(query: &str, limit: usize) -> Result<Vec<PublicSkill>, String> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(HTTP_TIMEOUT_SECS))
+        .build()
+        .map_err(|e| format!("HTTP 客户端初始化失败: {e}"))?;
+
+    // Build query: user keywords + topic filters for skill repos
+    let q = if query.trim().is_empty() {
+        "topic:claude-skill topic:ai-skill topic:agent-skill".to_string()
+    } else {
+        format!(
+            "{} topic:claude-skill OR {} topic:ai-skill OR {} topic:agent-skill",
+            query.trim(),
+            query.trim(),
+            query.trim()
+        )
+    };
+
+    let url = format!(
+        "https://api.github.com/search/repositories?q={}&per_page={}&sort=stars&order=desc",
+        percent_encode_query(&q),
+        limit.min(50)
+    );
+
+    let resp = client
+        .get(&url)
+        .header("Accept", "application/vnd.github+json")
+        .header("User-Agent", "Iris-AgentBoard/1.0")
+        .send()
+        .await
+        .map_err(|e| format!("GitHub 搜索连接失败（离线或不可达）: {e}"))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status().as_u16();
+        return Err(format!("GitHub API 返回 HTTP {status}（可能达到速率限制）"));
+    }
+
+    let body = resp
+        .text()
+        .await
+        .map_err(|e| format!("读取 GitHub 响应失败: {e}"))?;
+
+    let parsed: GhSearchResponse =
+        serde_json::from_str(&body).map_err(|e| format!("GitHub 响应解析失败: {e}"))?;
+
+    // Dedup by full_name (OR queries may return duplicates).
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for repo in parsed.items {
+        if !seen.insert(repo.full_name.clone()) {
+            continue;
+        }
+        let author = repo
+            .owner
+            .as_ref()
+            .map(|o| o.login.clone())
+            .unwrap_or_default();
+        let install_url = Some(guess_skill_md_url(
+            &repo.full_name,
+            repo.default_branch.as_deref(),
+        ));
+        out.push(PublicSkill {
+            id: repo.full_name.clone(),
+            name: repo.name,
+            description: repo.description.unwrap_or_default(),
+            author,
+            source_url: repo.html_url,
+            install_url,
+            stars: repo.stargazers_count,
+            topics: repo.topics,
+        });
+    }
+    Ok(out)
+}
+
+/// 搜索公开 Skills（GitHub 仓库，按 skill 相关 topic 过滤）。
+/// `query` 为用户搜索词；`source` 保留扩展（目前仅 github）。
+#[tauri::command]
+pub(crate) async fn skills_search_public(
+    query: String,
+    source: Option<String>,
+) -> Result<Vec<PublicSkill>, String> {
+    let _ = source; // reserved for future sources
+    github_search_skills(&query, 30).await
+}
+
+/// 从公开 skill 的 SKILL.md URL 下载并安装（与市场安装同流程：
+/// 拉正文 → build_skill_md → 写入共享目录）。
+/// `skill_id` 格式 `owner/repo`，`skill_md_url` 为 raw.githubusercontent URL。
+#[tauri::command]
+pub(crate) async fn skills_public_install(
+    app: AppHandle,
+    skill_id: String,
+    skill_md_url: String,
+) -> Result<String, String> {
+    // Validate URL: only allow raw.githubusercontent.com
+    if !skill_md_url.starts_with("https://raw.githubusercontent.com/") {
+        return Err("仅允许从 raw.githubusercontent.com 安装".to_string());
+    }
+
+    let body = http_get_text(&skill_md_url).await.map_err(|_| {
+        format!(
+            "该仓库不包含 SKILL.md（{}），请手动克隆安装",
+            skill_md_url
+        )
+    })?;
+
+    // Derive name from the repo name part of skill_id (owner/repo → repo).
+    let repo_name = skill_id
+        .split('/')
+        .nth(1)
+        .unwrap_or(&skill_id);
+    let name = normalize_skill_name(repo_name);
+
+    // If the body already has frontmatter, use it as-is; otherwise wrap it.
+    let content = if body.trim_start().starts_with("---") {
+        // Already has frontmatter — strip BOM and use directly.
+        body.trim_start_matches('\u{feff}').to_string()
+    } else {
+        // No frontmatter — wrap with generated name/description.
+        let desc = format!("Public skill from {}", skill_id);
+        build_skill_md(&name, &desc, &body)
+    };
+
+    let dir = shared_skills_dir(&app)?.join(&name);
+    fs::create_dir_all(&dir).map_err(|e| format!("创建 skill 目录失败: {e}"))?;
+    let dest = dir.join("SKILL.md");
+    fs::write(&dest, content.as_bytes()).map_err(|e| format!("写入 SKILL.md 失败: {e}"))?;
     Ok(dest.to_string_lossy().replace('\u{5c}', "/"))
 }
 
