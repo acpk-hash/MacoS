@@ -672,6 +672,9 @@ export const usePiStore = create<PiStore>((set, get) => ({
       }
 
       case 'agent_end': {
+        // willRetry=true 表示 pi 遇到瞬时错误将自动重试，这一轮尚未终结——
+        // 保持 running，不消费队列、不收尾（实测 relay 偶发超时时会出现）。
+        if ((ev as { willRetry?: boolean }).willRetry === true) break
         finalizeStream(sessionId)
         const q = get().composerQueue[sessionId] ?? []
         if (q.length > 0) {

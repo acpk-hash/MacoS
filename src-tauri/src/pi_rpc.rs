@@ -731,4 +731,195 @@ mod tests {
         // 生成的环境生效：默认模型来自我们的 settings.json/models.json。
         assert_eq!(v["data"]["model"]["id"], "gpt-5.5");
     }
+
+    /// LIVE 端到端冒烟（真网络 + 真 key）：完整一轮 agent turn。
+    /// 证明产品链路的最终判据：pi_open 同构生成的环境（models.json/
+    /// settings.json 复用生产函数）→ 真实 prompt → agent 真调工具在
+    /// 工作目录写出 hello.txt → agent_end，事件顺序与落盘产物都验证。
+    ///
+    /// 需要：本机 node + 全局 npm 的 pi + 环境变量 `OPENAI_API_KEY`
+    /// （指向 aiboys relay 的 key，注入为子进程 AGENTBOARD_PI_KEY）。
+    ///
+    /// 运行：`cargo test -p agentboard --lib pi_rpc::tests::live_rpc_full_turn
+    /// -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn live_rpc_full_turn() {
+        use tokio::process::Command;
+
+        // -- 真 key：用户级 env（aiboys relay）。缺失直接失败，不许假通过。--
+        let key = std::env::var("OPENAI_API_KEY")
+            .ok()
+            .map(|k| k.trim().to_string())
+            .filter(|k| !k.is_empty())
+            .expect("live_rpc_full_turn 需要环境变量 OPENAI_API_KEY（真实 key）");
+
+        let cli = npm_global_pi_cli().expect("npm global path");
+        assert!(cli.exists(), "pi cli.js not found: {}", cli.display());
+
+        // -- 与产品 pi_open 同构的会话环境（配置内容 100% 复用生产函数）--
+        let agent_dir =
+            std::env::temp_dir().join(format!("pi-e2e-cfg-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&agent_dir).unwrap();
+        std::fs::write(
+            agent_dir.join("models.json"),
+            build_models_json("https://sub.aiboys.xyz/v1", "responses", "gpt-5.5"),
+        )
+        .unwrap();
+        std::fs::write(agent_dir.join("settings.json"), build_settings_json("gpt-5.5")).unwrap();
+
+        // -- 临时工作目录：agent 要在这里写 hello.txt --
+        let work = std::env::temp_dir().join(format!("pi-e2e-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&work).unwrap();
+
+        let mut child = Command::new("node")
+            .arg(&cli)
+            .args([
+                "--mode",
+                "rpc",
+                "--approve",
+                "--no-context-files",
+                "--no-extensions",
+                "--no-skills",
+            ])
+            .current_dir(&work)
+            .env(PI_AGENT_DIR_ENV, &agent_dir)
+            .env(PI_KEY_ENV, &key)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true)
+            .no_window()
+            .spawn()
+            .expect("spawn pi");
+
+        let child_id = child.id();
+        let mut stdin = child.stdin.take().unwrap();
+        let mut lines = BufReader::new(child.stdout.take().unwrap()).lines();
+
+        // stderr → 共享尾部缓冲（失败时打印诊断）。
+        let stderr_tail = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        {
+            let tail = stderr_tail.clone();
+            let mut errlines = BufReader::new(child.stderr.take().unwrap()).lines();
+            tokio::spawn(async move {
+                while let Ok(Some(l)) = errlines.next_line().await {
+                    let mut t = tail.lock().unwrap();
+                    t.push(l);
+                    if t.len() > STDERR_TAIL_LINES {
+                        t.remove(0);
+                    }
+                }
+            });
+        }
+
+        // -- 协议：800ms 静默期后发真实 prompt --
+        tokio::time::sleep(Duration::from_millis(STARTUP_GRACE_MS)).await;
+        let prompt = json!({
+            "type": "prompt",
+            "message": "在当前目录创建 hello.txt，内容为 pivot-ok，然后结束。",
+            "id": "e2e1"
+        });
+        let mut line = prompt.to_string();
+        line.push('\n');
+        stdin.write_all(line.as_bytes()).await.unwrap();
+        stdin.flush().await.unwrap();
+
+        // -- 事件循环（总超时 120s）：验证 agent_start → tool_execution_start
+        //    →（…）→ agent_end 的顺序 --
+        let started = std::time::Instant::now();
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(120);
+        let mut events: Vec<String> = Vec::new();
+        let (mut saw_agent_start, mut saw_tool_start, mut saw_agent_end) = (false, false, false);
+        let mut order_ok = true;
+        let mut tool_names: Vec<String> = Vec::new();
+        loop {
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            let l = match tokio::time::timeout(remaining, lines.next_line()).await {
+                Ok(Ok(Some(l))) => l,
+                _ => break, // EOF / 读错 / 超时
+            };
+            let trimmed = l.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            events.push(trimmed.to_string());
+            let Ok(v) = serde_json::from_str::<Value>(trimmed) else {
+                continue;
+            };
+            match v["type"].as_str().unwrap_or("") {
+                "agent_start" => saw_agent_start = true,
+                "tool_execution_start" => {
+                    if !saw_agent_start {
+                        order_ok = false;
+                    }
+                    saw_tool_start = true;
+                    let name = v["toolName"]
+                        .as_str()
+                        .or_else(|| v["tool_name"].as_str())
+                        .or_else(|| v["name"].as_str())
+                        .unwrap_or("?");
+                    tool_names.push(name.to_string());
+                    println!("[e2e tool_execution_start] {trimmed}");
+                }
+                "agent_end" => {
+                    // pi 对可重试错误会发 willRetry=true 的 agent_end 然后
+                    // 自动重试；只有最终的 agent_end 才算一轮真正结束。
+                    if v["willRetry"] == true {
+                        println!("[e2e agent_end willRetry=true → 继续等重试]");
+                        continue;
+                    }
+                    if !saw_tool_start {
+                        order_ok = false;
+                    }
+                    saw_agent_end = true;
+                    println!("[e2e agent_end] {trimmed}");
+                    break; // 一轮结束
+                }
+                _ => {}
+            }
+        }
+        let elapsed = started.elapsed();
+
+        // -- 落盘产物验证（在杀进程前后都不受影响，先读再清理）--
+        let hello = work.join("hello.txt");
+        let hello_content = std::fs::read_to_string(&hello).ok();
+
+        // -- 清理：杀进程树 + 删临时目录 --
+        kill_child_id(child_id).await;
+        let _ = child.kill().await;
+        let _ = std::fs::remove_dir_all(&agent_dir);
+        let _ = std::fs::remove_dir_all(&work);
+
+        // -- 诊断输出（失败时把最后 30 行事件 + stderr 尾部打出来）--
+        let content_ok = hello_content
+            .as_deref()
+            .map(|c| c.contains("pivot-ok"))
+            .unwrap_or(false);
+        let pass =
+            saw_agent_start && saw_tool_start && saw_agent_end && order_ok && content_ok;
+        if !pass {
+            eprintln!("---- last {} events ----", events.len().min(30));
+            for e in events.iter().rev().take(30).collect::<Vec<_>>().into_iter().rev() {
+                eprintln!("[event] {e}");
+            }
+            eprintln!("---- stderr tail ----");
+            for l in stderr_tail.lock().unwrap().iter() {
+                eprintln!("[stderr] {l}");
+            }
+        }
+        println!(
+            "[e2e] elapsed={elapsed:?} tools={tool_names:?} hello.txt={hello_content:?}"
+        );
+
+        assert!(saw_agent_start, "未观察到 agent_start");
+        assert!(saw_tool_start, "未观察到 tool_execution_start");
+        assert!(saw_agent_end, "未观察到 agent_end");
+        assert!(order_ok, "事件顺序不对（应为 agent_start → tool → agent_end）");
+        let c = hello_content.expect("hello.txt 未生成");
+        assert!(c.contains("pivot-ok"), "hello.txt 内容不含 pivot-ok: {c:?}");
+    }
 }
