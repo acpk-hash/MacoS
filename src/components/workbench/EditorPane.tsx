@@ -231,6 +231,10 @@ export default function EditorPane() {
       const cur = useWorkspaceStore.getState().activeTab
       if (cur) void useWorkspaceStore.getState().saveTab(cur)
     })
+    // Shift+Alt+F → 格式化当前文档。
+    ed.addCommand(monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF, () => {
+      void ed.getAction('editor.action.formatDocument')?.run()
+    })
     // tab 因 key 变化重挂载后，补画可能尚未消费的 AI 高亮。
     window.setTimeout(applyHighlight, 80)
   }
@@ -391,6 +395,14 @@ export default function EditorPane() {
                     cursorBlinking: 'smooth',
                     renderLineHighlight: 'all',
                     roundedSelection: true,
+                    quickSuggestions: true,
+                    suggestOnTriggerCharacters: true,
+                    tabCompletion: 'on',
+                    formatOnPaste: true,
+                    autoClosingBrackets: 'languageDefined',
+                    autoClosingQuotes: 'languageDefined',
+                    bracketPairColorization: { enabled: true },
+                    linkedEditing: true,
                     padding: { top: 10, bottom: 10 },
                     tabSize: 2,
                     automaticLayout: true,

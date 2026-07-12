@@ -30,6 +30,48 @@ import tsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker'
 
 export const MONACO_THEME = 'agentboard-dark'
 
+let monacoIntelliSenseInitialized = false
+
+/**
+ * 启用 Monaco 自带的轻量代码智能（TS/JS/JSON），不依赖 node_modules/LSP/后端。
+ * 幂等：模块可被重复 import，defaults 只配置一次。
+ */
+export function initializeMonacoIntelliSense(): void {
+  if (monacoIntelliSenseInitialized) return
+  monacoIntelliSenseInitialized = true
+
+  const ts = monaco.languages.typescript
+  const compilerOptions: monaco.languages.typescript.CompilerOptions = {
+    target: ts.ScriptTarget.ESNext,
+    module: ts.ModuleKind.ESNext,
+    moduleResolution: ts.ModuleResolutionKind.NodeJs,
+    allowNonTsExtensions: true,
+    jsx: ts.JsxEmit.React,
+    allowJs: true,
+    esModuleInterop: true,
+    skipLibCheck: true,
+    lib: ['esnext', 'dom'],
+  }
+  const diagnosticsOptions: monaco.languages.typescript.DiagnosticsOptions = {
+    noSemanticValidation: false,
+    noSyntaxValidation: false,
+    diagnosticCodesToIgnore: [2307, 2792, 2304, 2580, 7016],
+  }
+
+  ts.typescriptDefaults.setCompilerOptions(compilerOptions)
+  ts.javascriptDefaults.setCompilerOptions(compilerOptions)
+  ts.typescriptDefaults.setDiagnosticsOptions(diagnosticsOptions)
+  ts.javascriptDefaults.setDiagnosticsOptions(diagnosticsOptions)
+  ts.typescriptDefaults.setEagerModelSync(true)
+  ts.javascriptDefaults.setEagerModelSync(true)
+
+  monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
+    validate: true,
+    allowComments: true,
+    schemas: [],
+  })
+}
+
 monaco.editor.defineTheme(MONACO_THEME, {
   base: 'vs-dark',
   inherit: true,
@@ -72,6 +114,7 @@ monaco.editor.defineTheme(MONACO_THEME, {
 })
 
 loader.config({ monaco })
+initializeMonacoIntelliSense()
 
 // ── 多语言映射（P3）───────────────────────────────────────────────
 //
