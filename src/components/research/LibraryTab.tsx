@@ -17,6 +17,8 @@ import {
   type Tag,
   type PaperSummary,
   type Paper,
+  type RenamePreview,
+  type ApplyItem,
 } from '../../stores/kbStore'
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl
@@ -267,6 +269,148 @@ function CategoryNode({
     </div>
   )
 }
+
+// -- Normalize dialog ---------------------------------------------------------
+
+function NormalizeDialog({
+  papers,
+  onClose,
+}: {
+  papers: PaperSummary[]
+  onClose: () => void
+}) {
+  const store = useKbStore()
+  const [template, setTemplate] = useState('{year}_{author}_{title}')
+  const [previews, setPreviews] = useState<RenamePreview[] | null>(null)
+  const [previewing, setPreviewing] = useState(false)
+  const [applying, setApplying] = useState(false)
+  const [resultMsg, setResultMsg] = useState<string | null>(null)
+  const [previewError, setPreviewError] = useState<string | null>(null)
+
+  const doPreview = async () => {
+    setPreviewing(true)
+    setPreviewError(null)
+    setResultMsg(null)
+    try {
+      const ids = papers.map((p) => p.id)
+      const result = await store.normalizePreview(ids, template)
+      setPreviews(result)
+    } catch (e) {
+      setPreviewError('预览失败：' + String(e))
+    } finally {
+      setPreviewing(false)
+    }
+  }
+
+  const doApply = async () => {
+    if (!previews || previews.length === 0) return
+    setApplying(true)
+    setResultMsg(null)
+    try {
+      const items: ApplyItem[] = previews.map((p) => ({ id: p.id, new_name: p.new_name }))
+      const result = await store.normalizeApply(items)
+      const failMsg = result.failed.length > 0 ? `，${result.failed.length} 个失败` : ''
+      setResultMsg(`已应用 ${result.applied} 个重命名${failMsg}`)
+      setPreviews(null)
+    } catch (e) {
+      setResultMsg('应用失败：' + String(e))
+    } finally {
+      setApplying(false)
+    }
+  }
+
+  const inputCls = 'w-full bg-surface border border-line rounded-md px-2 py-1.5 text-[12px] text-ink placeholder-ink-dim focus:outline-none focus:border-primary transition-colors'
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+      <div
+        className="bg-bg border border-line rounded-xl shadow-2xl p-5 flex flex-col gap-3"
+        style={{ width: '520px', maxHeight: '80vh' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="text-[14px] font-semibold text-ink">规范化文件命名</h3>
+
+        <div>
+          <p className="text-[11px] text-ink-dim mb-1">
+            模板（占位符：<code className="text-primary">{'{year}'}</code>、<code className="text-primary">{'{author}'}</code>、<code className="text-primary">{'{title}'}</code>）
+          </p>
+          <input
+            className={inputCls}
+            value={template}
+            onChange={(e) => { setTemplate(e.target.value); setPreviews(null); setResultMsg(null) }}
+            placeholder="{year}_{author}_{title}"
+          />
+        </div>
+
+        <p className="text-[11px] text-ink-dim">
+          作用范围：当前列表全部（共 {papers.length} 篇）
+        </p>
+
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={() => void doPreview()}
+            disabled={previewing || applying}
+            className="px-3 py-1.5 text-[12px] border border-line rounded-md text-ink-dim hover:text-ink hover:bg-surface-2 disabled:opacity-50 transition-colors"
+          >
+            {previewing ? '生成预览中...' : '预览'}
+          </button>
+          {previews && previews.length > 0 && (
+            <button
+              onClick={() => void doApply()}
+              disabled={applying}
+              className="px-3 py-1.5 text-[12px] bg-primary text-white rounded-md hover:opacity-90 disabled:opacity-50 transition-opacity"
+            >
+              {applying ? '应用中...' : '应用'}
+            </button>
+          )}
+          <button
+            onClick={onClose}
+            className="px-3 py-1.5 text-[12px] border border-line rounded-md text-ink-dim hover:text-ink hover:bg-surface-2 transition-colors ml-auto"
+          >
+            关闭
+          </button>
+        </div>
+
+        {previewError && <p className="text-[12px] text-failed">{previewError}</p>}
+        {resultMsg && (
+          <p className={'text-[12px] ' + (resultMsg.includes('失败') ? 'text-failed' : 'text-success')}>
+            {resultMsg}
+          </p>
+        )}
+
+        {previews && (
+          <div className="flex-1 overflow-y-auto border border-line rounded-md bg-surface/40 min-h-0" style={{ maxHeight: '300px' }}>
+            {previews.length === 0 ? (
+              <p className="text-[12px] text-ink-dim p-3 text-center">没有需要重命名的文件</p>
+            ) : (
+              <table className="w-full text-[11px] border-collapse">
+                <thead className="sticky top-0 bg-surface border-b border-line">
+                  <tr className="text-ink-dim text-left">
+                    <th className="px-2 py-1.5 font-medium w-1/2">原文件名</th>
+                    <th className="px-2 py-1.5 font-medium w-1/2">新文件名</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {previews.map((p) => (
+                    <tr key={p.id} className="border-b border-line/40 hover:bg-surface-2/40">
+                      <td className="px-2 py-1 text-ink-muted truncate max-w-0" title={p.old_name}>
+                        <span className="truncate block">{p.old_name}</span>
+                      </td>
+                      <td className="px-2 py-1 text-ink truncate max-w-0" title={p.new_name}>
+                        <span className="truncate block">{p.new_name}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // -- Detail drawer ------------------------------------------------------------
 
 function DetailDrawer({ paper, categories, tags, onClose }: {
@@ -290,6 +434,15 @@ function DetailDrawer({ paper, categories, tags, onClose }: {
   const [deleteConfirm, setDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
+  // -- File management state -------------------------------------------------
+  const [renameInput, setRenameInput] = useState('')
+  const [renaming, setRenaming] = useState(false)
+  const [renameMsg, setRenameMsg] = useState<string | null>(null)
+  const [undoing, setUndoing] = useState(false)
+  const [undoMsg, setUndoMsg] = useState<string | null>(null)
+  const [moving, setMoving] = useState(false)
+  const [moveMsg, setMoveMsg] = useState<string | null>(null)
+
   // tags available for future tag-picker UI
   void tags
 
@@ -304,6 +457,10 @@ function DetailDrawer({ paper, categories, tags, onClose }: {
     setSaveMsg(null)
     setShowPdf(false)
     setDeleteConfirm(false)
+    setRenameInput('')
+    setRenameMsg(null)
+    setUndoMsg(null)
+    setMoveMsg(null)
   }, [paper.id])
 
   const doSave = async () => {
@@ -371,8 +528,64 @@ function DetailDrawer({ paper, categories, tags, onClose }: {
     }
   }
 
+  // -- File management handlers ----------------------------------------------
+
+  const doRename = async () => {
+    const name = renameInput.trim()
+    if (!name) return
+    setRenaming(true)
+    setRenameMsg(null)
+    try {
+      const newPath = await store.renameFile(paper.id, name)
+      setRenameMsg('重命名成功: ' + newPath.split(/[/\\]/).pop())
+      setRenameInput('')
+    } catch (e) {
+      setRenameMsg('重命名失败: ' + String(e))
+    } finally {
+      setRenaming(false)
+    }
+  }
+
+  const doUndo = async () => {
+    setUndoing(true)
+    setUndoMsg(null)
+    try {
+      const restoredPath = await store.renameUndo(paper.id)
+      setUndoMsg('已撤销，当前文件: ' + restoredPath.split(/[/\\]/).pop())
+    } catch (e) {
+      setUndoMsg('撤销失败: ' + String(e))
+    } finally {
+      setUndoing(false)
+    }
+  }
+
+  const doMove = async () => {
+    if (!isTauri) return
+    setMoving(true)
+    setMoveMsg(null)
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog')
+      const dir = await open({ directory: true, multiple: false, title: '选择目标目录' })
+      if (!dir || typeof dir !== 'string') { setMoving(false); return }
+      if (paper.managed === 0) {
+        // 就地索引：提示用户原文件会被物理移动
+        if (!window.confirm('该论文为就地索引模式，移动将会物理移动原始文件到新目录，确认继续？')) {
+          setMoving(false)
+          return
+        }
+      }
+      const newPath = await store.moveFile(paper.id, dir)
+      setMoveMsg('已移动到: ' + newPath.split(/[/\\]/).slice(0, -1).join('/'))
+    } catch (e) {
+      setMoveMsg('移动失败: ' + String(e))
+    } finally {
+      setMoving(false)
+    }
+  }
+
   const inputCls = 'w-full bg-surface border border-line rounded-md px-2 py-1 text-[12px] text-ink placeholder-ink-dim focus:outline-none focus:border-primary transition-colors'
   const labelCls = 'text-[11px] text-ink-dim mb-0.5'
+  const sectionLabelCls = 'text-[11px] text-ink-dim font-medium uppercase tracking-wide mb-1'
 
   return (
     <div className="flex flex-col h-full border-l border-line bg-surface/30 overflow-hidden" style={{ minWidth: '300px', maxWidth: '380px', width: '340px' }}>
@@ -483,6 +696,77 @@ function DetailDrawer({ paper, categories, tags, onClose }: {
             >添加</button>
           </div>
         </div>
+
+        {/* ── 文件管理 ─────────────────────────────────────────────── */}
+        <div className="border-t border-line/60 pt-3 space-y-3">
+          <p className={sectionLabelCls}>文件管理</p>
+
+          {/* 重命名 */}
+          <div>
+            <p className={labelCls}>重命名文件</p>
+            <p className="text-[11px] text-ink-muted mb-1 break-all">
+              当前: {paper.orig_filename ?? paper.file_path?.split(/[/\\]/).pop() ?? '-'}
+            </p>
+            <div className="flex gap-1">
+              <input
+                className={inputCls + ' flex-1'}
+                value={renameInput}
+                onChange={(e) => setRenameInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') void doRename() }}
+                placeholder="新文件名（无需含扩展名）"
+              />
+              <button
+                onClick={() => void doRename()}
+                disabled={renaming || !renameInput.trim()}
+                className="px-2 py-1 text-[11px] bg-primary text-white rounded-md hover:opacity-90 disabled:opacity-50 transition-opacity whitespace-nowrap"
+              >
+                {renaming ? '...' : '确定'}
+              </button>
+            </div>
+            {renameMsg && (
+              <p className={'text-[11px] mt-1 ' + (renameMsg.startsWith('重命名失败') ? 'text-failed' : 'text-success')}>
+                {renameMsg}
+              </p>
+            )}
+            <div className="mt-1.5">
+              <button
+                onClick={() => void doUndo()}
+                disabled={undoing}
+                className="text-[11px] text-ink-dim hover:text-ink disabled:opacity-50 underline underline-offset-2"
+              >
+                {undoing ? '撤销中...' : '撤销上次重命名'}
+              </button>
+              {undoMsg && (
+                <p className={'text-[11px] mt-0.5 ' + (undoMsg.startsWith('撤销失败') ? 'text-failed' : 'text-success')}>
+                  {undoMsg}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* 移动 */}
+          <div>
+            <p className={labelCls}>移动文件</p>
+            {paper.managed === 0 && (
+              <p className="text-[11px] text-amber-400 mb-1">
+                就地索引模式：移动将物理移动原始文件。
+              </p>
+            )}
+            <button
+              onClick={() => void doMove()}
+              disabled={moving || !paper.file_path}
+              className="px-3 py-1 text-[12px] border border-line rounded-md text-ink-dim hover:text-ink hover:bg-surface-2 disabled:opacity-50 transition-colors"
+            >
+              {moving ? '选择目录中...' : '移动到...'}
+            </button>
+            {moveMsg && (
+              <p className={'text-[11px] mt-1 ' + (moveMsg.startsWith('移动失败') ? 'text-failed' : 'text-success')}>
+                {moveMsg}
+              </p>
+            )}
+          </div>
+        </div>
+        {/* ── 文件管理 end ─────────────────────────────────────────── */}
 
         <div className="text-[11px] text-ink-dim space-y-0.5">
           <p>文件: <span className="text-ink-muted break-all">{paper.orig_filename ?? '-'}</span></p>
@@ -620,11 +904,22 @@ export default function LibraryTab() {
   const [renameCat, setRenameCat] = useState<{ id: string; name: string } | null>(null)
   const [importing, setImporting] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [showNormalize, setShowNormalize] = useState(false)
 
   const tree = buildTree(store.categories)
   const rootCats = tree.get(null) ?? []
 
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // -- Init: register kb-event listener + watchStart -------------------------
+  useEffect(() => {
+    void store.init()
+    void store.watchStart()
+    return () => {
+      void store.watchStop()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const handleQueryChange = (q: string) => {
     setLocalQuery(q)
@@ -764,6 +1059,14 @@ export default function LibraryTab() {
         </button>
         <button className={btnCls} onClick={() => void doUpload()} disabled={!isTauri || uploading}>
           {uploading ? '上传中...' : '上传论文'}
+        </button>
+        <button
+          className={btnCls}
+          onClick={() => setShowNormalize(true)}
+          disabled={!isTauri || store.papers.length === 0}
+          title="按模板批量规范化当前列表的文件名"
+        >
+          规范化命名
         </button>
         <div className="flex-1 min-w-[160px] max-w-xs">
           <input
@@ -948,6 +1251,13 @@ export default function LibraryTab() {
             </div>
           </div>
         </div>
+      )}
+
+      {showNormalize && (
+        <NormalizeDialog
+          papers={store.papers}
+          onClose={() => setShowNormalize(false)}
+        />
       )}
     </div>
   )

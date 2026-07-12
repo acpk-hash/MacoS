@@ -82,6 +82,31 @@ export interface ScanResult {
   added: number
 }
 
+/** Mirrors Rust RenamePreview — preview of a planned rename. */
+export interface RenamePreview {
+  id: string
+  old_name: string
+  new_name: string
+}
+
+/** Mirrors Rust ApplyItem — one item in a batch-apply rename request. */
+export interface ApplyItem {
+  id: string
+  new_name: string
+}
+
+/** Mirrors Rust FailedItem — per-item failure in an apply result. */
+export interface FailedItem {
+  id: string
+  error: string
+}
+
+/** Mirrors Rust ApplyResult — result of a batch rename-apply operation. */
+export interface ApplyResult {
+  applied: number
+  failed: FailedItem[]
+}
+
 // -- Filter ------------------------------------------------------------------
 
 export interface PaperFilter {
@@ -134,6 +159,17 @@ interface KbStore {
   setCategory: (paperId: string, categoryId: string | null) => Promise<void>
   deletePaper: (id: string, deleteFile: boolean) => Promise<void>
 
+  // File management actions
+  renameFile: (id: string, newName: string) => Promise<string>
+  moveFile: (id: string, destDir: string) => Promise<string>
+  normalizePreview: (paperIds: string[], template: string) => Promise<RenamePreview[]>
+  normalizeApply: (items: ApplyItem[]) => Promise<ApplyResult>
+  renameUndo: (paperId: string) => Promise<string>
+
+  // Watch actions (backend implemented in parallel task; silently no-ops until landed)
+  watchStart: () => Promise<void>
+  watchStop: () => Promise<void>
+
   // Category actions
   loadCategories: () => Promise<void>
   addCategory: (name: string, parentId?: string | null, color?: string | null) => Promise<string>
@@ -163,7 +199,16 @@ interface KbStore {
   setActiveTagId: (id: string | null) => void
   setQuery: (q: string) => void
   clearNotice: () => void
+
+  // Init (registers kb-event listener once)
+  init: () => Promise<void>
 }
+
+// -- Module-level watch guard (register kb-event listener only once) ----------
+
+let _kbEventUnlisten: (() => void) | null = null
+let _kbEventListening = false
+let _kbEventDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
 // -- Store -------------------------------------------------------------------
 
@@ -187,6 +232,27 @@ export const useKbStore = create<KbStore>((set, get) => ({
 
   error: null,
   notice: null,
+
+  // -- Init (kb-event listener) ----------------------------------------------
+
+  init: async () => {
+    if (!isTauri) return
+    if (_kbEventListening) return
+    _kbEventListening = true
+    try {
+      const { listen } = await import('@tauri-apps/api/event')
+      const unlisten = await listen<{ kind: string }>('kb-event', (_evt) => {
+        // Debounce: coalesce rapid filesystem events into a single list reload
+        if (_kbEventDebounceTimer) clearTimeout(_kbEventDebounceTimer)
+        _kbEventDebounceTimer = setTimeout(() => {
+          void get().loadPapers()
+        }, 300)
+      })
+      _kbEventUnlisten = unlisten
+    } catch {
+      _kbEventListening = false
+    }
+  },
 
   // -- Papers ----------------------------------------------------------------
 
@@ -264,6 +330,68 @@ export const useKbStore = create<KbStore>((set, get) => ({
       selectedPaperId: s.selectedPaperId === id ? null : s.selectedPaperId,
       selectedPaper: s.selectedPaper?.id === id ? null : s.selectedPaper,
     }))
+  },
+
+  // -- File management -------------------------------------------------------
+
+  renameFile: async (id: string, newName: string): Promise<string> => {
+    if (!isTauri) return ''
+    const result = await tauriInvoke<string>('kb_rename_file', { id, newName })
+    await get().loadPapers()
+    if (get().selectedPaperId === id) {
+      await get().getPaper(id)
+    }
+    return result
+  },
+
+  moveFile: async (id: string, destDir: string): Promise<string> => {
+    if (!isTauri) return ''
+    const result = await tauriInvoke<string>('kb_move_file', { id, destDir })
+    await get().loadPapers()
+    if (get().selectedPaperId === id) {
+      await get().getPaper(id)
+    }
+    return result
+  },
+
+  normalizePreview: async (paperIds: string[], template: string): Promise<RenamePreview[]> => {
+    if (!isTauri) return []
+    return tauriInvoke<RenamePreview[]>('kb_normalize_preview', { paperIds, template })
+  },
+
+  normalizeApply: async (items: ApplyItem[]): Promise<ApplyResult> => {
+    if (!isTauri) return { applied: 0, failed: [] }
+    const result = await tauriInvoke<ApplyResult>('kb_normalize_apply', { items })
+    await get().loadPapers()
+    return result
+  },
+
+  renameUndo: async (paperId: string): Promise<string> => {
+    if (!isTauri) return ''
+    const result = await tauriInvoke<string>('kb_rename_undo', { paperId })
+    await get().loadPapers()
+    if (get().selectedPaperId === paperId) {
+      await get().getPaper(paperId)
+    }
+    return result
+  },
+
+  watchStart: async () => {
+    if (!isTauri) return
+    try {
+      await tauriInvoke<void>('kb_watch_start')
+    } catch {
+      // Backend not yet implemented in parallel task; silently ignore
+    }
+  },
+
+  watchStop: async () => {
+    if (!isTauri) return
+    try {
+      await tauriInvoke<void>('kb_watch_stop')
+    } catch {
+      // Backend not yet implemented in parallel task; silently ignore
+    }
   },
 
   // -- Categories ------------------------------------------------------------
@@ -377,3 +505,12 @@ export const useKbStore = create<KbStore>((set, get) => ({
 
   clearNotice: () => set({ notice: null, error: null }),
 }))
+
+// Cleanup helper exported for testing / HMR teardown
+export function kbStoreCleanup() {
+  if (_kbEventUnlisten) {
+    _kbEventUnlisten()
+    _kbEventUnlisten = null
+    _kbEventListening = false
+  }
+}
