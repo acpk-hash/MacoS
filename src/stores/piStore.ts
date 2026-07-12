@@ -34,6 +34,12 @@ function uuid(): string {
 
 export type PiSessionStatus = 'idle' | 'running' | 'done' | 'error'
 
+/** 已安装 skill（Composer 的 / 选择器数据源，来自 skills_local_list）。 */
+export interface PiSkill {
+  name: string
+  description: string
+}
+
 export interface PiSession {
   id: string
   /** 首条 user 消息截断；未发消息前为「新会话」。 */
@@ -221,6 +227,8 @@ interface PiStore {
   usageById: Record<string, PiUsage>
   listening: boolean
   error: string | null
+  /** 已安装 skills 缓存。 */
+  installedSkills: PiSkill[]
 
   // ── 右栏（文件/会话信息）与底部条 UI 状态 ──
   rightOpen: boolean
@@ -237,6 +245,11 @@ interface PiStore {
   closePreview: () => void
   setBottomOpen: (v: boolean) => void
   setBottomTab: (tab: 'terminal' | 'ssh') => void
+
+  // ── AgentHub 复用钩子 ──
+  /** 「在编码中重跑」预填文本：Composer 挂载/更新时消费并清空。 */
+  pendingComposerText: string | null
+  setPendingComposerText: (text: string | null) => void
   /**
    * 对话内文件链接入口：接受绝对或相对（相对会话 cwd）路径，可带 :行 后缀。
    * 打开右栏「文件」tab、在树中展开定位并预览；找不到时尝试 ws_search 兜底。
@@ -251,6 +264,8 @@ interface PiStore {
   abort: () => Promise<void>
   closeSession: (id: string) => Promise<void>
   select: (id: string) => void
+  /** 拉取已安装 skills（缓存进 store；force 才强制刷新）。 */
+  loadInstalledSkills: (force?: boolean) => Promise<void>
   toggleToolCollapse: (sessionId: string, itemId: string) => void
   clearError: () => void
 
@@ -350,12 +365,16 @@ export const usePiStore = create<PiStore>((set, get) => ({
   usageById: {},
   listening: false,
   error: null,
+  installedSkills: [],
 
   rightOpen: true,
   rightTab: 'files',
   preview: null,
   bottomOpen: false,
   bottomTab: 'terminal',
+
+  pendingComposerText: null,
+  setPendingComposerText: (text) => set({ pendingComposerText: text }),
 
   setRightOpen: (v) => set({ rightOpen: v }),
   setRightTab: (tab) => set({ rightTab: tab }),
@@ -603,6 +622,17 @@ export const usePiStore = create<PiStore>((set, get) => ({
   },
 
   select: (id) => set({ activeSessionId: id }),
+
+  loadInstalledSkills: async (force) => {
+    if (!isTauri) return
+    if (!force && get().installedSkills.length > 0) return
+    try {
+      const list = await tauriInvoke<PiSkill[]>('skills_local_list')
+      set({ installedSkills: list.map((x) => ({ name: x.name, description: x.description })) })
+    } catch (e) {
+      console.warn('[piStore] skills_local_list failed:', e)
+    }
+  },
 
   toggleToolCollapse: (sessionId, itemId) =>
     set((s) =>
@@ -863,6 +893,20 @@ export const usePiStore = create<PiStore>((set, get) => ({
           })
         } else {
           set((s) => ({ sessions: withStatus(s.sessions, sessionId, 'done') }))
+        }
+        // 存档钩子：会话在此定稿，把快照推给 AgentHub 工作流存档
+        // （动态引入避免环依赖；同会话多轮 agent_end 会 upsert 同一条）。
+        const st = get()
+        const ended = st.sessions.find((x) => x.id === sessionId)
+        if (ended) {
+          const snapshot = {
+            session: ended,
+            timeline: st.timelineById[sessionId] ?? [],
+            usage: st.usageById[sessionId],
+          }
+          void import('./agentHubStore')
+            .then((m) => m.useAgentHubStore.getState().archiveSession(snapshot))
+            .catch(() => {})
         }
         break
       }

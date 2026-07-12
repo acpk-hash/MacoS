@@ -17,6 +17,7 @@ pub mod pty;
 pub mod relay;
 pub mod research;
 pub mod sediment;
+pub mod skills_hub;
 pub mod ssh_remote;
 pub mod stats;
 pub mod studio;
@@ -1196,6 +1197,12 @@ pub fn run() {
             pi_rpc::pi_usage_by_model,
             pi_rpc::pi_usage_recent,
             pi_rpc::pi_engine_status,
+            skills_hub::skills_market_list,
+            skills_hub::skills_market_install,
+            skills_hub::skills_local_list,
+            skills_hub::skills_read,
+            skills_hub::skills_uninstall,
+            skills_hub::save_clipboard_file,
             openscience::os_detect,
             openscience::os_install,
             openscience::os_prepare,

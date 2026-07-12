@@ -4,7 +4,7 @@
 // 发送时按 pi-app 原生约定把每个附件注入为 @<绝对路径> token（pi RPC 的
 // prompt/steer/follow_up 只有 message 文本字段，pi-app 自身即以 @path 传附件，
 // 图片同样走 @path，由 pi 端负责加载）。
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { usePiStore } from '../../stores/piStore'
 
 const EMPTY_QUEUE: string[] = []
@@ -54,12 +54,49 @@ function pathsFromDataTransfer(dt: DataTransfer): string[] {
   return out
 }
 
+// ── / 技能唤起 & 粘贴图片辅助 ─────────────────────────────────────────────────
+
+/** 粘贴图片的 mime → 落盘扩展名。 */
+function extForMime(mime: string): string {
+  const m = mime.toLowerCase()
+  if (m.includes('jpeg') || m.includes('jpg')) return 'jpg'
+  if (m.includes('gif')) return 'gif'
+  if (m.includes('webp')) return 'webp'
+  if (m.includes('bmp')) return 'bmp'
+  if (m.includes('svg')) return 'svg'
+  return 'png'
+}
+
+/** Blob → base64 data URL（后端容忍前缀，整串直传）。 */
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader()
+    r.onload = () => resolve(String(r.result ?? ''))
+    r.onerror = () => reject(r.error ?? new Error('读取剪贴板图片失败'))
+    r.readAsDataURL(blob)
+  })
+}
+
+/** 光标前的 / 唤起 token：行首或空白后的 `/xxx` → { start, filter }。 */
+function slashTokenBeforeCaret(
+  text: string,
+  caret: number,
+): { start: number; filter: string } | null {
+  const before = text.slice(0, caret)
+  const m = /(^|\s)\/([A-Za-z0-9:_-]*)$/.exec(before)
+  if (!m) return null
+  return { start: caret - m[2].length - 1, filter: m[2] }
+}
+
 export default function PiComposer() {
   const [draft, setDraft] = useState('')
   const [attachments, setAttachments] = useState<string[]>([])
   const [dragOver, setDragOver] = useState(false)
   const [hint, setHint] = useState<string | null>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
+  // / 技能选择器：token（start=斜杠位置）+ 高亮索引。
+  const [slash, setSlash] = useState<{ start: number; filter: string } | null>(null)
+  const [slashIdx, setSlashIdx] = useState(0)
 
   const activeSessionId = usePiStore((s) => s.activeSessionId)
   const status = usePiStore(
@@ -70,6 +107,35 @@ export default function PiComposer() {
   )
   const send = usePiStore((s) => s.send)
   const abort = usePiStore((s) => s.abort)
+  const installedSkills = usePiStore((s) => s.installedSkills)
+  const loadInstalledSkills = usePiStore((s) => s.loadInstalledSkills)
+
+  const slashMatches = useMemo(() => {
+    if (!slash) return []
+    const f = slash.filter.toLowerCase().replace(/^skill:/, '')
+    return installedSkills
+      .filter(
+        (sk) =>
+          !f || sk.name.includes(f) || sk.description.toLowerCase().includes(f),
+      )
+      .slice(0, 8)
+  }, [slash, installedSkills])
+
+  // AgentHub「在编码中重跑」小钩子：挂载/更新时消费 pendingComposerText
+  // 预填草稿并立即清空（详见 piStore.pendingComposerText）。
+  const pendingText = usePiStore((s) => s.pendingComposerText)
+  useEffect(() => {
+    if (pendingText == null) return
+    usePiStore.getState().setPendingComposerText(null)
+    setDraft(pendingText)
+    requestAnimationFrame(() => {
+      const el = taRef.current
+      if (!el) return
+      el.style.height = 'auto'
+      el.style.height = Math.min(el.scrollHeight, 220) + 'px'
+      el.focus()
+    })
+  }, [pendingText])
 
   useEffect(() => {
     if (!hint) return
@@ -87,6 +153,59 @@ export default function PiComposer() {
       for (const p of paths) if (!next.includes(p)) next.push(p)
       return next
     })
+  }
+
+  // 输入变化：同步 draft + 检测光标处的 / 唤起 token。
+  const onChangeDraft = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const v = e.target.value
+    setDraft(v)
+    const tok = slashTokenBeforeCaret(v, e.target.selectionStart ?? v.length)
+    setSlash(tok)
+    setSlashIdx(0)
+    if (tok) void loadInstalledSkills()
+  }
+
+  // 选中技能：把 / token 替换为 `/skill:<name> ` 前缀并复位光标。
+  const pickSkill = (name: string) => {
+    if (!slash) return
+    const caret = taRef.current?.selectionStart ?? draft.length
+    const inserted = `/skill:${name} `
+    setDraft(draft.slice(0, slash.start) + inserted + draft.slice(caret))
+    setSlash(null)
+    const el = taRef.current
+    if (el) {
+      const pos = slash.start + inserted.length
+      requestAnimationFrame(() => {
+        el.focus()
+        el.setSelectionRange(pos, pos)
+      })
+    }
+  }
+
+  // 粘贴图片：落盘为文件（save_clipboard_file）→ 加入附件 chips（@path 注入走现有逻辑）。
+  const onPaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    if (disabled) return
+    const images = Array.from(e.clipboardData?.items ?? []).filter(
+      (it) => it.kind === 'file' && it.type.startsWith('image/'),
+    )
+    if (images.length === 0) return
+    e.preventDefault()
+    for (const it of images) {
+      const file = it.getAsFile()
+      if (!file) continue
+      try {
+        const base64 = await blobToBase64(file)
+        const { invoke } = await import('@tauri-apps/api/core')
+        const path = await invoke<string>('save_clipboard_file', {
+          base64,
+          ext: extForMime(it.type),
+        })
+        addPaths([path])
+        setHint('已粘贴图片 → 附件')
+      } catch (err) {
+        setHint(`粘贴图片失败：${String(err)}`)
+      }
+    }
   }
 
   const pickFiles = async () => {
@@ -120,6 +239,7 @@ export default function PiComposer() {
     }
     setDraft('')
     setAttachments([])
+    setSlash(null)
     void send(parts.join('\n\n'))
     // 高度复位
     const el = taRef.current
@@ -127,6 +247,33 @@ export default function PiComposer() {
   }
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (slash) {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setSlash(null)
+        return
+      }
+      if (slashMatches.length > 0) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault()
+          setSlashIdx((i) => (i + 1) % slashMatches.length)
+          return
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault()
+          setSlashIdx((i) => (i - 1 + slashMatches.length) % slashMatches.length)
+          return
+        }
+        if (
+          ((e.key === 'Enter' && !e.shiftKey) || e.key === 'Tab') &&
+          !e.nativeEvent.isComposing
+        ) {
+          e.preventDefault()
+          pickSkill((slashMatches[slashIdx] ?? slashMatches[0]).name)
+          return
+        }
+      }
+    }
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault()
       doSend()
@@ -152,12 +299,55 @@ export default function PiComposer() {
           onDragLeave={() => setDragOver(false)}
           onDrop={onDrop}
           className={[
-            'rounded-card border bg-surface transition-colors',
+            'relative rounded-card border bg-surface transition-colors',
             dragOver
               ? 'border-primary border-dashed bg-primary-tint/40'
               : 'border-line focus-within:border-primary/60',
           ].join(' ')}
         >
+          {/* / 技能选择器（上浮） */}
+          {slash && (
+            <div className="absolute bottom-full left-0 right-0 z-30 mb-1.5 overflow-hidden rounded-card border border-line bg-surface shadow-lg">
+              <p className="px-3 pb-1 pt-2 text-[10px] text-ink-faint">
+                已安装技能 · ↑↓ 选择 · Enter 插入 · Esc 关闭
+              </p>
+              {installedSkills.length === 0 ? (
+                <p className="px-3 pb-2.5 text-[11.5px] text-ink-dim">
+                  还没有安装技能 — 去「Skills」页安装后即可在此唤起
+                </p>
+              ) : slashMatches.length === 0 ? (
+                <p className="px-3 pb-2.5 text-[11.5px] text-ink-dim">无匹配技能</p>
+              ) : (
+                <ul className="max-h-56 overflow-y-auto pb-1">
+                  {slashMatches.map((sk, i) => (
+                    <li key={sk.name}>
+                      <button
+                        onMouseDown={(ev) => {
+                          ev.preventDefault()
+                          pickSkill(sk.name)
+                        }}
+                        onMouseEnter={() => setSlashIdx(i)}
+                        className={[
+                          'w-full px-3 py-1.5 text-left transition-colors',
+                          i === slashIdx ? 'bg-primary-tint' : 'hover:bg-surface-2',
+                        ].join(' ')}
+                      >
+                        <span className="font-mono text-[12px] text-ink">/skill:{sk.name}</span>
+                        {sk.description && (
+                          <span className="ml-2 text-[11px] text-ink-muted">
+                            {sk.description.length > 64
+                              ? sk.description.slice(0, 64) + '…'
+                              : sk.description}
+                          </span>
+                        )}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
           {/* 附件 chips */}
           {attachments.length > 0 && (
             <div className="flex flex-wrap gap-1.5 px-2.5 pt-2">
@@ -186,9 +376,11 @@ export default function PiComposer() {
           <textarea
             ref={taRef}
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={onChangeDraft}
             onKeyDown={onKeyDown}
             onInput={onInput}
+            onPaste={(e) => void onPaste(e)}
+            onBlur={() => setSlash(null)}
             rows={2}
             disabled={disabled}
             placeholder={
@@ -196,7 +388,7 @@ export default function PiComposer() {
                 ? '先新建一个会话'
                 : running
                   ? '输入插话内容，Enter 发送（运行中会先排队投递）'
-                  : '交代一个任务，Enter 发送，Shift+Enter 换行；可拖入或 📎 添加附件'
+                  : '交代一个任务，Enter 发送；输入 / 唤起技能，可粘贴图片、拖入或 📎 添加附件'
             }
             className="w-full bg-transparent resize-none px-3 pt-2.5 pb-1 text-[13.5px] text-ink placeholder:text-ink-faint outline-none max-h-[220px] disabled:opacity-50"
           />
@@ -210,7 +402,7 @@ export default function PiComposer() {
               📎
             </button>
             <span className="text-[10.5px] text-ink-faint select-none">
-              {hint ?? 'Enter 发送 · Shift+Enter 换行'}
+              {hint ?? 'Enter 发送 · Shift+Enter 换行 · / 唤起技能'}
             </span>
             <div className="flex-1" />
             {queue.length > 0 && (

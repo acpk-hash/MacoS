@@ -164,17 +164,34 @@ pub(crate) async fn pi_open(
         .await
         .map_err(|e| format!("写入 pi settings.json 失败: {e}"))?;
 
+    // -- skills 接线：共享 skills（app_data_dir/skills）镜像进会话目录，
+    //    spawn 时以 --skill 挂载（保留 --no-skills：只加载镜像，屏蔽其它来源）--
+    let skills_arg: Option<PathBuf> = app
+        .path()
+        .app_data_dir()
+        .ok()
+        .map(|d| d.join("skills"))
+        .and_then(|shared| crate::skills_hub::mirror_skills_into(&shared, &agent_dir));
+    let mut pi_args: Vec<std::ffi::OsString> = [
+        "--mode",
+        "rpc",
+        "--approve",
+        "--no-context-files",
+        "--no-extensions",
+        "--no-skills",
+    ]
+    .iter()
+    .map(Into::into)
+    .collect();
+    if let Some(dir) = &skills_arg {
+        pi_args.push("--skill".into());
+        pi_args.push(dir.as_os_str().to_os_string());
+    }
+
     // -- spawn（key 只进环境变量）--
     let mut child = Command::new(&node)
         .arg(&cli_js)
-        .args([
-            "--mode",
-            "rpc",
-            "--approve",
-            "--no-context-files",
-            "--no-extensions",
-            "--no-skills",
-        ])
+        .args(&pi_args)
         .current_dir(&cwd)
         .env(PI_AGENT_DIR_ENV, &agent_dir)
         .env(PI_KEY_ENV, &key)
