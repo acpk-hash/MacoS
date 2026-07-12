@@ -215,48 +215,10 @@ function freshAnnotator(sourceId: string): AnnotatorState {
 }
 
 /**
- * 编辑指令模板（参考 openai/skills imagegen：显式「只改 X、其余不变」并重复
- * 不变量，可显著减少整图漂移）。有蒙版时强调只改蒙版区；模式决定动作语气。
- * 说明用英文（图像模型对英文约束更稳），用户指令原样保留。
+ * 编辑指令模板与错误翻译(V3c 预留,当前由 AnnotatorModal 内联实现,
+ * 此处注释保留思路供后续接入时取消注释)。
  */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function buildEditPrompt(
-  userPrompt: string,
-  mode: EditMode,
-  hasMask: boolean,
-): string {
-  const scope = hasMask
-    ? 'Edit ONLY the masked region of the image. Keep every unmasked area ' +
-      'exactly unchanged — same composition, colors, lighting and details. ' +
-      'Blend the edited region seamlessly with its surroundings.'
-    : 'Apply the requested change while keeping the original composition, ' +
-      'subjects, style and lighting unchanged everywhere else.'
-  const action =
-    mode === 'remove'
-      ? 'Remove the content in the target region and fill it naturally with ' +
-        'the surrounding background. Do not introduce new objects.'
-      : mode === 'refine'
-        ? 'Make a subtle, minimal adjustment. Preserve the identity and ' +
-          'structure of the target region.'
-        : 'Replace the content of the target region according to the ' +
-          'instruction below.'
-  return `${scope}\n${action}\nUser instruction: ${userPrompt}`
-}
-
-/** 把 edits 接口不可用等底层错误翻译成用户可行动的提示。 */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function friendlyEditError(raw: string): string {
-  if (
-    /HTTP\s*(404|405|501)/.test(raw) ||
-    /不支持|unsupported|not\s+support/i.test(raw)
-  ) {
-    return (
-      '当前模型不支持图片编辑（edits 接口不可用），请更换图像模型后重试。' +
-      `原始错误：${raw}`
-    )
-  }
-  return raw
-}
+// buildEditPrompt / friendlyEditError — 见 AnnotatorModal.tsx
 
 // ── Store ─────────────────────────────────────────────────────────────────────
 
