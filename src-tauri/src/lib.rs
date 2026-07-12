@@ -9,6 +9,7 @@ pub mod hermes;
 pub mod litsearch;
 pub mod market;
 pub mod mcp;
+pub mod openscience;
 pub mod pi_rpc;
 pub mod procext;
 pub mod providers;
@@ -1061,6 +1062,7 @@ pub fn run() {
         })
         .manage(subagents::SubagentManager::default())
         .manage(pi_rpc::PiEngine::default())
+        .manage(openscience::OsEngine::default())
         .manage(kb_watch::KbWatcher::default())
         .setup(|app| {
             // NOTE: no provider seeding from ~/.codex here. The providers table
@@ -1189,6 +1191,13 @@ pub fn run() {
             pi_rpc::pi_follow_up,
             pi_rpc::pi_abort,
             pi_rpc::pi_close,
+            openscience::os_detect,
+            openscience::os_install,
+            openscience::os_prepare,
+            openscience::os_run,
+            openscience::os_stop,
+            openscience::os_artifacts,
+            openscience::os_read_text,
             subagents::subagent_spawn,
             subagents::subagent_stop,
             subagents::subagent_list,

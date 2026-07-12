@@ -1,7 +1,8 @@
-// 科研板块 — 文献搜索 · 知识库（idea 库）· 自动科研（open-science 占位）。
+// 科研板块 — 文献搜索 · 知识库（idea 库）· 自动科研（open-science 集成）。
 import { useEffect, useState } from 'react'
 import LitSearchTab from '../components/science/LitSearchTab'
 import LibraryTab from '../components/science/LibraryTab'
+import AutoResearchTab from '../components/science/AutoResearchTab'
 import { useKbStore } from '../stores/kbStore'
 
 type SciTab = 'lit' | 'library' | 'auto'
@@ -46,12 +47,7 @@ export default function Science() {
 
       {tab === 'lit' && <LitSearchTab />}
       {tab === 'library' && <LibraryTab />}
-      {tab === 'auto' && (
-        <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
-          <h2 className="text-[15px] font-semibold text-ink mb-2">自动科研</h2>
-          <p className="text-[13px] text-ink-muted">open-science 流水线接入中</p>
-        </div>
-      )}
+      {tab === 'auto' && <AutoResearchTab />}
     </div>
   )
 }
