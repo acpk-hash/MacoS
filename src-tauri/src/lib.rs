@@ -1249,6 +1249,11 @@ pub fn run() {
             kb::kb_remove_tag,
             kb::kb_root_get,
             kb::kb_root_set,
+            kb::kb_rename_file,
+            kb::kb_move_file,
+            kb::kb_normalize_preview,
+            kb::kb_normalize_apply,
+            kb::kb_rename_undo,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

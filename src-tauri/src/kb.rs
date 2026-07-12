@@ -572,3 +572,390 @@ pub async fn kb_root_set(path: String, state: State<'_, AppState>) -> Result<(),
         .settings_set("kb_root", &path)
         .map_err(|e| e.to_string())
 }
+
+// ─── V8: Rename / Move / Normalize ────────────────────────────────────────────
+
+use crate::db::{ApplyItem, ApplyResult, FailedItem, RenamePreview};
+
+/// Strip characters illegal in Windows/Linux/macOS filenames, collapse whitespace
+/// runs to underscores, and truncate to `max_len` bytes (UTF-8-safe).
+///
+/// Removed: \ / : * ? " < > | and ASCII control characters (U+0000-U+001F, U+007F).
+fn sanitize_filename(name: &str, max_len: usize) -> String {
+    let cleaned: String = name
+        .chars()
+        .map(|c| match c {
+            '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
+            c if (c as u32) < 0x20 || c as u32 == 0x7F => '_',
+            c => c,
+        })
+        .collect();
+
+    // Collapse sequences of whitespace/underscore into a single underscore.
+    let mut result = String::with_capacity(cleaned.len());
+    let mut last_was_sep = false;
+    for c in cleaned.chars() {
+        if c == ' ' || c == '_' || c == '\t' {
+            if !last_was_sep {
+                result.push('_');
+            }
+            last_was_sep = true;
+        } else {
+            result.push(c);
+            last_was_sep = false;
+        }
+    }
+    let result = result.trim_matches('_').to_string();
+
+    // Truncate to max_len bytes, staying on a char boundary.
+    if result.len() <= max_len {
+        result
+    } else {
+        let mut end = max_len;
+        while !result.is_char_boundary(end) {
+            end -= 1;
+        }
+        result[..end].to_string()
+    }
+}
+
+/// Fetch the paper's current file_path from the DB. Returns Err if not found.
+fn get_file_path(state: &AppState, id: &str) -> Result<String, String> {
+    state
+        .db
+        .kb_get_paper(id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("论文不存在: {id}"))?
+        .file_path
+        .ok_or_else(|| format!("论文 {id} 没有 file_path"))
+}
+
+/// Core rename logic (shared by kb_rename_file and kb_normalize_apply).
+/// Renames the file to `new_name` within its current directory.
+/// Updates file_path in DB and writes a rename log entry.
+fn do_rename_in_dir(
+    state: &AppState,
+    paper_id: &str,
+    old_path_str: &str,
+    new_name: &str,
+) -> Result<String, String> {
+    let old_path = std::path::Path::new(old_path_str);
+
+    if !old_path.exists() {
+        return Err(format!("文件不存在: {old_path_str}"));
+    }
+
+    // Preserve original extension; default to "pdf" if absent.
+    let old_ext = old_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("pdf")
+        .to_string();
+
+    // Strip any extension the caller supplied -- work on stem only.
+    let new_stem_raw = std::path::Path::new(new_name)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(new_name);
+
+    let clean_stem = sanitize_filename(new_stem_raw, 116);
+    if clean_stem.is_empty() {
+        return Err("清洗后文件名为空，请重新命名".to_string());
+    }
+
+    let new_filename = format!("{clean_stem}.{old_ext}");
+    let parent = old_path
+        .parent()
+        .ok_or_else(|| "无法确定父目录".to_string())?;
+    let new_path = parent.join(&new_filename);
+    let new_path_str = new_path
+        .to_str()
+        .ok_or_else(|| "新路径包含非 UTF-8 字符".to_string())?
+        .to_string();
+
+    // Refuse to overwrite an existing file.
+    if new_path.exists() && new_path != old_path {
+        return Err(format!("目标文件已存在: {new_path_str}"));
+    }
+
+    // Check UNIQUE constraint: is new_path already in kb_papers for another paper?
+    if let Ok(true) = state.db.kb_paper_exists_by_path(&new_path_str) {
+        if let Ok(Some(existing_id)) = state.db.kb_get_paper_id_by_path(&new_path_str) {
+            if existing_id != paper_id {
+                return Err(format!("路径已被其他论文索引: {new_path_str}"));
+            }
+        }
+    }
+
+    // Physical rename.
+    std::fs::rename(old_path_str, &new_path)
+        .map_err(|e| format!("重命名失败 {old_path_str} -> {new_path_str}: {e}"))?;
+
+    // Update DB.
+    state
+        .db
+        .kb_update_file_path(paper_id, &new_path_str)
+        .map_err(|e| e.to_string())?;
+
+    let log_id = uuid::Uuid::new_v4().to_string();
+    state
+        .db
+        .kb_insert_rename_log(&log_id, paper_id, old_path_str, &new_path_str)
+        .map_err(|e| e.to_string())?;
+
+    Ok(new_path_str)
+}
+
+/// Expand template placeholders for one paper.
+///
+/// Supported placeholders:
+/// - `{year}`   -- publication year as string, or "nd" if missing
+/// - `{author}` -- first author last name (first comma-token of first semicolon-segment), sanitized
+/// - `{title}`  -- first 8 words of the title, joined by underscore, sanitized, <= 80 chars
+fn expand_template(
+    template: &str,
+    year: Option<i64>,
+    authors: Option<&str>,
+    title: Option<&str>,
+) -> String {
+    let year_str = year
+        .map(|y| y.to_string())
+        .unwrap_or_else(|| "nd".to_string());
+
+    let author_str = authors
+        .and_then(|a| {
+            let first_author = a.split(';').next().unwrap_or(a).trim();
+            let last_name = first_author.split(',').next().unwrap_or(first_author).trim();
+            let surname = last_name.split_whitespace().last().unwrap_or(last_name);
+            if surname.is_empty() {
+                None
+            } else {
+                Some(sanitize_filename(surname, 40))
+            }
+        })
+        .unwrap_or_else(|| "unknown".to_string());
+
+    let title_str = title
+        .map(|t| {
+            let words: Vec<&str> = t.split_whitespace().take(8).collect();
+            let joined = words.join("_");
+            sanitize_filename(&joined, 80)
+        })
+        .unwrap_or_else(|| "untitled".to_string());
+
+    template
+        .replace("{year}", &year_str)
+        .replace("{author}", &author_str)
+        .replace("{title}", &title_str)
+}
+
+/// Preview normalized filenames without touching disk.
+///
+/// `paper_ids` -- list of paper ids to preview. Empty vec = all papers.
+/// `template`  -- filename template with `{year}`, `{author}`, `{title}` placeholders.
+///
+/// Returns a `RenamePreview` for each paper that has a `file_path`.
+#[tauri::command]
+pub async fn kb_normalize_preview(
+    paper_ids: Vec<String>,
+    template: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<RenamePreview>, String> {
+    let ids: Vec<String> = if paper_ids.is_empty() {
+        state
+            .db
+            .kb_list_papers(None, None, None, None)
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .map(|p| p.id)
+            .collect()
+    } else {
+        paper_ids
+    };
+
+    let mut previews = Vec::new();
+    for paper_id in ids {
+        let paper = match state.db.kb_get_paper(&paper_id).map_err(|e| e.to_string())? {
+            Some(p) => p,
+            None => continue,
+        };
+        let file_path_str = match &paper.file_path {
+            Some(p) => p.clone(),
+            None => continue,
+        };
+        let path = std::path::Path::new(&file_path_str);
+        let old_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_string();
+        let old_ext = path.extension().and_then(|e| e.to_str()).unwrap_or("pdf");
+
+        let new_stem = expand_template(
+            &template,
+            paper.year,
+            paper.authors.as_deref(),
+            paper.title.as_deref(),
+        );
+        let clean_stem = sanitize_filename(&new_stem, 116);
+        let new_name = format!("{clean_stem}.{old_ext}");
+
+        previews.push(RenamePreview {
+            id: paper_id,
+            old_name,
+            new_name,
+        });
+    }
+    Ok(previews)
+}
+
+/// Apply a batch of pre-computed renames (filename only, within original directory).
+///
+/// Each `ApplyItem` carries the paper `id` and desired `new_name`.
+/// Failures are collected per-item -- a single failure does NOT abort the rest.
+/// Returns applied count and a list of per-item errors.
+#[tauri::command]
+pub async fn kb_normalize_apply(
+    items: Vec<ApplyItem>,
+    state: State<'_, AppState>,
+) -> Result<ApplyResult, String> {
+    let mut applied: i64 = 0;
+    let mut failed: Vec<FailedItem> = Vec::new();
+
+    for item in items {
+        let old_path = match get_file_path(&state, &item.id) {
+            Ok(p) => p,
+            Err(e) => {
+                failed.push(FailedItem { id: item.id, error: e });
+                continue;
+            }
+        };
+        match do_rename_in_dir(&state, &item.id, &old_path, &item.new_name) {
+            Ok(_) => applied += 1,
+            Err(e) => failed.push(FailedItem { id: item.id, error: e }),
+        }
+    }
+
+    Ok(ApplyResult { applied, failed })
+}
+
+/// Rename a paper's file within its current directory.
+///
+/// `new_name` may be a bare stem or include an extension; the original extension
+/// is always preserved. Returns the new absolute path.
+#[tauri::command]
+pub async fn kb_rename_file(
+    id: String,
+    new_name: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let old_path = get_file_path(&state, &id)?;
+    do_rename_in_dir(&state, &id, &old_path, &new_name)
+}
+
+/// Move a paper's file to `dest_dir`.
+///
+/// `dest_dir` must exist; same-name conflict in dest -> error (no overwrite).
+/// Tries `std::fs::rename` first; falls back to `copy + remove` for cross-device moves.
+/// Returns the new absolute path.
+#[tauri::command]
+pub async fn kb_move_file(
+    id: String,
+    dest_dir: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let old_path_str = get_file_path(&state, &id)?;
+    let old_path = std::path::Path::new(&old_path_str);
+
+    if !old_path.exists() {
+        return Err(format!("文件不存在: {old_path_str}"));
+    }
+
+    let dest = std::path::Path::new(&dest_dir);
+    if !dest.is_dir() {
+        return Err(format!("目标目录不存在或不是目录: {dest_dir}"));
+    }
+
+    let filename = old_path
+        .file_name()
+        .ok_or_else(|| "无法确定文件名".to_string())?;
+    let new_path = dest.join(filename);
+    let new_path_str = new_path
+        .to_str()
+        .ok_or_else(|| "新路径包含非 UTF-8 字符".to_string())?
+        .to_string();
+
+    if new_path.exists() {
+        return Err(format!("目标目录中已存在同名文件: {new_path_str}"));
+    }
+    if let Ok(true) = state.db.kb_paper_exists_by_path(&new_path_str) {
+        return Err(format!("路径已被其他论文索引: {new_path_str}"));
+    }
+
+    // Try rename first; fall back to copy+remove for cross-device moves.
+    if std::fs::rename(&old_path_str, &new_path).is_err() {
+        std::fs::copy(&old_path_str, &new_path)
+            .map_err(|e| format!("复制文件失败: {e}"))?;
+        std::fs::remove_file(&old_path_str)
+            .map_err(|e| format!("删除原文件失败: {e}"))?;
+    }
+
+    state
+        .db
+        .kb_update_file_path(&id, &new_path_str)
+        .map_err(|e| e.to_string())?;
+
+    let log_id = uuid::Uuid::new_v4().to_string();
+    state
+        .db
+        .kb_insert_rename_log(&log_id, &id, &old_path_str, &new_path_str)
+        .map_err(|e| e.to_string())?;
+
+    Ok(new_path_str)
+}
+
+/// Undo the most recent rename/move for a paper.
+///
+/// Looks up the latest `kb_rename_log` entry for `paper_id`. If `new_path`
+/// (the post-rename path) still exists on disk, moves it back to `old_path`.
+/// Updates `file_path` in DB and removes the log entry. Returns the restored path.
+#[tauri::command]
+pub async fn kb_rename_undo(
+    paper_id: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let (log_id, old_path_str, new_path_str) = state
+        .db
+        .kb_latest_rename_log(&paper_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("没有找到 {paper_id} 的重命名记录"))?;
+
+    let new_path = std::path::Path::new(&new_path_str);
+    if !new_path.exists() {
+        return Err(format!("当前文件路径不存在，无法回滚: {new_path_str}"));
+    }
+
+    let old_path = std::path::Path::new(&old_path_str);
+    if old_path.exists() && old_path != new_path {
+        return Err(format!("原路径已被占用，无法回滚: {old_path_str}"));
+    }
+
+    if std::fs::rename(new_path, old_path).is_err() {
+        std::fs::copy(new_path, old_path)
+            .map_err(|e| format!("复制回原路径失败: {e}"))?;
+        std::fs::remove_file(new_path)
+            .map_err(|e| format!("删除临时文件失败: {e}"))?;
+    }
+
+    state
+        .db
+        .kb_update_file_path(&paper_id, &old_path_str)
+        .map_err(|e| e.to_string())?;
+
+    state
+        .db
+        .kb_delete_rename_log(&log_id)
+        .map_err(|e| e.to_string())?;
+
+    Ok(old_path_str)
+}

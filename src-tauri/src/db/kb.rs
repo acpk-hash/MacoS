@@ -608,3 +608,116 @@ fn build_kb_list_params<'a>(
     }
     p
 }
+
+// ── V8 Schema ─────────────────────────────────────────────────────────────────
+
+/// V8: rename/move log table for rollback support.
+pub(crate) const SCHEMA_V8: &str = r#"
+CREATE TABLE IF NOT EXISTS kb_rename_log (
+    id        TEXT PRIMARY KEY,
+    paper_id  TEXT NOT NULL,
+    old_path  TEXT NOT NULL,
+    new_path  TEXT NOT NULL,
+    ts        INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_kb_rename_log_paper ON kb_rename_log(paper_id, ts DESC);
+"#;
+
+// ── V8 impl Db methods ────────────────────────────────────────────────────────
+
+impl Db {
+    // ── Rename log ────────────────────────────────────────────────────────────
+
+    /// Insert a rename/move log entry.
+    pub fn kb_insert_rename_log(
+        &self,
+        id: &str,
+        paper_id: &str,
+        old_path: &str,
+        new_path: &str,
+    ) -> SqlResult<()> {
+        let now = now_ms();
+        self.conn.lock().unwrap().execute(
+            "INSERT INTO kb_rename_log (id, paper_id, old_path, new_path, ts) \
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![id, paper_id, old_path, new_path, now],
+        )?;
+        Ok(())
+    }
+
+    /// Return the most recent rename log entry for a paper.
+    pub fn kb_latest_rename_log(
+        &self,
+        paper_id: &str,
+    ) -> SqlResult<Option<(String, String, String)>> {
+        // Returns (id, old_path, new_path)
+        let conn = self.conn.lock().unwrap();
+        match conn.query_row(
+            "SELECT id, old_path, new_path FROM kb_rename_log \
+             WHERE paper_id = ?1 ORDER BY ts DESC LIMIT 1",
+            params![paper_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            },
+        ) {
+            Ok(v) => Ok(Some(v)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Delete a rename log entry by its id.
+    pub fn kb_delete_rename_log(&self, id: &str) -> SqlResult<()> {
+        self.conn.lock().unwrap().execute(
+            "DELETE FROM kb_rename_log WHERE id = ?1",
+            params![id],
+        )?;
+        Ok(())
+    }
+
+    /// Update a paper's file_path (used after physical rename/move).
+    pub fn kb_update_file_path(&self, paper_id: &str, new_path: &str) -> SqlResult<()> {
+        let now = now_ms();
+        self.conn.lock().unwrap().execute(
+            "UPDATE kb_papers SET file_path = ?1, updated_at = ?2 WHERE id = ?3",
+            params![new_path, now, paper_id],
+        )?;
+        Ok(())
+    }
+}
+
+// ── V8 Row types ──────────────────────────────────────────────────────────────
+
+/// Preview of a planned rename (filename only, no disk change).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RenamePreview {
+    pub id: String,
+    pub old_name: String,
+    pub new_name: String,
+}
+
+/// One item in a batch-apply rename request.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApplyItem {
+    pub id: String,
+    pub new_name: String,
+}
+
+/// Per-item failure detail in an apply result.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FailedItem {
+    pub id: String,
+    pub error: String,
+}
+
+/// Result of a batch rename-apply operation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApplyResult {
+    pub applied: i64,
+    pub failed: Vec<FailedItem>,
+}
