@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import Logo from './Logo'
+import GlobalTaskBar from './GlobalTaskBar'
 import { useAuthStore } from '../stores/authStore'
 import { useProviderStore } from '../stores/providerStore'
 
@@ -24,7 +25,7 @@ function NavIcon({ children }: { children: ReactNode }) {
 
 type NavItem = { to: string; label: string; title?: string; end?: boolean; icon: ReactNode }
 
-// 六大板块导航：编码 / 办公 / 图像 / 视频 / 科研 / 用量，设置固定末位。
+// 大类导航：编码 / 办公 / 图像 / 视频 / 科研 / Auto / Skills / Agent / 电商 / 用量，设置固定末位。
 const navItems: NavItem[] = [
   {
     to: '/',
@@ -81,6 +82,56 @@ const navItems: NavItem[] = [
         <path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2" />
         <path d="M8.5 2h7" />
         <path d="M7 16h10" />
+      </NavIcon>
+    ),
+  },
+  {
+    to: '/auto',
+    label: 'Auto',
+    title: 'Auto · open-science 全流水线自动科研',
+    icon: (
+      <NavIcon>
+        <path d="M12 8V4H8" />
+        <rect x="4" y="8" width="16" height="12" rx="2" />
+        <path d="M2 14h2" />
+        <path d="M20 14h2" />
+        <path d="M15 13v2" />
+        <path d="M9 13v2" />
+      </NavIcon>
+    ),
+  },
+  {
+    to: '/skills',
+    label: 'Skills',
+    title: 'Skills · 技能市场，下载即用',
+    icon: (
+      <NavIcon>
+        <rect x="14" y="3" width="7" height="7" rx="1" />
+        <path d="M10 21V8a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5a1 1 0 0 0-1-1H3" />
+      </NavIcon>
+    ),
+  },
+  {
+    to: '/agent',
+    label: 'Agent',
+    title: 'Agent · 会话工作流存档与复用',
+    icon: (
+      <NavIcon>
+        <rect x="3" y="3" width="8" height="8" rx="2" />
+        <path d="M7 11v4a2 2 0 0 0 2 2h4" />
+        <rect x="13" y="13" width="8" height="8" rx="2" />
+      </NavIcon>
+    ),
+  },
+  {
+    to: '/commerce',
+    label: '电商',
+    title: '跨境电商 · 选品 / 利润 / 图片 / 详情页全流水线',
+    icon: (
+      <NavIcon>
+        <circle cx="8" cy="21" r="1" />
+        <circle cx="19" cy="21" r="1" />
+        <path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" />
       </NavIcon>
     ),
   },
@@ -235,7 +286,7 @@ function StatusBar() {
       <span className="statusbar-item font-mono">UTF-8</span>
       <span className="statusbar-item">
         <Logo size={12} glyphOnly />
-        AgentBoard
+        Iris
       </span>
     </footer>
   )
@@ -247,16 +298,13 @@ export default function Layout() {
       <div className="flex flex-1 min-h-0">
         {/* 活动栏（VSCode activity bar 观感：最深底 + 右细边） */}
         <aside className="w-16 flex flex-col items-center py-3 gap-3 bg-bg border-r border-line flex-shrink-0 z-10 overflow-y-auto overflow-x-hidden">
-          {/* Logo — 欧拉 φ 标志 + 品牌字 */}
+          {/* Logo — Iris 彩虹女神标 + 品牌字 */}
           <div className="flex flex-col items-center gap-1">
             <Logo size={30} />
-            <div className="flex flex-col items-center leading-none">
-              <span className="text-[10px] font-bold text-ink-muted leading-none">Agent</span>
-              <span className="text-[10px] font-bold text-ink-muted leading-none">Board</span>
-            </div>
+            <span className="text-[10px] font-bold text-ink-muted leading-none">Iris</span>
           </div>
 
-          {/* 主导航：六大板块 + 设置（末位） */}
+          {/* 主导航：十大板块 + 设置（末位） */}
           <nav className="flex flex-col gap-0.5 w-full px-2">
             {navItems.map((item) => (
               <NavEntry key={item.to} item={item} />
@@ -274,6 +322,9 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+
+      {/* 底部全局任务条（跨板块 agent 任务可见性） */}
+      <GlobalTaskBar />
 
       {/* 底部状态栏 */}
       <StatusBar />

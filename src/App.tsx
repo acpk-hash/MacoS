@@ -5,6 +5,10 @@ import Office from './pages/Office'
 import ImageStudio from './pages/ImageStudio'
 import VideoStudio from './pages/VideoStudio'
 import Science from './pages/Science'
+import Auto from './pages/Auto'
+import Skills from './pages/Skills'
+import AgentHub from './pages/AgentHub'
+import Commerce from './pages/Commerce'
 import Usage from './pages/Usage'
 import Settings from './pages/Settings'
 import Login from './pages/Login'
@@ -34,6 +38,10 @@ export default function App() {
           <Route path="image" element={<ImageStudio />} />
           <Route path="video" element={<VideoStudio />} />
           <Route path="science" element={<Science />} />
+          <Route path="auto" element={<Auto />} />
+          <Route path="skills" element={<Skills />} />
+          <Route path="agent" element={<AgentHub />} />
+          <Route path="commerce" element={<Commerce />} />
           <Route path="usage" element={<Usage />} />
           <Route path="settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
