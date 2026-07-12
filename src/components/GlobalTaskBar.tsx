@@ -18,6 +18,9 @@ const MODULE_CHIP: Record<TaskModule, string> = {
   science: 'bg-emerald-50 text-emerald-600',
   auto: 'bg-amber-50 text-amber-600',
   commerce: 'bg-rose-50 text-rose-600',
+  video: 'bg-indigo-50 text-indigo-600',
+  mcp: 'bg-cyan-50 text-cyan-600',
+  hooks: 'bg-teal-50 text-teal-600',
 }
 
 const STATUS_DOT: Record<GlobalTaskStatus, string> = {
