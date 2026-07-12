@@ -15,7 +15,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as pdfjs from 'pdfjs-dist'
 import type { PDFDocumentProxy, PDFPageProxy, RenderTask } from 'pdfjs-dist'
-import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import MarkdownLite from '../ui/MarkdownLite'
 import { Mascot } from '../ui'
 import { useWorkbenchStore } from '../../stores/workbenchStore'
@@ -28,7 +27,18 @@ import {
 } from '../../stores/scienceStore'
 import { saveExport } from '../../lib/exportChat'
 
-pdfjs.GlobalWorkerOptions.workerSrc = workerUrl
+/** Lazy-init pdfjs worker (avoids module-level side-effect crash -> white screen). */
+let _workerReady = false
+async function ensurePdfjsWorker(): Promise<void> {
+  if (_workerReady) return
+  try {
+    const mod = await import('pdfjs-dist/build/pdf.worker.min.mjs?url')
+    pdfjs.GlobalWorkerOptions.workerSrc = mod.default
+  } catch (e) {
+    console.warn('[AnalysisTab] pdfjs worker setup failed:', e)
+  }
+  _workerReady = true
+}
 
 const BSLASH = String.fromCharCode(92)
 
@@ -209,6 +219,7 @@ function AnalysisPdfViewer({ paper }: { paper: SciPaperRef }) {
     if (!paper.kbId) return
     ;(async () => {
       try {
+        await ensurePdfjsWorker()
         const data = await kbReadPdfData(paper.kbId as string)
         if (!alive) return
         loaded = await pdfjs.getDocument({ data }).promise

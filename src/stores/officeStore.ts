@@ -277,6 +277,42 @@ export interface PdfProgress {
   total: number
 }
 
+// ── Office conversation history ─────────────────────────────────────
+
+export interface OfficeHistoryStep {
+  role: 'user' | 'assistant'
+  text: string
+}
+
+export interface OfficeHistoryEntry {
+  id: string
+  module: OfficeModuleKey
+  title: string
+  ts: number
+  steps: OfficeHistoryStep[]
+  status: 'running' | 'done' | 'error'
+}
+
+const OFFICE_HISTORY_KEY = 'iris.office.history.v1'
+const OFFICE_HISTORY_CAP = 100
+
+function loadOfficeHistory(): OfficeHistoryEntry[] {
+  try {
+    const raw = localStorage.getItem(OFFICE_HISTORY_KEY)
+    if (!raw) return []
+    const arr = JSON.parse(raw) as OfficeHistoryEntry[]
+    return Array.isArray(arr) ? arr.slice(0, OFFICE_HISTORY_CAP) : []
+  } catch {
+    return []
+  }
+}
+
+function saveOfficeHistory(entries: OfficeHistoryEntry[]): void {
+  try {
+    localStorage.setItem(OFFICE_HISTORY_KEY, JSON.stringify(entries.slice(0, OFFICE_HISTORY_CAP)))
+  } catch { /* quota exceeded or unavailable */ }
+}
+
 type Channel = 'excel' | 'word' | 'pdf'
 
 interface OfficeStore {
@@ -359,6 +395,13 @@ interface OfficeStore {
   /** 全部 PDF 提炼演讲要点 → 交给 artifactStore 生成 HTML 演示稿。 */
   pdfToPpt: () => Promise<void>
   pdfReset: () => void
+
+  // ── 对话式历史 ──
+  officeHistory: OfficeHistoryEntry[]
+  _historyPush: (module: OfficeModuleKey, title: string, step: OfficeHistoryStep) => void
+  _historyFinalize: (module: OfficeModuleKey, status: 'done' | 'error') => void
+  restoreHistory: (id: string) => void
+  deleteOfficeHistory: (id: string) => void
 }
 
 // ── 隐藏会话 + 独立 studio-event 监听（多通道并发，一问一答 promise 化） ──
@@ -1234,6 +1277,8 @@ export const useOfficeStore = create<OfficeStore>((set, get) => {
           pdfMarkdown: parts.join('\n\n'),
           pdfLogs: [...s.pdfLogs, `「${doc.name}」翻译完成（${batches.length} 批）`],
         }))
+        get()._historyPush('pdf', 'PDF: ' + doc.name, { role: 'assistant', text: batches.length + ' batches translated' })
+        get()._historyFinalize('pdf', 'done')
         setTask(taskId, 'done', `${batches.length} 批完成`)
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e)
@@ -1260,10 +1305,21 @@ export const useOfficeStore = create<OfficeStore>((set, get) => {
         const { markdownToDocxBlobEx } = await import(
           '../components/office/mdToDocx'
         )
-        const { blob, mathTotal, mathFailed } = await markdownToDocxBlobEx(
-          pdfMarkdown,
-          { math: true },
-        )
+        let result: { blob: Blob; mathTotal: number; mathFailed: number }
+        try {
+          result = await markdownToDocxBlobEx(pdfMarkdown, { math: true })
+        } catch (mathErr) {
+          // Math conversion chain failed entirely -- retry without math
+          console.warn('[officeStore] math conversion chain failed, retrying without math:', mathErr)
+          set((s) => ({
+            pdfLogs: [
+              ...s.pdfLogs,
+              `公式转换链加载失败（${mathErr instanceof Error ? mathErr.message : String(mathErr)}），已降级为纯文本导出`,
+            ],
+          }))
+          result = await markdownToDocxBlobEx(pdfMarkdown, { math: false })
+        }
+        const { blob, mathTotal, mathFailed } = result
         set((s) => ({
           pdfLogs: [
             ...s.pdfLogs,
@@ -1283,7 +1339,6 @@ export const useOfficeStore = create<OfficeStore>((set, get) => {
         })
       }
     },
-
     pdfToPpt: async () => {
       const { pdfDocs, pdfStage } = get()
       if (pdfDocs.length === 0 || pdfStage === 'translating' || pdfPptBusy)
@@ -1352,6 +1407,56 @@ export const useOfficeStore = create<OfficeStore>((set, get) => {
         pdfResultName: '',
         pdfError: null,
         pdfLogs: [],
+      })
+    },
+
+    // ── Office conversation history ────────────────────────────────
+
+    officeHistory: loadOfficeHistory(),
+
+    _historyPush: (module, title, step) => {
+      set((s) => {
+        const hist = [...s.officeHistory]
+        let entry = hist.find((e) => e.module === module && e.status === 'running')
+        if (!entry) {
+          entry = {
+            id: 'oh_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+            module,
+            title,
+            ts: Date.now(),
+            steps: [],
+            status: 'running',
+          }
+          hist.unshift(entry)
+        }
+        entry.steps = [...entry.steps, step]
+        const next = hist.slice(0, OFFICE_HISTORY_CAP)
+        saveOfficeHistory(next)
+        return { officeHistory: next }
+      })
+    },
+
+    _historyFinalize: (module, status) => {
+      set((s) => {
+        const hist = s.officeHistory.map((e) =>
+          e.module === module && e.status === 'running' ? { ...e, status } : e,
+        )
+        saveOfficeHistory(hist)
+        return { officeHistory: hist }
+      })
+    },
+
+    restoreHistory: (id) => {
+      const entry = get().officeHistory.find((e) => e.id === id)
+      if (!entry) return
+      set({ activeModule: entry.module })
+    },
+
+    deleteOfficeHistory: (id) => {
+      set((s) => {
+        const hist = s.officeHistory.filter((e) => e.id !== id)
+        saveOfficeHistory(hist)
+        return { officeHistory: hist }
       })
     },
   }

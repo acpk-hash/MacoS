@@ -29,6 +29,7 @@ export default function AutoTopBar() {
   const model = useAutoStore((s) => s.model)
   const runStatus = useAutoStore((s) => s.runStatus)
   const starting = useAutoStore((s) => s.starting)
+  const history = useAutoStore((s) => s.history)
 
   const aggModels = useWorkbenchStore((s) => s.aggModels)
   const modelsLoaded = useWorkbenchStore((s) => s.modelsLoaded)
@@ -38,7 +39,12 @@ export default function AutoTopBar() {
   const installLogRef = useRef<HTMLPreElement | null>(null)
 
   const running = runStatus === 'running'
+  const idle = runStatus === 'idle' || runStatus === 'stopped' || runStatus === 'done' || runStatus === 'error'
   const installed = !!detect?.installed
+  // Most recent stopped/error run for the current workspace (resume candidate).
+  const lastStopped = !running && idle
+    ? history.find((r) => (r.status === 'stopped' || r.status === 'error') && r.workspace === workspace)
+    : null
   const longTopic = topic.includes(NL) || topic.length > LONG_TOPIC
 
   // 模型来源：只读 workbenchStore 聚合模型（chat 档），未加载则触发加载。
@@ -167,6 +173,18 @@ export default function AutoTopBar() {
           >
             <IconPlay size={12} />
             {starting ? '启动中…' : '开始研究'}
+          </Button>
+        )}
+        {lastStopped && !running && !starting && (
+          <Button
+            variant="soft"
+            size="sm"
+            disabled={!canStart}
+            onClick={() => useAutoStore.getState().resumeRun(lastStopped)}
+            title={'继续上次已停止的研究（以相同配置重新启动）：' + lastStopped.topic.slice(0, 60)}
+          >
+            <IconPlay size={12} />
+            继续研究
           </Button>
         )}
       </div>

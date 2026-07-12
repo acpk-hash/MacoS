@@ -266,6 +266,7 @@ interface AutoState {
   refreshArtifacts: () => Promise<void>
   reproduce: (rec: AutoRunRecord) => void
   deleteHistory: (id: string) => void
+  resumeRun: (rec: AutoRunRecord) => void
   setInspectorOpen: (open: boolean) => void
   setInspectorWidth: (w: number) => void
   setInspectorMaximized: (v: boolean) => void
@@ -564,6 +565,21 @@ export const useAutoStore = create<AutoState>()((set, get) => {
     deleteHistory: (id) => {
       set((s) => ({ history: s.history.filter((r) => r.id !== id) }))
       persistHistory()
+    },
+
+    resumeRun: (rec: AutoRunRecord) => {
+      // Load the stopped run's config and kick off a fresh run.
+      set({
+        workspace: rec.workspace,
+        topic: rec.topic,
+        providerId: rec.providerId || null,
+        model: rec.model || null,
+        error: null,
+      })
+      persistConfig()
+      void get().refreshArtifacts()
+      // Slight delay so state propagates before start() reads it.
+      setTimeout(() => void get().start(), 50)
     },
 
     setInspectorOpen: (open) => {
