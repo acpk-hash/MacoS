@@ -1,16 +1,57 @@
-// 科研板块 — 导航骨架占位页，具体能力由后续任务实现。
+// 科研板块 — 文献搜索 · 知识库（idea 库）· 自动科研（open-science 占位）。
+import { useEffect, useState } from 'react'
+import LitSearchTab from '../components/science/LitSearchTab'
+import LibraryTab from '../components/science/LibraryTab'
+import { useKbStore } from '../stores/kbStore'
+
+type SciTab = 'lit' | 'library' | 'auto'
 
 export default function Science() {
-  return (
-    <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-4xl px-8 py-10">
-        <h1 className="text-xl font-bold text-ink">科研</h1>
-        <p className="mt-1 text-sm text-ink-muted">文献综述 · 知识库 · 自动科研</p>
+  const [tab, setTab] = useState<SciTab>('lit')
 
-        <div className="mt-8 rounded-card border border-dashed border-line bg-surface px-6 py-20 text-center">
-          <p className="text-sm text-ink-dim">功能构建中</p>
+  // 进入知识库 tab 时拉取论文/分类/标签（与旧 Research 页一致）。
+  useEffect(() => {
+    if (tab === 'library') {
+      const kb = useKbStore.getState()
+      void kb.loadPapers()
+      void kb.loadCategories()
+      void kb.loadTags()
+    }
+  }, [tab])
+
+  const TabButton = ({ id, label }: { id: SciTab; label: string }) => (
+    <button
+      onClick={() => setTab(id)}
+      className={
+        'px-3 py-1.5 text-[13px] rounded-lg transition-colors ' +
+        (tab === id
+          ? 'bg-primary-tint text-primary font-semibold'
+          : 'text-ink-dim hover:text-ink')
+      }
+    >
+      {label}
+    </button>
+  )
+
+  return (
+    <div className="h-full flex flex-col text-ink">
+      <header className="px-4 py-3 border-b border-line flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <h1 className="text-[15px] font-bold text-ink mr-2">科研</h1>
+          <TabButton id="lit" label="文献搜索" />
+          <TabButton id="library" label="知识库（idea 库）" />
+          <TabButton id="auto" label="自动科研" />
         </div>
-      </div>
+      </header>
+
+      {tab === 'lit' && <LitSearchTab />}
+      {tab === 'library' && <LibraryTab />}
+      {tab === 'auto' && (
+        <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
+          <h2 className="text-[15px] font-semibold text-ink mb-2">自动科研</h2>
+          <p className="text-[13px] text-ink-muted">open-science 流水线接入中</p>
+        </div>
+      )}
     </div>
   )
 }
