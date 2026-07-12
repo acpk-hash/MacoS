@@ -1,4 +1,4 @@
-// 市场（v0.8）：浏览 VPS 静态市场（Agent / Skills），一键安装到本地。
+﻿// 市场（v0.8）：浏览 VPS 静态市场（Agent / Skills），一键安装到本地。
 //   - Agent → 本地注册 + 看板新建「来自市场：<名>」卡片
 //   - Skill → 下载到本地技能库（科研页技能库立即可见）
 import { useEffect, useMemo, useState } from 'react'
@@ -69,6 +69,9 @@ const CATEGORY_COLORS: Record<string, string> = {
   密码学安全: '#E8C55A',
   电商运营: '#FF9F6E',
   日常办公: '#8FA8FF',
+  设计与UI: '#C084FC',
+  移动开发: '#22D3EE',
+  Agent工作流: '#4ADE80',
 }
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
