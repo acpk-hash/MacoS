@@ -4,9 +4,9 @@
 //   彻底不依赖 CDN；`self.MonacoEnvironment.getWorker` 按 label 分发。
 // - `loader.config({ monaco })` 让 @monaco-editor/react 使用本地 import 的
 //   monaco 实例（否则默认会从 jsdelivr 拉取，离线不可用）。
-// - 定义与 v0.9 Trae 风深色 IDE 主题协调的深色主题 `agentboard-dark`
-//   （VSCode Dark+ 风：底 #1e1e22、当前行 #2a2a31、关键字紫蓝、字符串绿、
-//   注释灰绿、行号 dim），取代旧的浅色 agentboard-light。
+// - 定义与 v0.10 P-ai 风深色主题协调的深色主题 `agentboard-dark`
+//   （底 #282c34、当前行 #2e3340、关键字 P-ai 紫、字符串绿、
+//   注释灰绿、行号 dim），对齐全站 P-ai 色值。
 //
 // 该文件应在编辑器组件挂载前 import 一次（EditorPane 顶部 import 触发）。
 import * as monaco from 'monaco-editor'
@@ -77,39 +77,39 @@ monaco.editor.defineTheme(MONACO_THEME, {
   inherit: true,
   rules: [
     { token: 'comment', foreground: '6a9955', fontStyle: 'italic' },
-    { token: 'keyword', foreground: '9a8dff' },
+    { token: 'keyword', foreground: 'a06fb3' },
     { token: 'string', foreground: 'a5d6a7' },
-    { token: 'number', foreground: 'd29922' },
+    { token: 'number', foreground: 'f6e2b7' },
     { token: 'type', foreground: '4ec9b0' },
     { token: 'function', foreground: '82aaff' },
-    { token: 'variable', foreground: 'e6e6ea' },
-    { token: 'delimiter', foreground: 'b4b4be' },
-    { token: 'tag', foreground: '5b8cff' },
-    { token: 'attribute.name', foreground: 'd29922' },
+    { token: 'variable', foreground: 'dcdfe4' },
+    { token: 'delimiter', foreground: 'a8adb5' },
+    { token: 'tag', foreground: '56b6c2' },
+    { token: 'attribute.name', foreground: 'f6e2b7' },
   ],
   colors: {
-    'editor.background': '#1e1e22',
-    'editor.foreground': '#e6e6ea',
-    'editorLineNumber.foreground': '#63636e',
-    'editorLineNumber.activeForeground': '#b4b4be',
-    'editor.selectionBackground': '#8b7cff33',
-    'editor.inactiveSelectionBackground': '#8b7cff1c',
-    'editor.lineHighlightBackground': '#2a2a31',
+    'editor.background': '#282c34',
+    'editor.foreground': '#dcdfe4',
+    'editorLineNumber.foreground': '#5c6370',
+    'editorLineNumber.activeForeground': '#a8adb5',
+    'editor.selectionBackground': '#8e5da133',
+    'editor.inactiveSelectionBackground': '#8e5da11c',
+    'editor.lineHighlightBackground': '#2e3340',
     'editor.lineHighlightBorder': '#00000000',
-    'editorCursor.foreground': '#8b7cff',
-    'editorWhitespace.foreground': '#2c2c33',
-    'editorIndentGuide.background1': '#26262c',
-    'editorIndentGuide.activeBackground1': '#3a3a44',
-    'editorGutter.background': '#1e1e22',
-    'editorWidget.background': '#26262c',
-    'editorWidget.border': '#2c2c33',
-    'editorSuggestWidget.background': '#26262c',
-    'editorSuggestWidget.selectedBackground': '#8b7cff24',
-    'input.background': '#202024',
-    'dropdown.background': '#26262c',
+    'editorCursor.foreground': '#8e5da1',
+    'editorWhitespace.foreground': '#363b44',
+    'editorIndentGuide.background1': '#41454c',
+    'editorIndentGuide.activeBackground1': '#4a5060',
+    'editorGutter.background': '#282c34',
+    'editorWidget.background': '#41454c',
+    'editorWidget.border': '#363b44',
+    'editorSuggestWidget.background': '#41454c',
+    'editorSuggestWidget.selectedBackground': '#8e5da124',
+    'input.background': '#22262f',
+    'dropdown.background': '#41454c',
     'scrollbarSlider.background': '#ffffff1f',
     'scrollbarSlider.hoverBackground': '#ffffff3d',
-    'minimap.background': '#1e1e22',
+    'minimap.background': '#282c34',
   },
 })
 
@@ -129,7 +129,6 @@ initializeMonacoIntelliSense()
 export function languageForExt(ext: string): string {
   const e = ext.toLowerCase()
   const map: Record<string, string> = {
-    // Web / 脚本
     ts: 'typescript',
     tsx: 'typescript',
     mts: 'typescript',
@@ -151,7 +150,6 @@ export function languageForExt(ext: string): string {
     markdown: 'markdown',
     mdx: 'mdx',
     rst: 'restructuredtext',
-    // 系统 / 编译语言
     py: 'python',
     pyw: 'python',
     rs: 'rust',
@@ -180,7 +178,6 @@ export function languageForExt(ext: string): string {
     jl: 'julia',
     pas: 'pascal',
     pp: 'pascal',
-    // 动态 / 函数式
     php: 'php',
     rb: 'ruby',
     lua: 'lua',
@@ -196,7 +193,6 @@ export function languageForExt(ext: string): string {
     coffee: 'coffee',
     tcl: 'tcl',
     vb: 'vb',
-    // Shell / 运维
     sh: 'shell',
     bash: 'shell',
     zsh: 'shell',
@@ -211,10 +207,9 @@ export function languageForExt(ext: string): string {
     tf: 'hcl',
     tfvars: 'hcl',
     bicep: 'bicep',
-    // 配置 / 数据
     yml: 'yaml',
     yaml: 'yaml',
-    toml: 'ini', // monaco 无 toml monarch，ini 高亮最接近
+    toml: 'ini',
     ini: 'ini',
     conf: 'ini',
     cfg: 'ini',
@@ -231,7 +226,6 @@ export function languageForExt(ext: string): string {
     graphql: 'graphql',
     gql: 'graphql',
     proto: 'protobuf',
-    // 模板 / 其他
     cshtml: 'razor',
     hbs: 'handlebars',
     handlebars: 'handlebars',

@@ -1,5 +1,5 @@
-// AgentBoard 品牌标：欧拉函数 φ(phi)。深色 IDE 主题下配色贴 accent 紫蓝：
-// 方块底用签名渐变（#8b7cff → #5b8cff），φ 为白色圆头竖线穿过椭圆。
+// AgentBoard 品牌标：欧拉函数 φ(phi)。P-ai 风深色主题下配色贴 P-ai 紫：
+// 方块底用签名渐变（#8e5da1 → #56b6c2），φ 为白色圆头竖线穿过椭圆。
 // 可调尺寸；App 活动栏、加载态、about 等处复用。
 
 interface LogoProps {
@@ -10,11 +10,11 @@ interface LogoProps {
 }
 
 /**
- * 欧拉 φ 标志。方块底用紫蓝签名渐变（品牌点，全站极少数允许渐变处）。
- * glyphOnly 时省略方块，φ 用 accent 紫描边，适合深底文字旁。
+ * 欧拉 φ 标志。方块底用 P-ai 紫签名渐变（品牌点，全站极少数允许渐变处）。
+ * glyphOnly 时省略方块，φ 用 P-ai accent 紫描边，适合深底文字旁。
  */
 export function Logo({ size = 32, glyphOnly = false, className }: LogoProps) {
-  const stroke = glyphOnly ? '#8b7cff' : '#ffffff'
+  const stroke = glyphOnly ? '#8e5da1' : '#ffffff'
   return (
     <svg
       width={size}
@@ -30,8 +30,8 @@ export function Logo({ size = 32, glyphOnly = false, className }: LogoProps) {
         <>
           <defs>
             <linearGradient id="abLogoGrad" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
-              <stop stopColor="#8b7cff" />
-              <stop offset="1" stopColor="#5b8cff" />
+              <stop stopColor="#8e5da1" />
+              <stop offset="1" stopColor="#56b6c2" />
             </linearGradient>
           </defs>
           <rect width="40" height="40" rx="8" fill="url(#abLogoGrad)" />

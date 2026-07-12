@@ -3,43 +3,43 @@
 @tailwind utilities;
 
 /* ══════════════════════════════════════════════════════════════════════════
-   v0.9 Trae 风深色专业 IDE — 基础层
-   色值以 docs/v0.9-design-trae-ide.md 为准。深色唯一，无浅色切换。
-   深中性底 + 细边分隔 + 克制紫蓝强调；无发光/弥散/aurora/糖果多彩。
+   v0.10 P-ai 风深色 — 基础层
+   kawayiYokami/P-ai 实测色值：大圆角 + flat 层次（背景色差分层，弱阴影）。
+   深色唯一，无浅色切换。P-ai 紫强调 + 柔和语义色。
    ══════════════════════════════════════════════════════════════════════════ */
 
 :root {
-  --bg: #17171b;
-  --editor: #1e1e22;
-  --panel: #202024;
-  --surface: #202024;
-  --surface-2: #26262c;
-  --elevated: #26262c;
-  --border: #2c2c33;
-  --border-soft: #242429;
-  --border-strong: #3a3a44;
+  --bg: #22262f;
+  --editor: #282c34;
+  --panel: #22262f;
+  --surface: #22262f;
+  --surface-2: #41454c;
+  --elevated: #41454c;
+  --border: #363b44;
+  --border-soft: #2d3239;
+  --border-strong: #4a5060;
 
-  --primary: #8b7cff;
-  --primary-hover: #9a8dff;
-  --primary-active: #7a6bf0;
-  --primary-tint: rgba(139, 124, 255, 0.14);
-  --primary-ring: rgba(139, 124, 255, 0.4);
+  --primary: #8e5da1;
+  --primary-hover: #a06fb3;
+  --primary-active: #7d5191;
+  --primary-tint: rgba(142, 93, 161, 0.16);
+  --primary-ring: rgba(142, 93, 161, 0.4);
 
-  --running: #5b8cff;
-  --done: #3fb950;
-  --awaiting: #d29922;
-  --failed: #f85149;
-  --todo: #8a8a95;
+  --running: #56b6c2;
+  --done: #9ccb9a;
+  --awaiting: #f6e2b7;
+  --failed: #eba0ac;
+  --todo: #7a8089;
 
-  --text: #e6e6ea;
-  --text-muted: #b4b4be;
-  --text-dim: #8a8a95;
-  --text-faint: #63636e;
+  --text: #dcdfe4;
+  --text-muted: #a8adb5;
+  --text-dim: #7a8089;
+  --text-faint: #5c6370;
 
-  --grad-primary: linear-gradient(120deg, #8b7cff 0%, #5b8cff 100%);
-  /* IDE 靠边框分层；弹层深投影 + 细边 */
-  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.35);
-  --shadow-pop: 0 8px 28px rgba(0, 0, 0, 0.5);
+  --grad-primary: linear-gradient(120deg, #8e5da1 0%, #56b6c2 100%);
+  /* flat — 靠背景色差分层；弹层轻投影 + 细边 */
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.28);
+  --shadow-pop: 0 6px 20px rgba(0, 0, 0, 0.4);
 }
 
 *,
@@ -77,11 +77,11 @@ textarea {
 }
 select option,
 select optgroup {
-  background-color: #26262c;
-  color: #e6e6ea;
+  background-color: #41454c;
+  color: #dcdfe4;
 }
 
-/* ── 面板/卡片工具类（深底细边，扁平，无发光） ─────────────────────────────── */
+/* ── 面板/卡片工具类（深底细边，flat，无发光） ─────────────────────────────── */
 @layer components {
   .glass {
     background: var(--panel);
@@ -129,7 +129,7 @@ select optgroup {
 
 /* ── 工具类 ─────────────────────────────────────────────────────────────── */
 @layer utilities {
-  /* 旧 glow-* 名 -> 深色下退化为极弱投影（无发光） */
+  /* 旧 glow-* 名 -> flat 风下退化为极弱投影（无发光） */
   .glow-primary,
   .glow-sky,
   .glow-mint,
@@ -139,7 +139,7 @@ select optgroup {
     box-shadow: var(--shadow-card);
   }
 
-  /* 聚焦环（强调紫蓝） */
+  /* 聚焦环（P-ai 紫） */
   .primary-ring:focus-visible {
     outline: none;
     box-shadow: 0 0 0 2px var(--primary-ring);
@@ -165,7 +165,7 @@ select optgroup {
   }
 }
 
-/* ── IDE 滚动条（深色，方直，hover 才醒目） ─────────────────────────────── */
+/* ── 滚动条（深色，方直，hover 才醒目） ─────────────────────────────── */
 * {
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
@@ -199,15 +199,15 @@ select optgroup {
   }
 }
 
-/* ── Workflow canvas (React Flow) — 深色 IDE 配色覆盖 ────────────────────── */
+/* ── Workflow canvas (React Flow) — 深色 P-ai 配色覆盖 ────────────────────── */
 
 @keyframes canvasBreathe {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(139, 124, 255, 0.28);
+    box-shadow: 0 0 0 0 rgba(142, 93, 161, 0.28);
   }
   50% {
-    box-shadow: 0 0 0 4px rgba(139, 124, 255, 0.16);
+    box-shadow: 0 0 0 4px rgba(142, 93, 161, 0.16);
   }
 }
 
@@ -221,15 +221,15 @@ select optgroup {
 }
 
 .react-flow__edge-path {
-  stroke: #3a3a44;
+  stroke: #4a5060;
   stroke-width: 1.5;
 }
 .react-flow__edge.animated .react-flow__edge-path {
-  stroke: #8b7cff;
+  stroke: #8e5da1;
 }
 
 .react-flow__node.selected > div {
-  outline: 1.5px solid #8b7cff;
+  outline: 1.5px solid #8e5da1;
   outline-offset: 2px;
 }
 
@@ -237,17 +237,17 @@ select optgroup {
   box-shadow: var(--shadow-pop);
 }
 .react-flow__controls-button {
-  background: #202024;
-  border-bottom: 1px solid #2c2c33;
-  color: #b4b4be;
-  fill: #b4b4be;
+  background: #22262f;
+  border-bottom: 1px solid #363b44;
+  color: #a8adb5;
+  fill: #a8adb5;
 }
 .react-flow__controls-button:hover {
-  background: #26262c;
+  background: #41454c;
 }
 .react-flow__attribution {
   background: transparent;
-  color: #63636e;
+  color: #5c6370;
 }
 
 /* ── 任务清单打勾轻过渡（reduced-motion 由上方全局守卫兜底）───────────────── */
@@ -271,7 +271,7 @@ select optgroup {
 /* ── 清单跳转时目标卡片高亮一下 ──────────────────────────────────────────── */
 @keyframes clFlash {
   0% {
-    background-color: rgba(139, 124, 255, 0.16);
+    background-color: rgba(142, 93, 161, 0.16);
   }
   100% {
     background-color: transparent;
@@ -279,16 +279,16 @@ select optgroup {
 }
 .cl-flash {
   animation: clFlash 0.9s ease-out;
-  border-radius: 8px;
+  border-radius: 0.875rem;
 }
 
 /* ── 工作台「代码追随」：AI 改动行高亮，数秒后渐隐 ──────────────────────── */
 @keyframes aiEditLineFade {
   0% {
-    background-color: rgba(139, 124, 255, 0.24);
+    background-color: rgba(142, 93, 161, 0.24);
   }
   60% {
-    background-color: rgba(139, 124, 255, 0.16);
+    background-color: rgba(142, 93, 161, 0.16);
   }
   100% {
     background-color: transparent;
@@ -309,7 +309,7 @@ select optgroup {
 .ai-edit-gutter {
   width: 3px !important;
   margin-left: 3px;
-  background: #8b7cff;
+  background: #8e5da1;
   border-radius: 2px;
   animation: aiEditGutterFade 3s ease-out forwards;
 }
