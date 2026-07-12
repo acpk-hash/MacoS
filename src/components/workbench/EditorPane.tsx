@@ -1,8 +1,10 @@
 // 中栏 Monaco 编辑器（G2b）。多标签、Ctrl+S 保存、脏标记、AI 改动提示。
 // M3b：代码追随（AI 改动自动跳转 + 改动行高亮渐隐 + 「跟随 AI」开关）与
 // HTML/Markdown 实时预览（代码 / 预览 / 分屏，编辑防抖 300ms 即时刷新）。
+// Q1：预览扩展 — PDF（pdfjs，懒加载）、图片（ws_read_bytes → data URL）、
+// SVG（文本实时预览）；其余二进制显示友好占位。
 // 顶部 import monacoSetup 触发离线 worker/主题接线。
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import Editor, { type OnMount } from '@monaco-editor/react'
 import type * as MonacoNs from 'monaco-editor'
 import type { editor } from 'monaco-editor'
@@ -10,16 +12,35 @@ import { MONACO_THEME } from '../../lib/monacoSetup'
 import { useWorkspaceStore, type OpenTab } from '../../stores/workspaceStore'
 import { MarkdownLite } from './ChatPanel'
 import Mascot from '../ui/Mascot'
+import ImagePreview, { IMAGE_MIME } from './ImagePreview'
+
+// PDF 预览懒加载：pdfjs 体积大，独立 chunk，仅在首次打开 .pdf 时拉取。
+const PdfPreview = lazy(() => import('./PdfPreview'))
 
 type ViewMode = 'code' | 'preview' | 'split'
 
-/** 由文件名判断预览类型：仅 .html/.htm 与 .md/.markdown 提供预览切换。 */
-function previewKind(tab: OpenTab | null): 'html' | 'markdown' | null {
-  if (!tab || tab.tooLarge) return null
+type PreviewKind = 'html' | 'markdown' | 'svg' | 'pdf' | 'image' | null
+
+/**
+ * 由文件名判断预览类型：
+ * - html/md/svg：文本，支持 代码 / 预览 / 分屏 切换；
+ * - pdf/图片：二进制（不受 tooLarge 标记影响），仅预览模式，走 ws_read_bytes。
+ */
+function previewKind(tab: OpenTab | null): PreviewKind {
+  if (!tab) return null
   const ext = tab.name.toLowerCase().split('.').pop() ?? ''
+  if (ext === 'pdf') return 'pdf'
+  if (ext in IMAGE_MIME) return 'image'
+  if (tab.tooLarge) return null
   if (ext === 'html' || ext === 'htm') return 'html'
   if (ext === 'md' || ext === 'markdown') return 'markdown'
+  if (ext === 'svg') return 'svg'
   return null
+}
+
+/** pdf / 图片：没有代码模式，只有预览。 */
+function isBinaryPreview(kind: PreviewKind): boolean {
+  return kind === 'pdf' || kind === 'image'
 }
 
 /** 预览内容防抖（300ms）；切换 tab 时立即取新值，不等防抖。 */
@@ -57,6 +78,19 @@ function MarkdownPreview({ text }: { text: string }) {
       <div className="max-w-[820px] mx-auto px-6 py-5">
         <MarkdownLite text={text} />
       </div>
+    </div>
+  )
+}
+
+/** SVG 实时预览：文本内容直接转 data URL，随编辑刷新。 */
+function SvgPreview({ doc }: { doc: string }) {
+  return (
+    <div className="w-full h-full overflow-auto bg-editor flex items-center justify-center p-4">
+      <img
+        src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(doc)}`}
+        alt="SVG 预览"
+        className="max-w-full max-h-full object-contain"
+      />
     </div>
   )
 }
@@ -103,6 +137,7 @@ export default function EditorPane() {
   const followAi = useWorkspaceStore((s) => s.followAi)
   const setFollowAi = useWorkspaceStore((s) => s.setFollowAi)
   const aiHighlight = useWorkspaceStore((s) => s.aiHighlight)
+  const remote = useWorkspaceStore((s) => s.remote)
 
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
   const monacoRef = useRef<typeof MonacoNs | null>(null)
@@ -115,7 +150,12 @@ export default function EditorPane() {
 
   const active = tabs.find((t) => t.relPath === activeTab) ?? null
   const kind = previewKind(active)
-  const mode: ViewMode = kind && active ? viewModes[active.relPath] ?? 'code' : 'code'
+  const binaryOnly = isBinaryPreview(kind)
+  const mode: ViewMode = binaryOnly
+    ? 'preview'
+    : kind && active
+      ? viewModes[active.relPath] ?? 'code'
+      : 'code'
   const previewDoc = useDebouncedDoc(active?.relPath ?? null, active?.content ?? '', 300)
 
   /** 把最近一次 AI 改动高亮画到编辑器：改动行加渐隐底色 + 左侧强调条。 */
@@ -199,8 +239,9 @@ export default function EditorPane() {
     setViewModes((prev) => ({ ...prev, [rel]: m }))
   }
 
+  // binaryOnly（pdf/图片）在 body 分支单独处理，这里只管文本类。
   const showEditor = !kind || mode === 'code' || mode === 'split'
-  const showPreview = !!kind && (mode === 'preview' || mode === 'split')
+  const showPreview = !!kind && !binaryOnly && (mode === 'preview' || mode === 'split')
 
   return (
     <div className="flex-1 min-w-0 flex flex-col h-full bg-surface">
@@ -218,7 +259,7 @@ export default function EditorPane() {
           )}
         </div>
         <div className="flex items-center gap-1.5 px-2 flex-shrink-0 border-l border-line">
-          {kind && active && (
+          {kind && active && !binaryOnly && (
             <div className="flex items-center rounded-btn border border-line overflow-hidden">
               {VIEW_MODES.map((m) => (
                 <button
@@ -236,6 +277,14 @@ export default function EditorPane() {
                 </button>
               ))}
             </div>
+          )}
+          {binaryOnly && active && (
+            <span
+              className="px-2 h-6 flex items-center rounded-btn border border-lavender/30 bg-lavender/10 text-[11px] text-lavender select-none"
+              title={kind === 'pdf' ? 'PDF 文件：仅预览模式' : '图片文件：仅预览模式'}
+            >
+              {kind === 'pdf' ? 'PDF 预览' : '图片预览'}
+            </span>
           )}
           <button
             onClick={() => setFollowAi(!followAi)}
@@ -281,11 +330,38 @@ export default function EditorPane() {
             <p className="text-[13px] text-ink-muted">从左侧文件树选一个文件开始编辑</p>
             <p className="text-[11px] text-ink-dim">或在右侧对话，让 AI 直接帮你改代码</p>
           </div>
+        ) : binaryOnly ? (
+          <div className="absolute inset-0">
+            {remote ? (
+              <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-center px-6">
+                <div className="text-3xl">🌐</div>
+                <p className="text-[13px] text-ink-muted">远程文件暂不支持 PDF / 图片预览</p>
+                <p className="text-[11px] text-ink-dim">{active.relPath}</p>
+              </div>
+            ) : kind === 'pdf' ? (
+              <Suspense
+                fallback={
+                  <div className="w-full h-full flex items-center justify-center text-[12px] text-ink-dim">
+                    PDF 预览组件加载中…
+                  </div>
+                }
+              >
+                <PdfPreview relPath={active.relPath} />
+              </Suspense>
+            ) : (
+              <ImagePreview
+                relPath={active.relPath}
+                ext={active.name.toLowerCase().split('.').pop() ?? ''}
+              />
+            )}
+          </div>
         ) : active.tooLarge ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center px-6">
             <div className="text-3xl">🗄️</div>
             <p className="text-[13px] text-ink-muted">
-              {active.encoding === 'binary' ? '二进制文件，无法在编辑器中显示' : '文件过大（&gt;1MB），已跳过预览'}
+              {active.encoding === 'binary'
+                ? '该文件类型暂不支持预览，可用外部程序打开'
+                : '文件过大（>1MB），编辑器已跳过加载'}
             </p>
             <p className="text-[11px] text-ink-dim">{active.relPath}</p>
           </div>
@@ -327,6 +403,8 @@ export default function EditorPane() {
               <div className={mode === 'split' ? 'w-1/2 min-w-0 h-full' : 'flex-1 min-w-0 h-full'}>
                 {kind === 'html' ? (
                   <HtmlPreview doc={previewDoc} />
+                ) : kind === 'svg' ? (
+                  <SvgPreview doc={previewDoc} />
                 ) : (
                   <MarkdownPreview text={previewDoc} />
                 )}
@@ -343,7 +421,7 @@ export default function EditorPane() {
           {kind && mode !== 'code' && (
             <span className="text-lavender">{mode === 'split' ? '分屏预览' : '预览'}</span>
           )}
-          <span>{active.language}</span>
+          <span>{binaryOnly ? (kind === 'pdf' ? 'PDF' : '图片') : active.language}</span>
           {active.content !== active.savedContent && <span className="text-gold">● 未保存</span>}
           <span className="text-ink-dim/70">Ctrl+S 保存</span>
         </div>

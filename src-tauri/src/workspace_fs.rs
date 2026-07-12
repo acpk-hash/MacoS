@@ -29,6 +29,11 @@ use crate::db::Db;
 /// Files larger than this are never read/grepped in full.
 const MAX_FILE_BYTES: u64 = 1024 * 1024; // 1 MB
 
+/// Upper bound for binary preview reads (`ws_read_bytes`) — PDF / images for
+/// the editor preview pane. Kept well below anything that could OOM the
+/// webview once base64-inflated (~4/3×).
+const MAX_PREVIEW_BYTES: u64 = 50 * 1024 * 1024; // 50 MB
+
 /// Directories skipped during recursive search (still listed by `ws_list_dir`).
 const SKIP_DIRS: &[&str] = &[
     ".git",
@@ -107,6 +112,14 @@ pub struct WsFileContent {
     /// `"utf-8"`, `"binary"`, or `"too_large"`.
     pub encoding: String,
     pub too_large: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct WsFileBytes {
+    /// Raw file bytes, base64-encoded (standard alphabet, padded).
+    pub base64: String,
+    /// Original byte length on disk.
+    pub size: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -261,6 +274,30 @@ fn read_file(root: &Path, rel: &str) -> Result<WsFileContent, String> {
             too_large: true,
         }),
     }
+}
+
+/// Read a file as raw bytes (base64) for binary previews (PDF / images).
+/// `cap` bounds the on-disk size; oversize files are refused with a clear
+/// message instead of being truncated (a truncated PDF is useless).
+fn read_bytes_capped(root: &Path, rel: &str, cap: u64) -> Result<WsFileBytes, String> {
+    let path = resolve_within(root, rel)?;
+    let meta = fs::metadata(&path).map_err(|e| e.to_string())?;
+    if meta.is_dir() {
+        return Err(format!("这是目录，不是文件: {rel}"));
+    }
+    if meta.len() > cap {
+        return Err(format!(
+            "文件过大（{:.1} MB，上限 {} MB），无法预览",
+            meta.len() as f64 / (1024.0 * 1024.0),
+            cap / (1024 * 1024)
+        ));
+    }
+    let bytes = fs::read(&path).map_err(|e| e.to_string())?;
+    use base64::Engine as _;
+    Ok(WsFileBytes {
+        size: bytes.len() as u64,
+        base64: base64::engine::general_purpose::STANDARD.encode(bytes),
+    })
 }
 
 fn write_file(root: &Path, rel: &str, content: &str) -> Result<(), String> {
@@ -477,6 +514,16 @@ pub(crate) async fn ws_read_file(
     read_file(&root, &rel_path)
 }
 
+/// Read a file as base64 bytes for binary previews (PDF / images, ≤ 50 MB).
+#[tauri::command]
+pub(crate) async fn ws_read_bytes(
+    rel_path: String,
+    state: State<'_, AppState>,
+) -> Result<WsFileBytes, String> {
+    let root = state.ws.root()?;
+    read_bytes_capped(&root, &rel_path, MAX_PREVIEW_BYTES)
+}
+
 /// Write a text file back (UTF-8, no BOM).
 #[tauri::command]
 pub(crate) async fn ws_write_file(
@@ -644,6 +691,32 @@ mod tests {
         assert!(hits
             .iter()
             .any(|h| h.rel_path == "keep.rs" && h.line == Some(2)));
+    }
+
+    #[test]
+    fn read_bytes_roundtrip_and_cap() {
+        let tmp = TempDir::new().unwrap();
+        let root = canon_root(&tmp);
+        // Binary payload with NUL bytes + a fake PDF header.
+        let payload: Vec<u8> = b"%PDF-1.7\x00\x01\xff\xfe binary".to_vec();
+        fs::write(root.join("doc.pdf"), &payload).unwrap();
+
+        let got = read_bytes_capped(&root, "doc.pdf", 1024).unwrap();
+        assert_eq!(got.size, payload.len() as u64);
+        use base64::Engine as _;
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(got.base64.as_bytes())
+            .unwrap();
+        assert_eq!(decoded, payload);
+
+        // Over the cap → clear refusal, no truncation.
+        let err = read_bytes_capped(&root, "doc.pdf", 4).unwrap_err();
+        assert!(err.contains("文件过大"));
+        // Directories are refused.
+        fs::create_dir(root.join("sub")).unwrap();
+        assert!(read_bytes_capped(&root, "sub", 1024).is_err());
+        // Traversal is still rejected on the bytes path.
+        assert!(read_bytes_capped(&root, "../evil.pdf", 1024).is_err());
     }
 
     #[test]
