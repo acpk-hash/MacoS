@@ -1,12 +1,15 @@
-// Excel 处理窗口：上传 xlsx/csv → exceljs 前端解析 → 预览 + 概要 →
-// 自然语言指令 → 模型返回结构化新表（JSON）→ 应用 → exceljs 生成新
-// xlsx → Blob 即时下载；附修改前后差异简述。
-import { useEffect, useRef, useState } from 'react'
+// Excel 处理窗口：上传 xlsx/csv（或「新建空表」从零开始）→ exceljs 前端
+// 解析 → 预览 + 概要 → 自然语言指令（可附文件 / Ctrl+V 粘贴截图，截图走
+// 多模态）→ 模型返回结构化新表（JSON）→ 应用 → exceljs 生成新 xlsx →
+// Blob 即时下载；附修改前后差异简述。
+// 全部关键状态在 officeStore：切走页面任务照跑，回来完整恢复。
+import { useEffect, useRef } from 'react'
 import { useOfficeStore, MAX_XLSX_BYTES } from '../../stores/officeStore'
 import Button from '../ui/Button'
 import ModelSelect from './ModelSelect'
 import StageSteps from './StageSteps'
 import Spinner from './Spinner'
+import AttachBar, { filesFromClipboard } from './AttachBar'
 
 const STEPS = ['上传表格', '下达指令', '模型处理', '下载新版本']
 const PREVIEW_ROWS = 200
@@ -28,7 +31,6 @@ function stepIndex(stage: string): number {
 export default function ExcelWindow() {
   const s = useOfficeStore()
   const fileRef = useRef<HTMLInputElement>(null)
-  const [instr, setInstr] = useState('')
 
   useEffect(() => {
     void useOfficeStore.getState().loadModels()
@@ -40,12 +42,14 @@ export default function ExcelWindow() {
     if (fileRef.current) fileRef.current.value = ''
   }
 
+  const busy = s.excelStage === 'processing'
   const run = () => {
-    if (!instr.trim() || s.streaming) return
-    void s.excelRun(instr)
+    if (!s.excelInstruction.trim() || busy) return
+    void s.excelRun()
   }
 
   const t = s.excelTable
+  const isBlank = !!t && t.headers.length === 0 && t.rows.length === 0
 
   return (
     <div className="flex flex-col gap-4">
@@ -56,11 +60,11 @@ export default function ExcelWindow() {
             models={s.aggModels}
             modelId={s.currentModel}
             onChange={s.setModelSel}
-            disabled={s.streaming}
+            disabled={busy}
           />
           {s.excelStage !== 'idle' && (
             <Button variant="ghost" size="sm" onClick={s.excelReset}>
-              重新上传
+              重新开始
             </Button>
           )}
         </div>
@@ -72,7 +76,7 @@ export default function ExcelWindow() {
         </div>
       )}
 
-      {/* 上传区 */}
+      {/* 上传区（或从空表开始） */}
       {(s.excelStage === 'idle' || s.excelStage === 'parsing') && (
         <div
           onDragOver={(e) => e.preventDefault()}
@@ -89,12 +93,22 @@ export default function ExcelWindow() {
                 Math.round(MAX_XLSX_BYTES / 1024 / 1024) +
                 'MB）'}
           </p>
-          <Button
-            onClick={() => fileRef.current?.click()}
-            disabled={s.excelStage === 'parsing'}
-          >
-            选择文件
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => fileRef.current?.click()}
+              disabled={s.excelStage === 'parsing'}
+            >
+              选择文件
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={s.excelNewBlank}
+              disabled={s.excelStage === 'parsing'}
+              title="不上传文件，让模型按指令从零生成表格"
+            >
+              ＋ 新建空表
+            </Button>
+          </div>
           <input
             ref={fileRef}
             type="file"
@@ -106,18 +120,26 @@ export default function ExcelWindow() {
       )}
 
       {/* 概要 + 指令 + 差异 */}
-      {t && s.excelStage !== 'processing' && (
+      {t && !busy && (
         <>
           <div className="flex flex-wrap items-center gap-2 text-xs text-ink-muted">
             <span className="rounded-chip border border-line bg-surface-2 px-2 py-0.5">
               {s.excelFileName}
             </span>
-            <span>
-              {t.rows.length} 行 × {t.headers.length} 列
-            </span>
-            <span className="text-ink-dim">
-              列名：{t.headers.filter(Boolean).join('、') || '（无表头）'}
-            </span>
+            {isBlank ? (
+              <span className="text-ink-dim">
+                空表——直接下指令（或贴截图），模型会从零生成表格
+              </span>
+            ) : (
+              <>
+                <span>
+                  {t.rows.length} 行 × {t.headers.length} 列
+                </span>
+                <span className="text-ink-dim">
+                  列名：{t.headers.filter(Boolean).join('、') || '（无表头）'}
+                </span>
+              </>
+            )}
           </div>
 
           {s.excelDiff && (
@@ -130,42 +152,63 @@ export default function ExcelWindow() {
             </div>
           )}
 
-          <div className="flex gap-2">
-            <input
-              value={instr}
-              onChange={(e) => setInstr(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') run()
-              }}
-              placeholder='下达处理指令，例："把B列求和加到末行" / "筛选出金额>1000的行"'
-              className="flex-1 rounded-btn border border-line bg-surface-2 px-3 py-2 text-sm text-ink
-                         placeholder:text-ink-dim focus:outline-none focus:border-primary"
-            />
-            <Button onClick={run} disabled={s.streaming || !instr.trim()}>
-              执行
-            </Button>
-            {s.excelStage === 'done' && (
-              <Button variant="soft" onClick={() => void s.excelDownload()}>
-                ⬇ 下载新版本 .xlsx
+          <div className="flex flex-col gap-1.5">
+            <div className="flex gap-2">
+              <input
+                value={s.excelInstruction}
+                onChange={(e) => s.setExcelInstruction(e.target.value)}
+                onPaste={(e) => {
+                  const files = filesFromClipboard(e)
+                  if (files.length > 0) {
+                    e.preventDefault()
+                    void s.excelAddFiles(files)
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') run()
+                }}
+                placeholder='指令，例："把B列求和加到末行"；可 Ctrl+V 粘贴截图（把表格处理成截图的样子）'
+                className="flex-1 rounded-btn border border-line bg-surface-2 px-3 py-2 text-sm text-ink
+                           placeholder:text-ink-dim focus:outline-none focus:border-primary"
+              />
+              <Button onClick={run} disabled={busy || !s.excelInstruction.trim()}>
+                执行
               </Button>
-            )}
+              {s.excelStage === 'done' && (
+                <Button variant="soft" onClick={() => void s.excelDownload()}>
+                  ⬇ 下载新版本 .xlsx
+                </Button>
+              )}
+            </div>
+            <AttachBar
+              attachments={s.excelAttachments}
+              warnings={s.excelWarnings}
+              onAdd={(files) => void s.excelAddFiles(files)}
+              onRemove={s.excelRemoveAttachment}
+              disabled={busy}
+              hint="截图/图片走多模态；txt/md/csv/docx 读取内容进上下文"
+            />
           </div>
         </>
       )}
 
-      {s.excelStage === 'processing' && (
+      {busy && (
         <div className="flex flex-col gap-2">
-          <Spinner label="模型正在处理表格数据…" streamText={s.streamText} />
+          <Spinner label="模型正在处理表格数据…" streamText={s.excelStreamText} />
           <div className="flex justify-end">
-            <Button variant="danger" size="sm" onClick={() => void s.stopActive()}>
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={() => void s.stopChannel('excel')}
+            >
               停止
             </Button>
           </div>
         </div>
       )}
 
-      {/* 表格预览（前 200 行，深色表格） */}
-      {t && (
+      {/* 表格预览（前 200 行） */}
+      {t && !isBlank && (
         <div className="overflow-hidden rounded-card border border-line bg-surface">
           <div className="border-b border-line px-4 py-2 text-xs text-ink-muted">
             数据预览（前 {Math.min(PREVIEW_ROWS, t.rows.length)} 行

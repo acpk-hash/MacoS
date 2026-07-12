@@ -1,9 +1,7 @@
-// Word 文档窗口：需求输入（可粘贴参考材料）→ 模型生成 Markdown →
-// MarkdownLite 预览 → docx 库转 .docx → Blob 下载。
-//
-// TODO(上传改写)：上传 .docx 提取正文（需 JSZip 读 word/document.xml 或
-// 引入解析库）后按指令改写再导出——当前版本先支持「生成 / 基于当前文稿
-// 迭代修改」路径；参考材料可先手动粘贴到参考材料框达到近似效果。
+// Word 文档窗口：需求输入 + 参考材料（粘贴文本 / 上传附件：txt·md·csv 直读，
+// docx 用 fflate 解 word/document.xml 抽文本，图片走多模态）→ 模型生成
+// Markdown → MarkdownLite 预览 → docx 库转 .docx → Blob 下载。
+// 全部关键状态在 officeStore：切走页面任务照跑，回来完整恢复。
 import { useEffect, useState } from 'react'
 import { useOfficeStore } from '../../stores/officeStore'
 import MarkdownLite from '../ui/MarkdownLite'
@@ -11,6 +9,7 @@ import Button from '../ui/Button'
 import ModelSelect from './ModelSelect'
 import StageSteps from './StageSteps'
 import Spinner from './Spinner'
+import AttachBar, { filesFromClipboard } from './AttachBar'
 
 const STEPS = ['描述需求', '模型撰写', '预览与下载']
 
@@ -27,18 +26,19 @@ function stepIndex(stage: string): number {
 
 export default function WordWindow() {
   const s = useOfficeStore()
-  const [req, setReq] = useState('')
-  const [ref, setRef] = useState('')
   const [showRef, setShowRef] = useState(false)
 
   useEffect(() => {
     void useOfficeStore.getState().loadModels()
   }, [])
 
+  const busy = s.wordStage === 'generating'
+  const hasRef =
+    s.wordReference.trim().length > 0 || s.wordAttachments.length > 0
+
   const generate = () => {
-    if (!req.trim() || s.streaming) return
-    void s.wordGenerate(req, ref)
-    setReq('')
+    if (!s.wordRequirement.trim() || busy) return
+    void s.wordGenerate()
   }
 
   return (
@@ -50,7 +50,7 @@ export default function WordWindow() {
             models={s.aggModels}
             modelId={s.currentModel}
             onChange={s.setModelSel}
-            disabled={s.streaming}
+            disabled={busy}
           />
           {s.wordStage === 'done' && (
             <Button variant="ghost" size="sm" onClick={s.wordReset}>
@@ -67,55 +67,78 @@ export default function WordWindow() {
       )}
 
       {/* 需求输入（idle 首次生成；done 后为迭代修改） */}
-      {s.wordStage !== 'generating' && (
+      {!busy && (
         <div className="rounded-card border border-line bg-surface p-4">
           <p className="mb-2 text-xs text-ink-muted">
             {s.wordStage === 'done'
               ? '继续提要求，模型会在当前文稿基础上修改后输出完整新版。'
-              : '描述要生成的文档（报告 / 信函 / 合同草稿 / 通知…），可展开粘贴参考材料。'}
+              : '描述要生成的文档（报告 / 信函 / 合同草稿 / 通知…），可展开粘贴或上传参考材料。'}
           </p>
           <textarea
-            value={req}
-            onChange={(e) => setReq(e.target.value)}
+            value={s.wordRequirement}
+            onChange={(e) => s.setWordRequirement(e.target.value)}
+            onPaste={(e) => {
+              const files = filesFromClipboard(e)
+              if (files.length > 0) {
+                e.preventDefault()
+                void s.wordAddFiles(files)
+              }
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) generate()
             }}
             rows={3}
-            placeholder="例：写一份实验室设备采购申请报告，包含背景、清单、预算与预期效益…"
+            placeholder="例：写一份实验室设备采购申请报告，包含背景、清单、预算与预期效益…（可 Ctrl+V 粘贴截图作参考）"
             className="w-full resize-y rounded-btn border border-line bg-surface-2 px-3 py-2 text-sm text-ink
                        placeholder:text-ink-dim focus:outline-none focus:border-primary"
           />
-          <div className="mt-2">
+          <div className="mt-2 flex flex-col gap-1.5">
             <button
               onClick={() => setShowRef((v) => !v)}
-              className="text-[11px] text-ink-dim hover:text-ink"
+              className="self-start text-[11px] text-ink-dim hover:text-ink"
             >
-              {showRef ? '▾ 收起参考材料' : '▸ 粘贴参考材料（可选）'}
+              {showRef || hasRef
+                ? '▾ 参考材料（粘贴 + 附件）'
+                : '▸ 参考材料：粘贴文本 / 上传附件（可选）'}
             </button>
-            {showRef && (
-              <textarea
-                value={ref}
-                onChange={(e) => setRef(e.target.value)}
-                rows={5}
-                placeholder="粘贴事实依据 / 原始材料 / 待改写的文本…"
-                className="mt-1.5 w-full resize-y rounded-btn border border-line bg-surface-2 px-3 py-2 text-xs text-ink-muted
-                           placeholder:text-ink-dim focus:outline-none focus:border-primary"
-              />
+            {(showRef || hasRef) && (
+              <>
+                <textarea
+                  value={s.wordReference}
+                  onChange={(e) => s.setWordReference(e.target.value)}
+                  rows={5}
+                  placeholder="粘贴事实依据 / 原始材料 / 待改写的文本…"
+                  className="w-full resize-y rounded-btn border border-line bg-surface-2 px-3 py-2 text-xs text-ink-muted
+                             placeholder:text-ink-dim focus:outline-none focus:border-primary"
+                />
+                <AttachBar
+                  attachments={s.wordAttachments}
+                  warnings={s.wordWarnings}
+                  onAdd={(files) => void s.wordAddFiles(files)}
+                  onRemove={s.wordRemoveAttachment}
+                  disabled={busy}
+                  hint="txt/md/csv 直读；docx 自动抽正文；图片走多模态"
+                />
+              </>
             )}
           </div>
           <div className="mt-3 flex justify-end">
-            <Button onClick={generate} disabled={s.streaming || !req.trim()}>
+            <Button onClick={generate} disabled={busy || !s.wordRequirement.trim()}>
               {s.wordStage === 'done' ? '按要求修改' : '生成文档'}
             </Button>
           </div>
         </div>
       )}
 
-      {s.wordStage === 'generating' && (
+      {busy && (
         <div className="flex flex-col gap-2">
-          <Spinner label="模型正在撰写文档…" streamText={s.streamText} />
+          <Spinner label="模型正在撰写文档…" streamText={s.wordStreamText} />
           <div className="flex justify-end">
-            <Button variant="danger" size="sm" onClick={() => void s.stopActive()}>
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={() => void s.stopChannel('word')}
+            >
               停止
             </Button>
           </div>

@@ -22,6 +22,7 @@
 import { create } from 'zustand'
 import { extractHtml, ensureHtmlDocument } from '../lib/artifactHtml'
 import type { AggModel, Attachment } from './studioStore'
+import { useTaskRegistry } from './taskRegistryStore'
 
 const isTauri =
   typeof window !== 'undefined' &&
@@ -337,6 +338,9 @@ interface ArtifactStore {
   confirmOptions: () => Promise<void>
   /** 确认步骤流 → 以「选择汇总 + 步骤流」为强上下文生成完整 HTML。 */
   confirmWorkflow: () => Promise<void>
+  /** 跳过选项/流程阶段，直接以外部材料（如 PDF 提炼的演讲要点）生成演示稿。
+   *  会覆盖当前草稿并开新隐藏会话；完成后进入 done（双栏编辑视图）。 */
+  generateFromMaterial: (title: string, material: string) => Promise<void>
   /** 从流程确认页退回选项勾选页（保留已出的 workflow 备用）。 */
   backToOptions: () => void
   /** 直接微调某个步骤的文字（不触发模型）。 */
@@ -358,6 +362,25 @@ interface ArtifactStore {
 
 // 流式缓冲：把本轮 assistant 的增量攒起来，done 时一次性提取选项 / 流程 / HTML。
 const streamBuf = new Map<string, string>()
+
+// ── 全局任务条登记（HTML 生成是长任务；办公板块 module='office'） ────
+
+let artifactTaskId: string | null = null
+
+function regArtifactTask(title: string, detail?: string): void {
+  artifactTaskId = `office-ppt-${Date.now()}`
+  useTaskRegistry
+    .getState()
+    .registerTask({ id: artifactTaskId, module: 'office', title, detail })
+}
+
+function endArtifactTask(ok: boolean, detail?: string): void {
+  if (!artifactTaskId) return
+  useTaskRegistry
+    .getState()
+    .updateTask(artifactTaskId, { status: ok ? 'done' : 'error', detail })
+  artifactTaskId = null
+}
 
 async function createSession(model: string): Promise<string> {
   // 惰性创建一个隐藏会话（标题固定，避免污染「对话」列表语义）。
@@ -487,6 +510,9 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
       error: null,
     }))
 
+    if (nextStage === 'generating')
+      regArtifactTask('PPT · 修改演示稿', text.slice(0, 40))
+
     // 附件直接交给后端 chat_send：文本附件内联进用户消息，图片作为
     // image_url 内容块发给模型（见 src-tauri/src/studio.rs build_user_content）。
     try {
@@ -602,6 +628,7 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
       streaming: true,
       error: null,
     }))
+    regArtifactTask('PPT · 生成演示稿', `${steps.length} 步流程`)
 
     try {
       await tauriInvoke<string>('chat_send', {
@@ -613,6 +640,57 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
       })
     } catch (e) {
       get()._error(String(e))
+    }
+  },
+
+  generateFromMaterial: async (title, material) => {
+    if (!isTauri) return
+    if (get().streaming) throw new Error('PPT 窗口正在生成中，请稍后再试')
+    await initArtifactEventListener()
+    if (!get().modelsLoaded) {
+      await get().loadModels()
+      // 与 PPT 窗口一致：默认优先 gpt-5.5。
+      const st = get()
+      const preferred = st.aggModels.find((m) => m.modelId === 'gpt-5.5')
+      if (preferred) st.setModelSel(preferred.providerId, preferred.modelId)
+    }
+    const model = get().currentModel
+    if (!model) throw new Error('PPT 引擎尚无可用模型')
+    const providerId = get().currentProviderId
+
+    // 覆盖当前草稿，开全新会话（外部材料与旧上下文无关）。
+    streamBuf.clear()
+    clearDraft()
+    const sessionId = await createSession(model)
+    set({
+      sessionId,
+      turns: [{ role: 'user', content: `📄 ${title}\n\n${material}` }],
+      stage: 'generating',
+      optionGroups: [],
+      selections: {},
+      workflow: [],
+      html: '',
+      streaming: true,
+      error: null,
+    })
+    regArtifactTask('PPT · 由 PDF 材料生成', title.slice(0, 40))
+
+    const userContent =
+      `${ARTIFACT_SYSTEM_PROMPT}\n\n———\n` +
+      `请根据下面的演讲要点大纲，生成一份**演讲用 HTML 幻灯片**（每页一个 ` +
+      `<section class="slide">，含封面、目录与结尾页；要点短句化、可直接放映）：\n\n` +
+      `【演讲主题】${title}\n\n【要点大纲】\n${material}`
+    try {
+      await tauriInvoke<string>('chat_send', {
+        sessionId,
+        userContent,
+        attachments: [],
+        model,
+        providerId: providerId ?? null,
+      })
+    } catch (e) {
+      get()._error(String(e))
+      throw e instanceof Error ? e : new Error(String(e))
     }
   },
 
@@ -749,6 +827,7 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
         { role: 'assistant', content: full, kind: 'html' },
       ]
       if (extracted) {
+        endArtifactTask(true)
         return {
           turns,
           streaming: false,
@@ -756,6 +835,7 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
           html: ensureHtmlDocument(extracted),
         }
       }
+      endArtifactTask(false, '模型未返回可用 HTML')
       // 模型没吐出可用 HTML：保留旧 html；首次生成失败则退回确认阶段可重试。
       return {
         turns,
@@ -775,6 +855,7 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
   },
 
   _error: (message) => {
+    endArtifactTask(false, message.slice(0, 60))
     set((s) => ({
       streaming: false,
       error: message,
@@ -802,6 +883,17 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
     }))
   },
 }))
+
+// ── 草稿自动持久化（阶段态全量恢复：options/workflow/done 都能还原） ──
+// 流式增量只写 streamBuf（非 store），不会触发订阅；其余变化防抖落盘。
+let draftSaveTimer: ReturnType<typeof setTimeout> | null = null
+useArtifactStore.subscribe(() => {
+  if (draftSaveTimer != null) clearTimeout(draftSaveTimer)
+  draftSaveTimer = setTimeout(() => {
+    draftSaveTimer = null
+    useArtifactStore.getState().saveDraft()
+  }, 800)
+})
 
 let _unlisten: (() => void) | null = null
 

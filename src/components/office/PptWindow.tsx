@@ -1,16 +1,23 @@
-// PPT 生成窗口 — 复刻 Q3「选项驱动」流程，直接建在现成的 artifactStore 上：
+// PPT 生成窗口 — 「选项驱动」流程，建在 artifactStore 上：
 // 输入主题/材料 → 模型出选项组（chip 勾选）→ 生成可编辑 workflow 步骤 →
-// 确认 → 生成自包含 HTML 演示文稿 → iframe 预览 + HTML 下载（浏览器可全屏放映）。
-import { useEffect, useMemo, useState } from 'react'
+// 确认 → 生成自包含 HTML 演示文稿 → **双栏编辑视图**（左 Monaco 源码 /
+// 右 iframe 可视化直改，见 HtmlSplitEditor）+ 带附件的「继续修改」对话。
+// 状态全部在 artifactStore（含 localStorage 草稿自动保存）：离开页面不丢。
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import {
   useArtifactStore,
   initArtifactEventListener,
 } from '../../stores/artifactStore'
 import { downloadBlob } from '../../stores/officeStore'
+import { filesToAttachments } from '../../lib/attachments'
+import type { Attachment } from '../../stores/studioStore'
 import Button from '../ui/Button'
 import ModelSelect from './ModelSelect'
 import StageSteps from './StageSteps'
 import Spinner from './Spinner'
+import AttachBar, { filesFromClipboard } from './AttachBar'
+
+const HtmlSplitEditor = lazy(() => import('./HtmlSplitEditor'))
 
 const STEPS = ['描述需求', '勾选方向', '确认流程', '生成演示文稿']
 
@@ -34,6 +41,9 @@ export default function PptWindow() {
   const s = useArtifactStore()
   const [input, setInput] = useState('')
   const [editInput, setEditInput] = useState('')
+  // 「继续修改」附件（发送后清空；文本类内联、图片走多模态）。
+  const [editAtts, setEditAtts] = useState<Attachment[]>([])
+  const [editWarnings, setEditWarnings] = useState<string[]>([])
 
   useEffect(() => {
     void initArtifactEventListener()
@@ -56,6 +66,25 @@ export default function PptWindow() {
     if (!t || s.streaming) return
     setInput('')
     void s.ask(t)
+  }
+
+  const addEditFiles = async (files: File[]) => {
+    if (files.length === 0) return
+    const existing = editAtts
+      .filter((a) => a.kind === 'text')
+      .reduce((n, a) => n + (a.text?.length ?? 0), 0)
+    const res = await filesToAttachments(files, existing)
+    setEditAtts((prev) => [...prev, ...res.attachments])
+    setEditWarnings(res.warnings)
+  }
+
+  const submitEdit = () => {
+    const t = editInput.trim()
+    if (!t || s.streaming) return
+    void s.ask(t, editAtts)
+    setEditInput('')
+    setEditAtts([])
+    setEditWarnings([])
   }
 
   const chatModels = useMemo(
@@ -259,56 +288,66 @@ export default function PptWindow() {
         <Spinner label="正在生成 HTML 演示文稿（篇幅较长，请稍候）…" />
       )}
 
-      {/* 阶段：完成 → 预览 + 导出 + 继续修改 */}
+      {/* 阶段：完成 → 双栏编辑（左源码 / 右可视化预览）+ 继续修改 */}
       {s.stage === 'done' && s.html && (
         <div className="flex flex-col gap-3">
-          <div className="overflow-hidden rounded-card border border-line bg-surface">
-            <div className="flex items-center justify-between border-b border-line px-4 py-2">
-              <span className="text-xs text-ink-muted">
-                预览 · 导出 HTML 后可在浏览器打开并按 F11 全屏放映
-              </span>
-              <Button
-                size="sm"
-                onClick={() =>
-                  downloadBlob(
-                    new Blob([s.html], { type: 'text/html;charset=utf-8' }),
-                    '演示文稿-' + new Date().toISOString().slice(0, 10) + '.html',
-                  )
-                }
-              >
-                下载 HTML
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs text-ink-muted">
+              左栏改源码自动同步预览；右栏点击文字可直接修改，改完点「保存修改 →
+              源码」。导出 HTML 后浏览器打开按 F11 全屏放映。
+            </span>
+            <Button
+              size="sm"
+              onClick={() =>
+                downloadBlob(
+                  new Blob([s.html], { type: 'text/html;charset=utf-8' }),
+                  '演示文稿-' + new Date().toISOString().slice(0, 10) + '.html',
+                )
+              }
+            >
+              下载 HTML
+            </Button>
+          </div>
+          <Suspense
+            fallback={
+              <div className="rounded-card border border-line bg-surface py-16 text-center text-sm text-ink-dim">
+                编辑器加载中…
+              </div>
+            }
+          >
+            <HtmlSplitEditor value={s.html} onCommit={(html) => s.setHtml(html)} />
+          </Suspense>
+          <div className="flex flex-col gap-1.5">
+            <div className="flex gap-2">
+              <input
+                value={editInput}
+                onChange={(e) => setEditInput(e.target.value)}
+                onPaste={(e) => {
+                  const files = filesFromClipboard(e)
+                  if (files.length > 0) {
+                    e.preventDefault()
+                    void addEditFiles(files)
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') submitEdit()
+                }}
+                placeholder="继续修改，例：第 3 页配色换成深蓝；可 Ctrl+V 粘贴截图、点 📎 传参考文件"
+                className="flex-1 rounded-btn border border-line bg-surface-2 px-3 py-2 text-sm text-ink
+                           placeholder:text-ink-dim focus:outline-none focus:border-primary"
+              />
+              <Button disabled={s.streaming || !editInput.trim()} onClick={submitEdit}>
+                修改
               </Button>
             </div>
-            <iframe
-              title="ppt-preview"
-              srcDoc={s.html}
-              sandbox="allow-same-origin"
-              className="h-[520px] w-full bg-white"
+            <AttachBar
+              attachments={editAtts}
+              warnings={editWarnings}
+              onAdd={(files) => void addEditFiles(files)}
+              onRemove={(i) => setEditAtts((prev) => prev.filter((_, x) => x !== i))}
+              disabled={s.streaming}
+              hint="附件随修改要求一起交给模型：文本内联，图片走多模态"
             />
-          </div>
-          <div className="flex gap-2">
-            <input
-              value={editInput}
-              onChange={(e) => setEditInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && editInput.trim() && !s.streaming) {
-                  void s.ask(editInput.trim())
-                  setEditInput('')
-                }
-              }}
-              placeholder="继续修改，例：第 3 页配色换成深蓝，再加一页答疑"
-              className="flex-1 rounded-btn border border-line bg-surface-2 px-3 py-2 text-sm text-ink
-                         placeholder:text-ink-dim focus:outline-none focus:border-primary"
-            />
-            <Button
-              disabled={s.streaming || !editInput.trim()}
-              onClick={() => {
-                void s.ask(editInput.trim())
-                setEditInput('')
-              }}
-            >
-              修改
-            </Button>
           </div>
         </div>
       )}
