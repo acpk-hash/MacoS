@@ -1235,6 +1235,7 @@ pub fn run() {
             pty::pty_close,
             kb::kb_list_papers,
             kb::kb_get_paper,
+            kb::kb_read_bytes,
             kb::kb_import_dir,
             kb::kb_upload_paper,
             kb::kb_update_metadata,

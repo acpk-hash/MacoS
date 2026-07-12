@@ -222,6 +222,42 @@ pub async fn kb_get_paper(
     state.db.kb_get_paper(&id).map_err(|e| e.to_string())
 }
 
+/// Raw file bytes (base64) for a KB paper — used by the in-app PDF preview.
+/// Reads the paper's absolute `file_path` directly, bypassing the asset-protocol
+/// scope (KB papers live at arbitrary paths outside `agentboard/media`).
+#[derive(serde::Serialize)]
+pub struct KbBytes {
+    pub base64: String,
+    pub size: u64,
+}
+
+#[tauri::command]
+pub async fn kb_read_bytes(id: String, state: State<'_, AppState>) -> Result<KbBytes, String> {
+    let paper = state
+        .db
+        .kb_get_paper(&id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("论文不存在: {id}"))?;
+    let path = paper
+        .file_path
+        .ok_or_else(|| "该论文无文件路径".to_string())?;
+    let p = std::path::Path::new(&path);
+    if !p.is_file() {
+        return Err(format!("文件不存在: {path}"));
+    }
+    let meta = std::fs::metadata(p).map_err(|e| e.to_string())?;
+    const MAX: u64 = 50 * 1024 * 1024;
+    if meta.len() > MAX {
+        return Err(format!("文件过大（>{} MB），暂不预览", MAX / 1024 / 1024));
+    }
+    let bytes = std::fs::read(p).map_err(|e| e.to_string())?;
+    use base64::Engine as _;
+    Ok(KbBytes {
+        base64: base64::engine::general_purpose::STANDARD.encode(&bytes),
+        size: meta.len(),
+    })
+}
+
 /// Scan a directory for PDF files and index them (just-in-place, managed=0).
 ///
 /// Files already indexed (same absolute `file_path`) are skipped.

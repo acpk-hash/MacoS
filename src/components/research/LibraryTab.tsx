@@ -4,7 +4,8 @@
  * 布局: 顶部工具条 | 左列分类树 | 中部论文表 | 右侧详情抽屉
  *
  * PDF 预览: PdfPreview 依赖 ws_read_bytes（需工作区相对路径），无法直接用于 KB 绝对路径。
- * 此处内置 KbPdfPreview，通过 convertFileSrc 将绝对路径转为 asset:// URL，再用 fetch+pdfjs 加载。
+ * 此处内置 KbPdfPreview，经后端 kb_read_bytes(paperId) 读字节(base64)再用 pdfjs 加载，
+ * 绕开 assetProtocol scope 限制（论文位于任意绝对路径）。
  */
 import { useEffect, useRef, useState, useCallback } from 'react'
 import * as pdfjs from 'pdfjs-dist'
@@ -79,7 +80,7 @@ function KbPdfPage({ doc, pageNo, scale }: { doc: PDFDocumentProxy; pageNo: numb
   }, [doc, pageNo, scale])
   return <canvas ref={canvasRef} className="bg-white shadow-lg flex-shrink-0" />
 }
-function KbPdfPreview({ filePath }: { filePath: string }) {
+function KbPdfPreview({ paperId }: { paperId: string }) {
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null)
   const [pageWidth, setPageWidth] = useState(612)
   const [error, setError] = useState<string | null>(null)
@@ -104,13 +105,13 @@ function KbPdfPreview({ filePath }: { filePath: string }) {
     setZoom('fit')
     ;(async () => {
       try {
-        const { convertFileSrc } = await import('@tauri-apps/api/core')
-        const url = convertFileSrc(filePath)
-        const resp = await fetch(url)
-        if (!resp.ok) throw new Error('HTTP ' + resp.status)
-        const buf = await resp.arrayBuffer()
+        const { invoke } = await import('@tauri-apps/api/core')
+        const res = await invoke<{ base64: string; size: number }>('kb_read_bytes', { id: paperId })
+        const bin = atob(res.base64)
+        const data = new Uint8Array(bin.length)
+        for (let i = 0; i < bin.length; i++) data[i] = bin.charCodeAt(i)
         if (!alive) return
-        loaded = await pdfjs.getDocument({ data: new Uint8Array(buf) }).promise
+        loaded = await pdfjs.getDocument({ data }).promise
         if (!alive) { void loaded.loadingTask.destroy(); return }
         const p1 = await loaded.getPage(1)
         if (!alive) return
@@ -124,7 +125,7 @@ function KbPdfPreview({ filePath }: { filePath: string }) {
       alive = false
       if (loaded) void loaded.loadingTask.destroy()
     }
-  }, [filePath])
+  }, [paperId])
 
   const fitScale = Math.min(Math.max((boxWidth - 48) / pageWidth, 0.3), 3)
   const scale = zoom === 'fit' ? fitScale : zoom
@@ -165,7 +166,7 @@ function KbPdfPreview({ filePath }: { filePath: string }) {
         ) : (
           <div className="flex flex-col items-center gap-4 py-4 px-3">
             {Array.from({ length: shownPages }, (_, i) => (
-              <KbPdfPage key={filePath + ':' + (i + 1)} doc={doc} pageNo={i + 1} scale={scale} />
+              <KbPdfPage key={paperId + ':' + (i + 1)} doc={doc} pageNo={i + 1} scale={scale} />
             ))}
             {numPages > MAX_PAGES && (
               <p className="text-[11px] text-ink-dim py-2">-- 已达预览上限 ({MAX_PAGES} 页) --</p>
@@ -500,7 +501,7 @@ function DetailDrawer({ paper, categories, tags, onClose }: {
             </button>
             {showPdf && (
               <div className="mt-2 rounded-md overflow-hidden border border-line" style={{ height: '400px' }}>
-                <KbPdfPreview filePath={paper.file_path} />
+                <KbPdfPreview paperId={paper.id} />
               </div>
             )}
           </div>
