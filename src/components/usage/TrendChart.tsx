@@ -37,7 +37,7 @@ export default function TrendChart({ series }: { series: TokenSeriesPoint[] }) {
               >
                 <div className="font-medium">{p.date}</div>
                 <div className="tabular-nums">
-                  合计 {fmtTokens(p.total)} · 运行 {p.runs} 次
+                  合计 {fmtTokens(p.total)} · {p.runs} 轮
                 </div>
                 <div className="tabular-nums text-ink-muted">
                   输入 {fmtTokens(p.input)} · 输出 {fmtTokens(p.output)}

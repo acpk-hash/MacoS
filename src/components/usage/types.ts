@@ -42,3 +42,44 @@ export interface RecentRun {
   status: string
   created_at: number
 }
+
+// ── pi 用量持久统计（与 src-tauri/src/db/pi_usage.rs 逐字段对应） ──────────────
+
+export interface PiUsageOverview {
+  total_input: number
+  total_output: number
+  total_cache_read: number
+  total_cache_write: number
+  total_cost: number
+  sessions: number
+  rows: number
+}
+
+export interface PiUsageDay {
+  day: string // YYYY-MM-DD（本地时区）
+  input: number
+  output: number
+  cost: number
+  rows: number
+}
+
+export interface PiUsageModel {
+  model: string
+  input: number
+  output: number
+  cost: number
+  rows: number
+}
+
+export interface PiUsageRecord {
+  id: string
+  session_id: string
+  model: string
+  provider: string
+  input: number
+  output: number
+  cache_read: number
+  cache_write: number
+  cost: number
+  ts: number
+}

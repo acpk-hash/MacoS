@@ -1714,3 +1714,6 @@ pub use kb::{
     ApplyItem, ApplyResult, Category, FailedItem, Paper, PaperSummary, RenamePreview, ScanResult,
     Tag, TagRef,
 };
+
+mod pi_usage;
+pub use pi_usage::{NewPiUsage, PiUsageDay, PiUsageModel, PiUsageOverview, PiUsageRecord};

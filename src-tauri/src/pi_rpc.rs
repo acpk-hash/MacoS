@@ -227,10 +227,13 @@ pub(crate) async fn pi_open(
         // channel 关闭 → drop stdin → pi 优雅退出。
     });
 
-    // -- reader 任务：stdout 逐行 JSON → pi-event --
+    // -- reader 任务：stdout 逐行 JSON → pi-event；顺带用量落库（持久化） --
     {
         let app = app.clone();
         let sid = session_id.clone();
+        let db = db.clone();
+        let model = model.clone();
+        let provider = provider_id.clone();
         tokio::spawn(async move {
             let mut lines = BufReader::new(stdout).lines();
             while let Ok(Some(line)) = lines.next_line().await {
@@ -239,7 +242,12 @@ pub(crate) async fn pi_open(
                     continue;
                 }
                 match serde_json::from_str::<Value>(line) {
-                    Ok(ev) => emit_pi_event(&app, &sid, ev),
+                    Ok(ev) => {
+                        // message_end（assistant + usage）→ SQLite pi_usage 一行，
+                        // 并 emit `pi-usage-updated` 轻事件供用量页实时刷新。
+                        record_usage_if_any(&app, &db, &sid, &model, &provider, &ev);
+                        emit_pi_event(&app, &sid, ev);
+                    }
                     Err(_) => {} // 容忍非 JSON 噪声（如 node 警告混入 stdout）
                 }
             }
@@ -359,6 +367,231 @@ pub async fn pi_close(engine: State<'_, PiEngine>, session_id: String) -> Result
         let _ = tokio::fs::remove_dir_all(&dir).await;
     });
     Ok(())
+}
+
+// ── 用量持久化（pi_usage 落库 + 查询命令） ───────────────────────────────────
+
+/// 单条 assistant `message_end` 里解析出的用量增量。
+#[derive(Debug, PartialEq)]
+struct UsageDelta {
+    input: i64,
+    output: i64,
+    cache_read: i64,
+    cache_write: i64,
+    cost: f64,
+}
+
+/// `message_end` 且 `message.role == "assistant"` 且带 `usage` → 用量增量。
+/// 字段名兼容 camelCase / snake_case（与前端 piStore 的归约口径一致）；
+/// `cost` 兼容数字或 `{ total }` 对象。其余事件返回 None。
+fn extract_assistant_usage(ev: &Value) -> Option<UsageDelta> {
+    if ev.get("type").and_then(|t| t.as_str()) != Some("message_end") {
+        return None;
+    }
+    let msg = ev.get("message")?;
+    if msg.get("role").and_then(|r| r.as_str()) != Some("assistant") {
+        return None;
+    }
+    let u = msg.get("usage")?.as_object()?;
+    let num = |keys: &[&str]| -> i64 {
+        keys.iter()
+            .find_map(|k| u.get(*k).and_then(|v| v.as_f64()))
+            .unwrap_or(0.0) as i64
+    };
+    let cost = match u.get("cost") {
+        Some(Value::Number(n)) => n.as_f64().unwrap_or(0.0),
+        Some(Value::Object(o)) => o.get("total").and_then(|v| v.as_f64()).unwrap_or(0.0),
+        _ => 0.0,
+    };
+    Some(UsageDelta {
+        input: num(&["input", "inputTokens", "input_tokens"]),
+        output: num(&["output", "outputTokens", "output_tokens"]),
+        cache_read: num(&["cacheRead", "cache_read"]),
+        cache_write: num(&["cacheWrite", "cache_write"]),
+        cost,
+    })
+}
+
+/// reader 任务的落库钩子：命中 assistant usage 就写一行 `pi_usage`（表在
+/// 写入路径 CREATE TABLE IF NOT EXISTS 自建），成功后 emit
+/// `pi-usage-updated` 轻事件（payload 仅 sessionId，前端收到即重查）。
+fn record_usage_if_any(
+    app: &AppHandle,
+    db: &Db,
+    session_id: &str,
+    model: &str,
+    provider: &str,
+    ev: &Value,
+) {
+    let Some(u) = extract_assistant_usage(ev) else {
+        return;
+    };
+    let id = uuid::Uuid::new_v4().to_string();
+    let row = crate::db::NewPiUsage {
+        id: &id,
+        session_id,
+        model,
+        provider,
+        input: u.input,
+        output: u.output,
+        cache_read: u.cache_read,
+        cache_write: u.cache_write,
+        cost: u.cost,
+    };
+    match db.pi_usage_insert(&row) {
+        Ok(()) => {
+            let _ = app.emit("pi-usage-updated", json!({ "sessionId": session_id }));
+        }
+        Err(e) => eprintln!("[pi_usage] 用量落库失败: {e}"),
+    }
+}
+
+/// 用量总览（全量累计 + 会话/记录计数）。
+#[tauri::command]
+pub(crate) async fn pi_usage_overview(
+    state: State<'_, crate::AppState>,
+) -> Result<crate::db::PiUsageOverview, String> {
+    state.db.pi_usage_overview().map_err(|e| e.to_string())
+}
+
+/// 近 `days` 天（默认 30，1..=365）按本地日聚合的序列。
+#[tauri::command]
+pub(crate) async fn pi_usage_series(
+    days: Option<u32>,
+    state: State<'_, crate::AppState>,
+) -> Result<Vec<crate::db::PiUsageDay>, String> {
+    let days = days.unwrap_or(30).clamp(1, 365);
+    state.db.pi_usage_series(days).map_err(|e| e.to_string())
+}
+
+/// 按模型聚合。
+#[tauri::command]
+pub(crate) async fn pi_usage_by_model(
+    state: State<'_, crate::AppState>,
+) -> Result<Vec<crate::db::PiUsageModel>, String> {
+    state.db.pi_usage_by_model().map_err(|e| e.to_string())
+}
+
+/// 最近 `limit` 条（默认 20，1..=200）原始用量记录。
+#[tauri::command]
+pub(crate) async fn pi_usage_recent(
+    limit: Option<u32>,
+    state: State<'_, crate::AppState>,
+) -> Result<Vec<crate::db::PiUsageRecord>, String> {
+    let limit = i64::from(limit.unwrap_or(20).clamp(1, 200));
+    state.db.pi_usage_recent(limit).map_err(|e| e.to_string())
+}
+
+// ── 内置引擎（Iris）状态探测 ─────────────────────────────────────────────────
+
+/// 一个运行时构件（node / pi dist）的定位结果。
+/// `source`：`settings`（用户覆盖路径）/ `resource`（应用内置）/ `PATH`。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct PiRuntimeStatus {
+    pub found: bool,
+    pub source: String,
+    pub path: Option<String>,
+    pub version: Option<String>,
+}
+
+/// 设置页「内置引擎（Iris）」卡的数据：node + pi 三级定位结果，
+/// `bundled` = 打包资源位存在 pi dist（安装版开箱即用）。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct PiEngineStatusInfo {
+    pub node: PiRuntimeStatus,
+    pub pi: PiRuntimeStatus,
+    pub bundled: bool,
+}
+
+/// best-effort 探测 `<bin> --version`（3 秒超时，失败返回 None）。
+async fn probe_version(bin: &str) -> Option<String> {
+    let fut = tokio::process::Command::new(bin)
+        .arg("--version")
+        .no_window()
+        .output();
+    match tokio::time::timeout(Duration::from_secs(3), fut).await {
+        Ok(Ok(out)) if out.status.success() => {
+            let v = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if v.is_empty() { None } else { Some(v) }
+        }
+        _ => None,
+    }
+}
+
+/// 内置引擎（Iris = node + pi dist）就绪状态，复用 pi_open 的三级定位次序：
+/// settings 覆盖 → Tauri resource（打包自带）→ PATH / 全局 npm。
+#[tauri::command]
+pub(crate) async fn pi_engine_status(
+    app: AppHandle,
+    state: State<'_, crate::AppState>,
+) -> Result<PiEngineStatusInfo, String> {
+    let db = state.db.clone();
+
+    // -- node --
+    let node_override = db
+        .settings_get("pi_node_path")
+        .ok()
+        .flatten()
+        .map(|p| p.trim().to_string())
+        .filter(|p| !p.is_empty() && PathBuf::from(p).exists());
+    let node_resource = app
+        .path()
+        .resolve("engine-pi/node.exe", BaseDirectory::Resource)
+        .ok()
+        .filter(|p| p.exists())
+        .map(|p| normalize_spawn_path(&p).to_string_lossy().to_string());
+    let (node_bin, node_source, node_located) = if let Some(p) = node_override {
+        (p, "settings", true)
+    } else if let Some(p) = node_resource {
+        (p, "resource", true)
+    } else {
+        ("node".to_string(), "PATH", false)
+    };
+    let node_version = probe_version(&node_bin).await;
+    let node_found = node_located || node_version.is_some();
+    let node = PiRuntimeStatus {
+        found: node_found,
+        source: node_source.to_string(),
+        path: if node_found { Some(node_bin) } else { None },
+        version: node_version,
+    };
+
+    // -- pi dist --
+    let pi_settings = db
+        .settings_get("pi_dist_path")
+        .ok()
+        .flatten()
+        .map(|p| p.trim().to_string())
+        .filter(|p| !p.is_empty())
+        .map(|p| {
+            let pb = PathBuf::from(&p);
+            if pb.is_dir() { pb.join("cli.js") } else { pb }
+        })
+        .filter(|p| p.exists());
+    let pi_resource = app
+        .path()
+        .resolve("engine-pi/pi/dist/cli.js", BaseDirectory::Resource)
+        .ok()
+        .filter(|p| p.exists());
+    let bundled = pi_resource.is_some();
+    let pi_npm = npm_global_pi_cli().filter(|p| p.exists());
+    let (pi_found, pi_source, pi_path) = if let Some(p) = pi_settings {
+        (true, "settings", Some(p))
+    } else if let Some(p) = pi_resource {
+        (true, "resource", Some(p))
+    } else if let Some(p) = pi_npm {
+        (true, "PATH", Some(p))
+    } else {
+        (false, "PATH", None)
+    };
+    let pi = PiRuntimeStatus {
+        found: pi_found,
+        source: pi_source.to_string(),
+        path: pi_path.map(|p| normalize_spawn_path(&p).to_string_lossy().to_string()),
+        version: None,
+    };
+
+    Ok(PiEngineStatusInfo { node, pi, bundled })
 }
 
 // ── pi 环境生成 ──────────────────────────────────────────────────────────────
@@ -578,6 +811,57 @@ async fn kill_child_id(child_id: Option<u32>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extract_assistant_usage_happy_path_and_filters() {
+        // assistant + usage（camelCase + cost 数字）→ Some。
+        let ev = json!({
+            "type": "message_end",
+            "message": {
+                "role": "assistant",
+                "usage": {
+                    "input": 120, "output": 34,
+                    "cacheRead": 56, "cacheWrite": 7,
+                    "cost": 0.0123
+                }
+            }
+        });
+        let u = extract_assistant_usage(&ev).expect("should parse usage");
+        assert_eq!(u.input, 120);
+        assert_eq!(u.output, 34);
+        assert_eq!(u.cache_read, 56);
+        assert_eq!(u.cache_write, 7);
+        assert!((u.cost - 0.0123).abs() < 1e-9);
+
+        // snake_case 字段 + cost 对象 { total }。
+        let ev2 = json!({
+            "type": "message_end",
+            "message": {
+                "role": "assistant",
+                "usage": {
+                    "input_tokens": 10, "output_tokens": 2,
+                    "cache_read": 3, "cache_write": 4,
+                    "cost": { "total": 0.5 }
+                }
+            }
+        });
+        let u2 = extract_assistant_usage(&ev2).unwrap();
+        assert_eq!((u2.input, u2.output, u2.cache_read, u2.cache_write), (10, 2, 3, 4));
+        assert!((u2.cost - 0.5).abs() < 1e-9);
+
+        // 非 message_end / user 角色 / 无 usage → None。
+        assert!(extract_assistant_usage(&json!({ "type": "agent_end" })).is_none());
+        assert!(extract_assistant_usage(&json!({
+            "type": "message_end",
+            "message": { "role": "user", "usage": { "input": 1 } }
+        }))
+        .is_none());
+        assert!(extract_assistant_usage(&json!({
+            "type": "message_end",
+            "message": { "role": "assistant" }
+        }))
+        .is_none());
+    }
 
     #[test]
     fn models_json_references_env_key_not_plaintext() {

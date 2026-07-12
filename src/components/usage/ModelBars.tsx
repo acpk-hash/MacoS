@@ -25,7 +25,7 @@ export default function ModelBars({ models }: { models: ModelStat[] }) {
                 {m.model || '未记录模型'}
               </span>
               <span className="text-ink-dim tabular-nums flex-shrink-0">
-                {m.runs} 次
+                {m.runs} 轮
               </span>
               <span className="ml-auto text-ink-muted font-mono tabular-nums flex-shrink-0">
                 {fmtTokens(m.total)}

@@ -19,21 +19,25 @@ async function tauriInvoke<T>(
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface EngineStatus {
-  name: string
-  available: boolean
+/** Mirrors Rust's PiRuntimeStatus / PiEngineStatusInfo (pi_engine_status). */
+interface PiRuntimeStatus {
+  found: boolean
+  source: string
+  path: string | null
   version: string | null
 }
 
-type EngineMode = 'codex-cli' | 'embedded'
+interface PiEngineStatusInfo {
+  node: PiRuntimeStatus
+  pi: PiRuntimeStatus
+  bundled: boolean
+}
 
-/** Mirrors Rust's EmbeddedEngineStatus (embedded_engine_status command). */
-interface EmbeddedEngineStatus {
-  engine_bin_path: string | null
-  engine_bin_found: boolean
-  codex_exe_path: string | null
-  codex_found: boolean
-  codex_error: string | null
+/** pi_engine_status 的 source 三级定位 → 展示文案。 */
+const SOURCE_LABEL: Record<string, string> = {
+  settings: '自定义路径',
+  resource: '应用内置',
+  PATH: '系统 PATH',
 }
 
 interface McpServer {
@@ -754,13 +758,10 @@ function ModelServiceSection() {
 // ── Engine Section ────────────────────────────────────────────────────────────
 
 function EngineSection() {
-  const [engines, setEngines] = useState<EngineStatus[]>([])
-  const [detecting, setDetecting] = useState(false)
   const [settings, setSettings] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState<Record<string, boolean>>({})
-  const [engineMode, setEngineMode] = useState<EngineMode>('codex-cli')
-  const [embeddedStatus, setEmbeddedStatus] = useState<EmbeddedEngineStatus | null>(null)
-  const [switchingMode, setSwitchingMode] = useState(false)
+  const [iris, setIris] = useState<PiEngineStatusInfo | null>(null)
+  const [probing, setProbing] = useState(false)
 
   const loadSettings = useCallback(async () => {
     try {
@@ -771,57 +772,22 @@ function EngineSection() {
     }
   }, [])
 
-  const detect = useCallback(async () => {
-    setDetecting(true)
+  const loadIris = useCallback(async () => {
+    setProbing(true)
     try {
-      const result = await tauriInvoke<EngineStatus[]>('detect_engines')
-      setEngines(result)
+      const st = await tauriInvoke<PiEngineStatusInfo>('pi_engine_status')
+      setIris(st)
     } catch (e) {
-      console.error('detect_engines failed:', e)
+      console.error('pi_engine_status failed:', e)
     } finally {
-      setDetecting(false)
+      setProbing(false)
     }
   }, [])
-
-  const loadEngineMode = useCallback(async () => {
-    try {
-      const mode = await tauriInvoke<EngineMode>('engine_mode_get')
-      setEngineMode(mode)
-    } catch (e) {
-      console.error('engine_mode_get failed:', e)
-    }
-  }, [])
-
-  const loadEmbeddedStatus = useCallback(async () => {
-    try {
-      const st = await tauriInvoke<EmbeddedEngineStatus>('embedded_engine_status')
-      setEmbeddedStatus(st)
-    } catch (e) {
-      console.error('embedded_engine_status failed:', e)
-    }
-  }, [])
-
-  const handleEngineModeChange = async (mode: EngineMode) => {
-    if (mode === engineMode) return
-    setSwitchingMode(true)
-    try {
-      await tauriInvoke('engine_mode_set', { mode })
-      setEngineMode(mode)
-      // Refresh embedded readiness whenever the mode changes.
-      await loadEmbeddedStatus()
-    } catch (e) {
-      console.error('engine_mode_set failed:', e)
-    } finally {
-      setSwitchingMode(false)
-    }
-  }
 
   useEffect(() => {
     loadSettings()
-    detect()
-    loadEngineMode()
-    loadEmbeddedStatus()
-  }, [detect, loadSettings, loadEngineMode, loadEmbeddedStatus])
+    loadIris()
+  }, [loadSettings, loadIris])
 
   const saveSetting = async (key: string, value: string) => {
     setSaving((s) => ({ ...s, [key]: true }))
@@ -846,156 +812,117 @@ function EngineSection() {
     }
   }
 
-  const codexEngine = engines.find((e) => e.name === 'codex')
-  const claudeEngine = engines.find((e) => e.name === 'claude')
-
   const currentPolicy = settings['confirmation_policy'] ?? 'auto'
   const currentEffort = settings['reasoning_effort'] ?? 'low'
   const currentWorkdir = settings['default_workdir'] ?? ''
 
   return (
     <div className="space-y-5">
-      {/* Engine status */}
+      {/* 内置引擎（Iris） */}
       <div>
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-xs font-semibold text-ink-muted uppercase tracking-wider">
-            引擎状态
+            内置引擎（Iris）
           </h3>
           <button
-            onClick={detect}
-            disabled={detecting}
+            onClick={loadIris}
+            disabled={probing}
             className="text-xs text-sky hover:text-sky disabled:text-ink-dim transition-colors"
           >
-            {detecting ? '检测中…' : '重新检测'}
+            {probing ? '检测中…' : '重新检测'}
           </button>
         </div>
 
-        <div className="space-y-2">
-          {/* Codex */}
-          <div className="flex items-center justify-between bg-surface rounded-lg px-3 py-2.5">
-            <div className="flex items-center gap-2.5">
-              <span
-                className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                  codexEngine?.available ? 'bg-done' : 'bg-elevated'
-                }`}
-              />
-              <span className="text-sm font-medium text-ink">Codex</span>
-            </div>
-            <span className="text-xs text-ink-muted">
-              {detecting
-                ? '…'
-                : codexEngine?.available
-                  ? codexEngine.version ?? '已安装'
-                  : '未安装'}
+        <div className="bg-surface border border-line rounded-lg p-3 space-y-2.5">
+          {/* 总体就绪状态 */}
+          <div className="flex items-center gap-2.5">
+            <span
+              className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                iris == null
+                  ? 'bg-elevated'
+                  : iris.bundled || (iris.node.found && iris.pi.found)
+                    ? 'bg-done'
+                    : 'bg-failed'
+              }`}
+            />
+            <span className="text-sm font-medium text-ink">
+              {iris == null
+                ? '检测中…'
+                : iris.bundled
+                  ? '已内置，开箱即用'
+                  : iris.node.found && iris.pi.found
+                    ? '就绪（开发模式：使用本机运行时）'
+                    : '未就绪'}
             </span>
           </div>
+          <p className="text-xs text-ink-dim">
+            Iris 内置编码引擎，无需安装任何依赖。安装版应用自带全部运行时；开发模式下检测不到内置资源时，自动改用系统
+            PATH 中的运行时。
+          </p>
 
-          {/* Claude (coming soon) */}
-          <div className="flex items-center justify-between bg-surface rounded-lg px-3 py-2.5 opacity-50">
-            <div className="flex items-center gap-2.5">
-              <span
-                className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                  claudeEngine?.available ? 'bg-done' : 'bg-elevated'
-                }`}
-              />
-              <span className="text-sm font-medium text-ink">Claude</span>
-            </div>
-            <span className="text-xs text-awaiting bg-yellow-900/30 px-1.5 py-0.5 rounded">
-              即将支持
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Agent engine mode (Codex CLI vs embedded engine) */}
-      <div>
-        <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wider mb-2">
-          Agent 引擎
-        </label>
-        <div className="space-y-1.5">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="radio"
-              name="agent_engine"
-              value="codex-cli"
-              checked={engineMode === 'codex-cli'}
-              onChange={() => handleEngineModeChange('codex-cli')}
-              disabled={switchingMode}
-              className="accent-sakura"
-            />
-            <span className="text-sm text-ink">Codex CLI（需已安装 codex）</span>
-          </label>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="radio"
-              name="agent_engine"
-              value="embedded"
-              checked={engineMode === 'embedded'}
-              onChange={() => handleEngineModeChange('embedded')}
-              disabled={switchingMode}
-              className="accent-sakura"
-            />
-            <span className="text-sm text-ink">内置引擎（推荐）</span>
-          </label>
-        </div>
-        <p className="text-xs text-ink-dim mt-1.5">
-          切换即生效于下次派发的会话；当前正在运行的会话不受影响。
-        </p>
-
-        {/* Embedded engine readiness */}
-        <div className="mt-3 bg-surface border border-line rounded-lg p-3 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-ink-muted">内置引擎状态</span>
-            <button
-              onClick={loadEmbeddedStatus}
-              className="text-xs text-sky hover:text-sky transition-colors"
-            >
-              重新检测
-            </button>
-          </div>
-
-          {/* Engine exe */}
+          {/* Node 运行时 */}
           <div className="flex items-start gap-2">
             <span
               className={`mt-1 w-2 h-2 rounded-full flex-shrink-0 ${
-                embeddedStatus?.engine_bin_found ? 'bg-done' : 'bg-failed'
+                iris?.node.found ? 'bg-done' : 'bg-failed'
               }`}
             />
             <div className="min-w-0">
-              <p className="text-xs text-ink-muted">引擎可执行文件</p>
-              {embeddedStatus == null ? (
+              <p className="text-xs text-ink-muted">
+                Node 运行时
+                {iris?.node.found && (
+                  <span className="text-ink-dim">
+                    {' · '}
+                    {SOURCE_LABEL[iris.node.source] ?? iris.node.source}
+                    {iris.node.version ? ` · ${iris.node.version}` : ''}
+                  </span>
+                )}
+              </p>
+              {iris == null ? (
                 <p className="text-xs text-ink-dim">检测中…</p>
-              ) : embeddedStatus.engine_bin_found ? (
-                <p className="text-xs text-ink-dim font-mono break-all">
-                  {embeddedStatus.engine_bin_path}
-                </p>
+              ) : iris.node.found ? (
+                iris.node.path != null && (
+                  <p className="text-xs text-ink-dim font-mono break-all">
+                    {iris.node.path}
+                  </p>
+                )
               ) : (
                 <p className="text-xs text-failed">
-                  未找到 agentboard-engine，请重新安装应用或在设置中指定路径。
+                  未找到 Node 运行时。开发模式请确保 PATH 中有 node；安装版应用自带，无需处理。
                 </p>
               )}
             </div>
           </div>
 
-          {/* codex.exe probe */}
+          {/* pi 引擎 */}
           <div className="flex items-start gap-2">
             <span
               className={`mt-1 w-2 h-2 rounded-full flex-shrink-0 ${
-                embeddedStatus?.codex_found ? 'bg-done' : 'bg-awaiting'
+                iris?.pi.found ? 'bg-done' : 'bg-failed'
               }`}
             />
             <div className="min-w-0">
-              <p className="text-xs text-ink-muted">codex.exe 探测</p>
-              {embeddedStatus == null ? (
+              <p className="text-xs text-ink-muted">
+                pi 引擎
+                {iris?.pi.found && (
+                  <span className="text-ink-dim">
+                    {' · '}
+                    {SOURCE_LABEL[iris.pi.source] ?? iris.pi.source}
+                  </span>
+                )}
+              </p>
+              {iris == null ? (
                 <p className="text-xs text-ink-dim">检测中…</p>
-              ) : embeddedStatus.codex_found ? (
-                <p className="text-xs text-ink-dim font-mono break-all">
-                  {embeddedStatus.codex_exe_path}
-                </p>
+              ) : iris.pi.found ? (
+                iris.pi.path != null && (
+                  <p className="text-xs text-ink-dim font-mono break-all">
+                    {iris.pi.path}
+                  </p>
+                )
               ) : (
-                <p className="text-xs text-yellow-400">
-                  {embeddedStatus.codex_error ??
-                    '未找到 codex 可执行文件（内置引擎的 exec-server 需要它）。'}
+                <p className="text-xs text-failed">
+                  未找到 pi 引擎。开发模式请全局安装 @earendil-works/pi-coding-agent，或在设置中指定
+                  pi_dist_path；安装版应用自带，无需处理。
                 </p>
               )}
             </div>
