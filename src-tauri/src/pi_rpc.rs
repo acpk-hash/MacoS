@@ -163,7 +163,16 @@ pub(crate) async fn pi_open(
     tokio::fs::write(agent_dir.join("settings.json"), build_settings_json(&model))
         .await
         .map_err(|e| format!("写入 pi settings.json 失败: {e}"))?;
-    tokio::fs::write(agent_dir.join("AGENTS.md"), PI_AGENTS_MD)
+    let agents_md_content = {
+        let data_dir = app
+            .path()
+            .app_data_dir()
+            .map_err(|e| format!("无法取得应用数据目录: {e}"))?;
+        let mut md = PI_AGENTS_MD.to_string();
+        md.push_str(&crate::hooks::build_hooks_agents_md_section(&data_dir));
+        md
+    };
+    tokio::fs::write(agent_dir.join("AGENTS.md"), &agents_md_content)
         .await
         .map_err(|e| format!("写入 pi AGENTS.md 失败: {e}"))?;
 

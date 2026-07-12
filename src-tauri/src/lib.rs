@@ -6,6 +6,7 @@ pub mod kb_watch;
 pub mod engine_config;
 pub mod feishu;
 pub mod hermes;
+pub mod hooks;
 pub mod litsearch;
 pub mod market;
 pub mod mcp;
@@ -1143,6 +1144,7 @@ pub fn run() {
             mcp_add,
             mcp_remove,
             mcp_catalog,
+            hooks::hooks_sync,
             feishu_test,
             feishu_recent_logs,
             wecom_test,

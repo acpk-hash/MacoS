@@ -6,6 +6,7 @@
 // 图片同样走 @path，由 pi 端负责加载）。
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { usePiStore } from '../../stores/piStore'
+import { useHooksStore } from '../../stores/hooksStore'
 
 const EMPTY_QUEUE: string[] = []
 
@@ -89,12 +90,12 @@ export const BUILTIN_COMMANDS: BuiltinCommand[] = [
   { name: 'deps',      description: '依赖分析',               insertText: '请分析当前项目的依赖关系，标出过时或有安全问题的依赖。' },
 ]
 
-/** 统一命令面板条目：内置命令 或 已安装 skill。 */
+/** 统一命令面板条目：内置命令 / 已安装 skill / 已安装 hook。 */
 interface PanelItem {
-  kind: 'command' | 'skill'
+  kind: 'command' | 'skill' | 'hook'
   name: string
   description: string
-  /** 内置命令选中后插入的文本；skill 则构造 `/skill:<name> `。 */
+  /** 内置命令选中后插入的文本；skill 则构造 `/skill:<name> `；hook 则构造 `/hook:<id> `。 */
   insertText: string
 }
 
@@ -161,15 +162,19 @@ export default function PiComposer() {
   const abort = usePiStore((s) => s.abort)
   const installedSkills = usePiStore((s) => s.installedSkills)
   const loadInstalledSkills = usePiStore((s) => s.loadInstalledSkills)
+  const installedHookIds = useHooksStore((s) => s.installedHookIds)
+  const hooksGetActive = useHooksStore((s) => s.getActive)
 
-  // 统一命令面板数据源：顶部=内置快捷命令，下方分隔线后=已安装 skills。
-  const panelItems = useMemo<{ commands: PanelItem[]; skills: PanelItem[] }>(() => {
-    if (!slash) return { commands: [], skills: [] }
+  // 统一命令面板数据源：顶部=内置快捷命令，中间=已安装 skills，底部=已安装 hooks。
+  const panelItems = useMemo<{ commands: PanelItem[]; skills: PanelItem[]; hooks: PanelItem[] }>(() => {
+    if (!slash) return { commands: [], skills: [], hooks: [] }
     const f = slash.filter.toLowerCase()
     const isSkillOnly = f.startsWith('skill:')
+    const isHookOnly = f.startsWith('hook:')
     const skillFilter = isSkillOnly ? f.replace(/^skill:/, '') : f
+    const hookFilter = isHookOnly ? f.replace(/^hook:/, '') : f
 
-    const commands: PanelItem[] = isSkillOnly
+    const commands: PanelItem[] = (isSkillOnly || isHookOnly)
       ? []
       : BUILTIN_COMMANDS.filter(
           (c) =>
@@ -182,26 +187,47 @@ export default function PiComposer() {
           insertText: c.insertText,
         }))
 
-    const skills: PanelItem[] = installedSkills
-      .filter(
-        (sk) =>
-          !skillFilter ||
-          sk.name.includes(skillFilter) ||
-          sk.description.toLowerCase().includes(skillFilter),
-      )
-      .slice(0, 8)
-      .map((sk) => ({
-        kind: 'skill' as const,
-        name: sk.name,
-        description: sk.description,
-        insertText: '/skill:' + sk.name + ' ',
-      }))
+    const skills: PanelItem[] = isHookOnly
+      ? []
+      : installedSkills
+          .filter(
+            (sk) =>
+              !skillFilter ||
+              sk.name.includes(skillFilter) ||
+              sk.description.toLowerCase().includes(skillFilter),
+          )
+          .slice(0, 8)
+          .map((sk) => ({
+            kind: 'skill' as const,
+            name: sk.name,
+            description: sk.description,
+            insertText: '/skill:' + sk.name + ' ',
+          }))
 
-    return { commands, skills }
-  }, [slash, installedSkills])
+    const activeHooks = hooksGetActive()
+    const hooks: PanelItem[] = isSkillOnly
+      ? []
+      : activeHooks
+          .filter(
+            (h) =>
+              !hookFilter ||
+              h.id.includes(hookFilter) ||
+              h.name.toLowerCase().includes(hookFilter) ||
+              h.description.toLowerCase().includes(hookFilter),
+          )
+          .slice(0, 8)
+          .map((h) => ({
+            kind: 'hook' as const,
+            name: h.id,
+            description: h.name + ' - ' + h.description,
+            insertText: '/hook:' + h.id + ' ',
+          }))
+
+    return { commands, skills, hooks }
+  }, [slash, installedSkills, installedHookIds, hooksGetActive])
 
   const allPanelItems = useMemo(
-    () => [...panelItems.commands, ...panelItems.skills],
+    () => [...panelItems.commands, ...panelItems.skills, ...panelItems.hooks],
     [panelItems],
   )
 
@@ -367,8 +393,10 @@ export default function PiComposer() {
   }
 
   const commandCount = panelItems.commands.length
+  const skillsCount = panelItems.skills.length
   const hasCommands = commandCount > 0
-  const hasSkills = panelItems.skills.length > 0
+  const hasSkills = skillsCount > 0
+  const hasHooks = panelItems.hooks.length > 0
   const hasAny = allPanelItems.length > 0
 
   return (
@@ -442,6 +470,41 @@ export default function PiComposer() {
                           ].join(' ')}
                         >
                           <span className="font-mono text-[12px] text-ink">/skill:{item.name}</span>
+                          {item.description && (
+                            <span className="ml-2 text-[11px] text-ink-muted">
+                              {item.description.length > 64
+                                ? item.description.slice(0, 64) + '…'
+                                : item.description}
+                            </span>
+                          )}
+                        </button>
+                      </li>
+                    )
+                  })}
+                  {(hasCommands || hasSkills) && hasHooks && (
+                    <li className="my-1 mx-3 border-t border-line" />
+                  )}
+                  {hasHooks && (
+                    <li className="px-3 pt-1 pb-0.5 text-[10px] text-ink-faint select-none">
+                      已安装 Hooks
+                    </li>
+                  )}
+                  {panelItems.hooks.map((item, hi) => {
+                    const globalIdx = commandCount + skillsCount + hi
+                    return (
+                      <li key={'hk-' + item.name}>
+                        <button
+                          onMouseDown={(ev) => {
+                            ev.preventDefault()
+                            pickItem(item)
+                          }}
+                          onMouseEnter={() => setSlashIdx(globalIdx)}
+                          className={[
+                            'w-full px-3 py-1.5 text-left transition-colors',
+                            globalIdx === slashIdx ? 'bg-primary-tint' : 'hover:bg-surface-2',
+                          ].join(' ')}
+                        >
+                          <span className="font-mono text-[12px] text-ink">/hook:{item.name}</span>
                           {item.description && (
                             <span className="ml-2 text-[11px] text-ink-muted">
                               {item.description.length > 64

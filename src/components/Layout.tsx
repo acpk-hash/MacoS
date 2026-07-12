@@ -25,7 +25,7 @@ function NavIcon({ children }: { children: ReactNode }) {
 
 type NavItem = { to: string; label: string; title?: string; end?: boolean; icon: ReactNode }
 
-// 大类导航：编码 / 办公 / 图像 / 视频 / 科研 / Auto / Skills / Agent / 电商 / 用量，设置固定末位。
+// 大类导航：编码 / 办公 / 图像 / 视频 / 科研 / Auto / Skills / MCP / Agent / 电商 / 用量，设置固定末位。
 const navItems: NavItem[] = [
   {
     to: '/',
@@ -108,6 +108,29 @@ const navItems: NavItem[] = [
       <NavIcon>
         <rect x="14" y="3" width="7" height="7" rx="1" />
         <path d="M10 21V8a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5a1 1 0 0 0-1-1H3" />
+      </NavIcon>
+    ),
+  },
+  {
+    to: '/mcp',
+    label: 'MCP',
+    title: 'MCP · 工具服务器管理与安装',
+    icon: (
+      <NavIcon>
+        <path d="M12 2L2 7l10 5 10-5-10-5Z" />
+        <path d="M2 17l10 5 10-5" />
+        <path d="M2 12l10 5 10-5" />
+      </NavIcon>
+    ),
+  },
+  {
+    to: '/hooks',
+    label: 'Hooks',
+    title: 'Hooks · 编码钩子管理与安装',
+    icon: (
+      <NavIcon>
+        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
       </NavIcon>
     ),
   },

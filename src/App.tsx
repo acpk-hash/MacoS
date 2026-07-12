@@ -7,6 +7,8 @@ import VideoStudio from './pages/VideoStudio'
 import Science from './pages/Science'
 import Auto from './pages/Auto'
 import Skills from './pages/Skills'
+import McpHub from './pages/McpHub'
+import HooksHub from './pages/HooksHub'
 import AgentHub from './pages/AgentHub'
 import Commerce from './pages/Commerce'
 import Usage from './pages/Usage'
@@ -40,6 +42,8 @@ export default function App() {
           <Route path="science" element={<Science />} />
           <Route path="auto" element={<Auto />} />
           <Route path="skills" element={<Skills />} />
+          <Route path="mcp" element={<McpHub />} />
+          <Route path="hooks" element={<HooksHub />} />
           <Route path="agent" element={<AgentHub />} />
           <Route path="commerce" element={<Commerce />} />
           <Route path="usage" element={<Usage />} />
