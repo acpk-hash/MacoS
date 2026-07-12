@@ -1,19 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import Layout from './components/Layout'
-import Chat from './pages/Chat'
-import Board from './pages/Board'
-import Settings from './pages/Settings'
-import StudioChat from './pages/StudioChat'
-import StudioGen from './pages/StudioGen'
-import Canvas from './pages/Canvas'
-import Workbench from './pages/Workbench'
 import PiShell from './pages/PiShell'
-import RemoteHermes from './pages/RemoteHermes'
-import Sediment from './pages/Sediment'
-import Dashboard from './pages/Dashboard'
-import Artifacts from './pages/Artifacts'
-import Research from './pages/Research'
-import Market from './pages/Market'
+import Settings from './pages/Settings'
 import Login from './pages/Login'
 import { useAuthStore } from './stores/authStore'
 
@@ -34,21 +22,11 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Layout />}>
-          <Route index element={<Navigate to="/chat" replace />} />
-          <Route path="chat" element={<Chat />} />
-          <Route path="board" element={<Board />} />
-          <Route path="studio/chat" element={<StudioChat />} />
-          <Route path="studio/gen" element={<StudioGen />} />
-          <Route path="artifacts" element={<Artifacts />} />
-          <Route path="workbench" element={<Workbench />} />
-          <Route path="pi" element={<PiShell />} />
-          <Route path="remote" element={<RemoteHermes />} />
-          <Route path="dashboard" element={<Dashboard />} />
-          <Route path="sediment" element={<Sediment />} />
-          <Route path="research" element={<Research />} />
-          <Route path="market" element={<Market />} />
-          <Route path="canvas" element={<Canvas />} />
+          <Route index element={<PiShell />} />
+          {/* 旧 /pi 路径保留为别名，统一跳回根路由。 */}
+          <Route path="pi" element={<Navigate to="/" replace />} />
           <Route path="settings" element={<Settings />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
     </BrowserRouter>

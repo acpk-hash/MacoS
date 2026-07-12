@@ -1,8 +1,8 @@
 // /pi 中栏时间线：user 气泡 / assistant markdown 流式 / tool 可折叠单行 / system 条目。
-// markdown 渲染复用 ChatPanel 导出的 MarkdownLite（同一套 GFM/公式/高亮管线）。
+// markdown 渲染复用 ui/MarkdownLite（同一套 GFM/公式/高亮管线）。
 import { useEffect, useRef, useState } from 'react'
 import { usePiStore, type PiTimelineItem } from '../../stores/piStore'
-import { MarkdownLite } from '../workbench/ChatPanel'
+import { MarkdownLite } from '../ui/MarkdownLite'
 
 const EMPTY_ITEMS: PiTimelineItem[] = []
 
