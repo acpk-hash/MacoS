@@ -163,6 +163,9 @@ pub(crate) async fn pi_open(
     tokio::fs::write(agent_dir.join("settings.json"), build_settings_json(&model))
         .await
         .map_err(|e| format!("写入 pi settings.json 失败: {e}"))?;
+    tokio::fs::write(agent_dir.join("AGENTS.md"), PI_AGENTS_MD)
+        .await
+        .map_err(|e| format!("写入 pi AGENTS.md 失败: {e}"))?;
 
     // -- skills 接线：共享 skills（app_data_dir/skills）镜像进会话目录，
     //    spawn 时以 --skill 挂载（保留 --no-skills：只加载镜像，屏蔽其它来源）--
@@ -676,6 +679,23 @@ fn build_models_json(base_url: &str, wire_api: &str, model: &str) -> String {
     });
     serde_json::to_string_pretty(&v).expect("models.json serializes")
 }
+
+/// 全局指令(写入 `<agentDir>/AGENTS.md`,pi 原生读取并注入 system prompt)。
+const PI_AGENTS_MD: &str = "\
+# Iris 编码 Agent 全局指令
+
+## 输出风格
+- 用中文回复。简单问题一两句话说清，复杂问题分点展开。
+- 修改文件后说明改了哪些文件、每处做了什么。
+- 执行命令只汇报关键结果与失败原因。
+
+## 交互式工作流(关键)
+- 收到复杂或模糊任务时，**不要直接开始执行**。
+- 先分析任务，列出需要用户确认的关键问题（如目标范围、技术选型、约束条件、优先级等），用编号清单提问。
+- 等用户回答后，再给出收敛的执行方案概要，请用户确认后才动手。
+- 执行过程中遇到重大分歧点（多种可行方案、破坏性操作、不确定的需求），暂停提问而非自行决定。
+- 简单明确的任务（如 格式化这个文件、运行测试）可直接执行，不必提问。
+";
 
 /// 生成会话 `settings.json`（defaultProvider 固定指向生成的 provider）。
 fn build_settings_json(model: &str) -> String {
