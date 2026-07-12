@@ -352,6 +352,27 @@ export default function PptWindow() {
         </div>
       )}
 
+      {/* 兜底：stage=done 但 html 为空(extractHtml 失败)，或最近轮有产出但提取不到 HTML */}
+      {s.stage === 'done' && !s.html && s.turns.length > 0 && (() => {
+        const last = [...s.turns].reverse().find((t) => t.role === 'assistant')
+        return last?.content ? (
+          <div className="rounded-card border border-line bg-surface p-4 text-center">
+            <p className="text-xs text-ink-muted mb-2">模型已产出内容，但未成功提取为 HTML 格式。</p>
+            <Button
+              size="sm"
+              onClick={() =>
+                downloadBlob(
+                  new Blob([last.content], { type: 'text/html;charset=utf-8' }),
+                  '演示文稿-原始产出-' + new Date().toISOString().slice(0, 10) + '.html',
+                )
+              }
+            >
+              下载原始产出
+            </Button>
+          </div>
+        ) : null
+      })()}
+
       {s.streaming && (
         <div className="flex justify-end">
           <Button variant="danger" size="sm" onClick={() => void s.stop()}>

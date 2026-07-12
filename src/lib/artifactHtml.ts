@@ -41,8 +41,11 @@ export function extractHtml(reply: string): string {
   const bare = /<!doctype[\s\S]*<\/html>|<html[\s\S]*<\/html>/i.exec(text)
   if (bare) return bare[0].trim()
 
-  // 4) 至少含一个 <section class="slide"> 之类结构的裸片段
-  if (/<\s*(section|div|h[1-6]|p)\b/i.test(text)) return text.trim()
+  // 4) 至少含一个 HTML 元素标签的裸片段(放宽:接受任何含标签的文本)
+  if (/<\s*(section|div|h[1-6]|p|span|table|ul|ol|li|header|footer|main|article|style|script|meta|link|img|br)\b/i.test(text)) return text.trim()
+
+  // 5) 最后兜底:文本较长且含至少一个 < 标签(模型可能产出了不标准的 HTML)
+  if (text.length > 100 && /<\w+[\s>]/.test(text)) return text.trim()
 
   return ''
 }
