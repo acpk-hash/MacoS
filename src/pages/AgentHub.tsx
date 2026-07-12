@@ -10,6 +10,7 @@ import type { WorkflowRecord } from '../stores/agentHubStore'
 import WorkflowCard from '../components/agenthub/WorkflowCard'
 import WorkflowDrawer from '../components/agenthub/WorkflowDrawer'
 import { groupByDay } from '../components/agenthub/workflowUtils'
+import { useTaskRegistry, MODULE_LABEL } from '../stores/taskRegistryStore'
 
 export default function AgentHub() {
   const records = useAgentHubStore((s) => s.records)
@@ -17,6 +18,10 @@ export default function AgentHub() {
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [hint, setHint] = useState<string | null>(null)
+  const finishedTasks = useTaskRegistry(
+    (s) => s.tasks.filter((t) => t.status === 'done' || t.status === 'error'),
+  )
+  const clearFinished = useTaskRegistry((s) => s.clearFinished)
 
   useEffect(() => {
     if (!hint) return
@@ -125,6 +130,49 @@ export default function AgentHub() {
           ))
         )}
       </div>
+
+      {/* 全板块已完成任务 */}
+      {finishedTasks.length > 0 && (
+        <div className="w-full max-w-4xl mx-auto px-8 pb-8">
+          <div className="mb-2 text-[11px] font-medium text-ink-dim select-none">
+            全板块已完成任务
+            <button
+              onClick={clearFinished}
+              className="ml-2 text-primary hover:underline"
+            >
+              清除
+            </button>
+          </div>
+          <div className="space-y-1.5">
+            {finishedTasks.map((t) => (
+              <div
+                key={t.id}
+                className="flex items-center gap-2 px-3 py-2 rounded-card border border-line bg-surface"
+              >
+                <span
+                  className={[
+                    'inline-block px-1.5 py-0.5 rounded text-[10px] font-medium',
+                    t.status === 'done'
+                      ? 'bg-done/10 text-done'
+                      : 'bg-failed/10 text-failed',
+                  ].join(' ')}
+                >
+                  {MODULE_LABEL[t.module]}
+                </span>
+                <span className="text-[12px] text-ink truncate flex-1">{t.title}</span>
+                {t.detail && (
+                  <span className="text-[11px] text-ink-muted truncate max-w-[200px]">
+                    {t.detail}
+                  </span>
+                )}
+                <span className="text-[10px] text-ink-faint">
+                  {new Date(t.updatedAt).toLocaleTimeString()}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* 详情抽屉 */}
       {selected && (

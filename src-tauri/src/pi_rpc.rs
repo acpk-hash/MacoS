@@ -499,6 +499,41 @@ pub(crate) async fn pi_usage_recent(
     state.db.pi_usage_recent(limit).map_err(|e| e.to_string())
 }
 
+/// 手动插入一条用量记录（供非 pi 通道的板块写入，如 office/science/commerce/image）。
+/// model 字段建议带来源前缀如 `office:gpt-5.5`、`science:gpt-5.5` 以区分板块。
+#[tauri::command]
+pub(crate) async fn pi_usage_insert_manual(
+    session_id: String,
+    model: String,
+    provider: String,
+    input: i64,
+    output: i64,
+    cache_read: Option<i64>,
+    cache_write: Option<i64>,
+    cost: Option<f64>,
+    state: State<'_, crate::AppState>,
+    app: AppHandle,
+) -> Result<(), String> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let row = crate::db::NewPiUsage {
+        id: &id,
+        session_id: &session_id,
+        model: &model,
+        provider: &provider,
+        input,
+        output,
+        cache_read: cache_read.unwrap_or(0),
+        cache_write: cache_write.unwrap_or(0),
+        cost: cost.unwrap_or(0.0),
+    };
+    state
+        .db
+        .pi_usage_insert(&row)
+        .map_err(|e| e.to_string())?;
+    let _ = app.emit("pi-usage-updated", json!({ "sessionId": session_id }));
+    Ok(())
+}
+
 // ── 内置引擎（Iris）状态探测 ─────────────────────────────────────────────────
 
 /// 一个运行时构件（node / pi dist）的定位结果。

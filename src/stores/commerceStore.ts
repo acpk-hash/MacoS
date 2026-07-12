@@ -54,6 +54,11 @@ interface StudioEvent {
   text?: string
   status?: string
   message?: string
+  input_tokens?: number
+  output_tokens?: number
+  cache_read_tokens?: number
+  cache_write_tokens?: number
+  cost?: number
 }
 
 // ── CSV 解析（自写极简 RFC4180：引号 / 转义引号 / 引号内换行） ────────────────
@@ -561,6 +566,20 @@ async function ensureListener(): Promise<void> {
           break
         case 'done':
           pendingRuns.delete(p.session_id)
+          // 用量落库：done 事件若带 usage 字段，写入 pi_usage 表统一统计。
+          if (p.input_tokens || p.output_tokens) {
+            const model = useCommerceStore.getState().chatModel
+            void tauriInvoke<void>('pi_usage_insert_manual', {
+              sessionId: p.session_id,
+              model: 'commerce:' + model,
+              provider: 'studio',
+              input: p.input_tokens ?? 0,
+              output: p.output_tokens ?? 0,
+              cacheRead: p.cache_read_tokens ?? 0,
+              cacheWrite: p.cache_write_tokens ?? 0,
+              cost: p.cost ?? 0,
+            }).catch(() => {})
+          }
           run.resolve(p.text || run.buf)
           break
         case 'error':

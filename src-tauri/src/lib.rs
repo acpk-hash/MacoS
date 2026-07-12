@@ -1249,6 +1249,7 @@ pub fn run() {
             workspace_fs::ws_read_file,
             workspace_fs::ws_read_bytes,
             workspace_fs::ws_write_file,
+            workspace_fs::ws_open_system,
             workspace_fs::ws_create,
             workspace_fs::ws_rename,
             workspace_fs::ws_delete,

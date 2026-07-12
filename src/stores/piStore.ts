@@ -5,6 +5,7 @@
 //   pi_abort / pi_close({sessionId})
 // 事件通道 'pi-event'：payload { sessionId, event:<pi 原始 JSON> }。
 import { create } from 'zustand'
+import { useTaskRegistry } from './taskRegistryStore'
 
 // 注意：workspaceStore（→ monacoSetup → monaco-editor）只在 openFileInPanel
 // 里动态引入，避免把 monaco 拖进主 chunk（PiShell 是首屏页面）。
@@ -681,6 +682,17 @@ export const usePiStore = create<PiStore>((set, get) => ({
       case 'agent_start':
       case 'turn_start': {
         set((s) => ({ sessions: withStatus(s.sessions, sessionId, 'running') }))
+        // 全局任务条：编码任务注册/更新为 running。
+        {
+          const sess = get().sessions.find((x) => x.id === sessionId)
+          if (sess) {
+            useTaskRegistry.getState().registerTask({
+              id: 'coding-' + sessionId,
+              module: 'coding',
+              title: sess.title || '编码任务',
+            })
+          }
+        }
         break
       }
 
@@ -894,6 +906,8 @@ export const usePiStore = create<PiStore>((set, get) => ({
         } else {
           set((s) => ({ sessions: withStatus(s.sessions, sessionId, 'done') }))
         }
+        // 全局任务条：编码任务标记完成。
+        useTaskRegistry.getState().updateTask('coding-' + sessionId, { status: 'done' })
         // 存档钩子：会话在此定稿，把快照推给 AgentHub 工作流存档
         // （动态引入避免环依赖；同会话多轮 agent_end 会 upsert 同一条）。
         const st = get()
@@ -922,6 +936,8 @@ export const usePiStore = create<PiStore>((set, get) => ({
           ]),
           sessions: withStatus(s.sessions, sessionId, 'error'),
         }))
+        // 全局任务条：编码任务标记错误。
+        useTaskRegistry.getState().updateTask('coding-' + sessionId, { status: 'error', detail: text })
         break
       }
 
@@ -938,6 +954,8 @@ export const usePiStore = create<PiStore>((set, get) => ({
           ]),
           sessions: withStatus(s.sessions, sessionId, 'error'),
         }))
+        // 全局任务条：编码任务标记错误。
+        useTaskRegistry.getState().updateTask('coding-' + sessionId, { status: 'error', detail: text })
         break
       }
 

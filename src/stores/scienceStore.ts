@@ -184,6 +184,11 @@ interface StudioEvent {
   session_id?: string
   text?: string
   message?: string
+  input_tokens?: number
+  output_tokens?: number
+  cache_read_tokens?: number
+  cache_write_tokens?: number
+  cost?: number
 }
 
 async function ensureListener(): Promise<void> {
@@ -205,6 +210,20 @@ async function ensureListener(): Promise<void> {
         pendingRuns.delete(sid)
         const finalText = p.text || buffers.get(sid) || ''
         buffers.delete(sid)
+        // 用量落库：done 事件若带 usage 字段，写入 pi_usage 表统一统计。
+        if (p.input_tokens || p.output_tokens) {
+          const model = (useScienceStore.getState().modelKey.split('|')[1] ?? 'unknown')
+          void tauriInvoke<void>('pi_usage_insert_manual', {
+            sessionId: sid,
+            model: 'science:' + model,
+            provider: 'studio',
+            input: p.input_tokens ?? 0,
+            output: p.output_tokens ?? 0,
+            cacheRead: p.cache_read_tokens ?? 0,
+            cacheWrite: p.cache_write_tokens ?? 0,
+            cost: p.cost ?? 0,
+          }).catch(() => {})
+        }
         run?.resolve(finalText)
       } else if (p.type === 'error') {
         const run = pendingRuns.get(sid)

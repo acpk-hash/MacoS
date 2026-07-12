@@ -54,7 +54,49 @@ function pathsFromDataTransfer(dt: DataTransfer): string[] {
   return out
 }
 
-// ── / 技能唤起 & 粘贴图片辅助 ─────────────────────────────────────────────────
+// ── / 命令面板 & 技能唤起 & 粘贴图片辅助 ────────────────────────────────────────
+
+/** 内置快捷命令（22 条）——选中后 insertText 替换 `/xxx` 保留光标可续输。 */
+export interface BuiltinCommand {
+  name: string
+  description: string
+  /** 选中后替换到输入框的文本。 */
+  insertText: string
+}
+
+export const BUILTIN_COMMANDS: BuiltinCommand[] = [
+  { name: 'resume',    description: '恢复上次中断的任务',     insertText: '请恢复并继续上次中断的任务。' },
+  { name: 'review',    description: '代码审查',               insertText: '请对当前变更做一次代码审查，重点关注正确性、安全和可维护性。' },
+  { name: 'goal',      description: '设定项目目标',           insertText: '请为当前项目设定目标：' },
+  { name: 'fix',       description: '修复 bug',               insertText: '请修复以下 bug：' },
+  { name: 'test',      description: '补充测试',               insertText: '请为以下功能补充单元测试：' },
+  { name: 'refactor',  description: '重构代码',               insertText: '请重构以下代码，提高可读性和可维护性：' },
+  { name: 'explain',   description: '解释代码',               insertText: '请解释以下代码的作用和实现思路：' },
+  { name: 'commit',    description: '生成 commit 消息',       insertText: '请根据当前变更生成一条简洁准确的 commit 消息。' },
+  { name: 'pr',        description: '生成 PR 描述',           insertText: '请根据当前分支的变更生成 PR 标题和描述。' },
+  { name: 'doc',       description: '生成文档',               insertText: '请为以下代码生成文档注释：' },
+  { name: 'optimize',  description: '性能优化',               insertText: '请分析并优化以下代码的性能：' },
+  { name: 'security',  description: '安全审查',               insertText: '请对以下代码做安全审查，检查常见漏洞：' },
+  { name: 'debug',     description: '调试问题',               insertText: '请帮我调试以下问题：' },
+  { name: 'migrate',   description: '代码迁移',               insertText: '请帮我将以下代码迁移到：' },
+  { name: 'deploy',    description: '部署指引',               insertText: '请生成当前项目的部署步骤和注意事项。' },
+  { name: 'lint',      description: '代码规范检查',           insertText: '请检查以下代码的代码规范问题并给出修复建议：' },
+  { name: 'translate', description: '翻译代码注释',           insertText: '请将以下代码中的注释翻译为：' },
+  { name: 'diagram',   description: '生成架构图描述',         insertText: '请为当前项目生成架构图的 Mermaid 描述。' },
+  { name: 'api',       description: '设计 API',               insertText: '请为以下功能设计 RESTful API：' },
+  { name: 'config',    description: '配置文件生成',           insertText: '请生成以下服务的配置文件：' },
+  { name: 'clean',     description: '清理代码',               insertText: '请清理以下代码：移除死代码、统一风格、简化逻辑。' },
+  { name: 'deps',      description: '依赖分析',               insertText: '请分析当前项目的依赖关系，标出过时或有安全问题的依赖。' },
+]
+
+/** 统一命令面板条目：内置命令 或 已安装 skill。 */
+interface PanelItem {
+  kind: 'command' | 'skill'
+  name: string
+  description: string
+  /** 内置命令选中后插入的文本；skill 则构造 `/skill:<name> `。 */
+  insertText: string
+}
 
 /** 粘贴图片的 mime → 落盘扩展名。 */
 function extForMime(mime: string): string {
@@ -88,13 +130,23 @@ function slashTokenBeforeCaret(
   return { start: caret - m[2].length - 1, filter: m[2] }
 }
 
+/** 简易模糊匹配：filter 的每个字符按顺序出现在 target 中。 */
+function fuzzyMatch(target: string, filter: string): boolean {
+  if (!filter) return true
+  let fi = 0
+  for (let ti = 0; ti < target.length && fi < filter.length; ti++) {
+    if (target[ti] === filter[fi]) fi++
+  }
+  return fi === filter.length
+}
+
 export default function PiComposer() {
   const [draft, setDraft] = useState('')
   const [attachments, setAttachments] = useState<string[]>([])
   const [dragOver, setDragOver] = useState(false)
   const [hint, setHint] = useState<string | null>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
-  // / 技能选择器：token（start=斜杠位置）+ 高亮索引。
+  // / 命令面板：token（start=斜杠位置）+ 高亮索引。
   const [slash, setSlash] = useState<{ start: number; filter: string } | null>(null)
   const [slashIdx, setSlashIdx] = useState(0)
 
@@ -110,19 +162,49 @@ export default function PiComposer() {
   const installedSkills = usePiStore((s) => s.installedSkills)
   const loadInstalledSkills = usePiStore((s) => s.loadInstalledSkills)
 
-  const slashMatches = useMemo(() => {
-    if (!slash) return []
-    const f = slash.filter.toLowerCase().replace(/^skill:/, '')
-    return installedSkills
+  // 统一命令面板数据源：顶部=内置快捷命令，下方分隔线后=已安装 skills。
+  const panelItems = useMemo<{ commands: PanelItem[]; skills: PanelItem[] }>(() => {
+    if (!slash) return { commands: [], skills: [] }
+    const f = slash.filter.toLowerCase()
+    const isSkillOnly = f.startsWith('skill:')
+    const skillFilter = isSkillOnly ? f.replace(/^skill:/, '') : f
+
+    const commands: PanelItem[] = isSkillOnly
+      ? []
+      : BUILTIN_COMMANDS.filter(
+          (c) =>
+            fuzzyMatch(c.name.toLowerCase(), f) ||
+            fuzzyMatch(c.description.toLowerCase(), f),
+        ).map((c) => ({
+          kind: 'command' as const,
+          name: c.name,
+          description: c.description,
+          insertText: c.insertText,
+        }))
+
+    const skills: PanelItem[] = installedSkills
       .filter(
         (sk) =>
-          !f || sk.name.includes(f) || sk.description.toLowerCase().includes(f),
+          !skillFilter ||
+          sk.name.includes(skillFilter) ||
+          sk.description.toLowerCase().includes(skillFilter),
       )
       .slice(0, 8)
+      .map((sk) => ({
+        kind: 'skill' as const,
+        name: sk.name,
+        description: sk.description,
+        insertText: '/skill:' + sk.name + ' ',
+      }))
+
+    return { commands, skills }
   }, [slash, installedSkills])
 
-  // AgentHub「在编码中重跑」小钩子：挂载/更新时消费 pendingComposerText
-  // 预填草稿并立即清空（详见 piStore.pendingComposerText）。
+  const allPanelItems = useMemo(
+    () => [...panelItems.commands, ...panelItems.skills],
+    [panelItems],
+  )
+
   const pendingText = usePiStore((s) => s.pendingComposerText)
   useEffect(() => {
     if (pendingText == null) return
@@ -155,7 +237,6 @@ export default function PiComposer() {
     })
   }
 
-  // 输入变化：同步 draft + 检测光标处的 / 唤起 token。
   const onChangeDraft = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const v = e.target.value
     setDraft(v)
@@ -165,11 +246,10 @@ export default function PiComposer() {
     if (tok) void loadInstalledSkills()
   }
 
-  // 选中技能：把 / token 替换为 `/skill:<name> ` 前缀并复位光标。
-  const pickSkill = (name: string) => {
+  const pickItem = (item: PanelItem) => {
     if (!slash) return
     const caret = taRef.current?.selectionStart ?? draft.length
-    const inserted = `/skill:${name} `
+    const inserted = item.insertText
     setDraft(draft.slice(0, slash.start) + inserted + draft.slice(caret))
     setSlash(null)
     const el = taRef.current
@@ -182,7 +262,6 @@ export default function PiComposer() {
     }
   }
 
-  // 粘贴图片：落盘为文件（save_clipboard_file）→ 加入附件 chips（@path 注入走现有逻辑）。
   const onPaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     if (disabled) return
     const images = Array.from(e.clipboardData?.items ?? []).filter(
@@ -203,7 +282,7 @@ export default function PiComposer() {
         addPaths([path])
         setHint('已粘贴图片 → 附件')
       } catch (err) {
-        setHint(`粘贴图片失败：${String(err)}`)
+        setHint('粘贴图片失败：' + String(err))
       }
     }
   }
@@ -234,45 +313,45 @@ export default function PiComposer() {
     const parts: string[] = []
     if (body) parts.push(body)
     if (attachments.length > 0) {
-      // pi 原生 @path 附件注入（pi 端自行加载/读取，无需额外说明文字）。
-      parts.push(attachments.map((p) => `@${p}`).join('\n'))
+      parts.push(attachments.map((p) => '@' + p).join('\n'))
     }
     setDraft('')
     setAttachments([])
     setSlash(null)
     void send(parts.join('\n\n'))
-    // 高度复位
     const el = taRef.current
     if (el) el.style.height = 'auto'
   }
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (slash) {
+    if (slash && allPanelItems.length > 0) {
       if (e.key === 'Escape') {
         e.preventDefault()
         setSlash(null)
         return
       }
-      if (slashMatches.length > 0) {
-        if (e.key === 'ArrowDown') {
-          e.preventDefault()
-          setSlashIdx((i) => (i + 1) % slashMatches.length)
-          return
-        }
-        if (e.key === 'ArrowUp') {
-          e.preventDefault()
-          setSlashIdx((i) => (i - 1 + slashMatches.length) % slashMatches.length)
-          return
-        }
-        if (
-          ((e.key === 'Enter' && !e.shiftKey) || e.key === 'Tab') &&
-          !e.nativeEvent.isComposing
-        ) {
-          e.preventDefault()
-          pickSkill((slashMatches[slashIdx] ?? slashMatches[0]).name)
-          return
-        }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setSlashIdx((i) => (i + 1) % allPanelItems.length)
+        return
       }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setSlashIdx((i) => (i - 1 + allPanelItems.length) % allPanelItems.length)
+        return
+      }
+      if (
+        ((e.key === 'Enter' && !e.shiftKey) || e.key === 'Tab') &&
+        !e.nativeEvent.isComposing
+      ) {
+        e.preventDefault()
+        pickItem(allPanelItems[slashIdx] ?? allPanelItems[0])
+        return
+      }
+    } else if (slash && e.key === 'Escape') {
+      e.preventDefault()
+      setSlash(null)
+      return
     }
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault()
@@ -280,13 +359,17 @@ export default function PiComposer() {
     }
   }
 
-  // 简易自适应高度（1~10 行）。
   const onInput = () => {
     const el = taRef.current
     if (!el) return
     el.style.height = 'auto'
     el.style.height = Math.min(el.scrollHeight, 220) + 'px'
   }
+
+  const commandCount = panelItems.commands.length
+  const hasCommands = commandCount > 0
+  const hasSkills = panelItems.skills.length > 0
+  const hasAny = allPanelItems.length > 0
 
   return (
     <div className="flex-shrink-0 border-t border-line px-4 py-3">
@@ -305,26 +388,22 @@ export default function PiComposer() {
               : 'border-line focus-within:border-primary/60',
           ].join(' ')}
         >
-          {/* / 技能选择器（上浮） */}
+          {/* / 统一命令面板（上浮） */}
           {slash && (
             <div className="absolute bottom-full left-0 right-0 z-30 mb-1.5 overflow-hidden rounded-card border border-line bg-surface shadow-lg">
               <p className="px-3 pb-1 pt-2 text-[10px] text-ink-faint">
-                已安装技能 · ↑↓ 选择 · Enter 插入 · Esc 关闭
+                命令面板 · ↑↓ 选择 · Enter/Tab 插入 · Esc 关闭
               </p>
-              {installedSkills.length === 0 ? (
-                <p className="px-3 pb-2.5 text-[11.5px] text-ink-dim">
-                  还没有安装技能 — 去「Skills」页安装后即可在此唤起
-                </p>
-              ) : slashMatches.length === 0 ? (
-                <p className="px-3 pb-2.5 text-[11.5px] text-ink-dim">无匹配技能</p>
+              {!hasAny ? (
+                <p className="px-3 pb-2.5 text-[11.5px] text-ink-dim">无匹配命令或技能</p>
               ) : (
-                <ul className="max-h-56 overflow-y-auto pb-1">
-                  {slashMatches.map((sk, i) => (
-                    <li key={sk.name}>
+                <ul className="max-h-72 overflow-y-auto pb-1">
+                  {panelItems.commands.map((item, i) => (
+                    <li key={'cmd-' + item.name}>
                       <button
                         onMouseDown={(ev) => {
                           ev.preventDefault()
-                          pickSkill(sk.name)
+                          pickItem(item)
                         }}
                         onMouseEnter={() => setSlashIdx(i)}
                         className={[
@@ -332,23 +411,53 @@ export default function PiComposer() {
                           i === slashIdx ? 'bg-primary-tint' : 'hover:bg-surface-2',
                         ].join(' ')}
                       >
-                        <span className="font-mono text-[12px] text-ink">/skill:{sk.name}</span>
-                        {sk.description && (
-                          <span className="ml-2 text-[11px] text-ink-muted">
-                            {sk.description.length > 64
-                              ? sk.description.slice(0, 64) + '…'
-                              : sk.description}
-                          </span>
-                        )}
+                        <span className="font-mono text-[12px] text-ink">/{item.name}</span>
+                        <span className="ml-2 text-[11px] text-ink-muted">
+                          {item.description}
+                        </span>
                       </button>
                     </li>
                   ))}
+                  {hasCommands && hasSkills && (
+                    <li className="my-1 mx-3 border-t border-line" />
+                  )}
+                  {hasSkills && (
+                    <li className="px-3 pt-1 pb-0.5 text-[10px] text-ink-faint select-none">
+                      已安装技能
+                    </li>
+                  )}
+                  {panelItems.skills.map((item, si) => {
+                    const globalIdx = commandCount + si
+                    return (
+                      <li key={'sk-' + item.name}>
+                        <button
+                          onMouseDown={(ev) => {
+                            ev.preventDefault()
+                            pickItem(item)
+                          }}
+                          onMouseEnter={() => setSlashIdx(globalIdx)}
+                          className={[
+                            'w-full px-3 py-1.5 text-left transition-colors',
+                            globalIdx === slashIdx ? 'bg-primary-tint' : 'hover:bg-surface-2',
+                          ].join(' ')}
+                        >
+                          <span className="font-mono text-[12px] text-ink">/skill:{item.name}</span>
+                          {item.description && (
+                            <span className="ml-2 text-[11px] text-ink-muted">
+                              {item.description.length > 64
+                                ? item.description.slice(0, 64) + '…'
+                                : item.description}
+                            </span>
+                          )}
+                        </button>
+                      </li>
+                    )
+                  })}
                 </ul>
               )}
             </div>
           )}
 
-          {/* 附件 chips */}
           {attachments.length > 0 && (
             <div className="flex flex-wrap gap-1.5 px-2.5 pt-2">
               {attachments.map((p) => (
@@ -388,7 +497,7 @@ export default function PiComposer() {
                 ? '先新建一个会话'
                 : running
                   ? '输入插话内容，Enter 发送（运行中会先排队投递）'
-                  : '交代一个任务，Enter 发送；输入 / 唤起技能，可粘贴图片、拖入或 📎 添加附件'
+                  : '交代一个任务，Enter 发送；输入 / 唤起命令面板，可粘贴图片、拖入或 📎 添加附件'
             }
             className="w-full bg-transparent resize-none px-3 pt-2.5 pb-1 text-[13.5px] text-ink placeholder:text-ink-faint outline-none max-h-[220px] disabled:opacity-50"
           />
@@ -402,13 +511,13 @@ export default function PiComposer() {
               📎
             </button>
             <span className="text-[10.5px] text-ink-faint select-none">
-              {hint ?? 'Enter 发送 · Shift+Enter 换行 · / 唤起技能'}
+              {hint ?? 'Enter 发送 · Shift+Enter 换行 · / 唤起命令'}
             </span>
             <div className="flex-1" />
             {queue.length > 0 && (
               <span
                 className="text-[10.5px] px-2 py-0.5 rounded-chip bg-gold/15 text-gold border border-gold/25"
-                title={queue.map((q, i) => `${i + 1}. ${q}`).join('\n')}
+                title={queue.map((q, i) => (i + 1) + '. ' + q).join('\n')}
               >
                 排队 {queue.length} 条
               </span>
