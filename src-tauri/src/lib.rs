@@ -7,6 +7,7 @@ pub mod hermes;
 pub mod litsearch;
 pub mod market;
 pub mod mcp;
+pub mod procext;
 pub mod providers;
 pub mod pty;
 pub mod relay;
@@ -35,6 +36,7 @@ use agent::{
 };
 use db::{CanvasEventRow, CanvasSessionRow, Db, TaskRow, TimelineItem};
 use mcp::{McpServer, add_mcp_server, list_mcp_servers, remove_mcp_server, codex_config_path};
+use procext::NoWindowExt;
 
 // ── Shared state ──────────────────────────────────────────────────────────────
 
@@ -368,6 +370,7 @@ async fn cold_revert(db: &Db, session_id: &str, path: &str) -> Result<(), String
         let out = tokio::process::Command::new("git")
             .args(["checkout", "--", path])
             .current_dir(&workdir_path)
+            .no_window()
             .output()
             .await
             .map_err(|e| e.to_string())?;
@@ -649,6 +652,7 @@ struct EngineStatus {
 async fn probe_engine_with(name: &str, cmd_binary: &str, args: &[&str]) -> EngineStatus {
     let output = tokio::process::Command::new(cmd_binary)
         .args(args)
+        .no_window()
         .output()
         .await;
 
@@ -796,11 +800,13 @@ async fn bridge_node_version() -> Option<String> {
     #[cfg(windows)]
     let out = tokio::process::Command::new("cmd")
         .args(["/c", "node", "--version"])
+        .no_window()
         .output()
         .await;
     #[cfg(not(windows))]
     let out = tokio::process::Command::new("node")
         .arg("--version")
+        .no_window()
         .output()
         .await;
 
@@ -831,7 +837,7 @@ async fn open_external_url(url: String) -> Result<(), String> {
     }
 
     #[cfg(windows)]
-    let spawn = tokio::process::Command::new("explorer").arg(&url).spawn();
+    let spawn = tokio::process::Command::new("explorer").arg(&url).no_window().spawn();
     #[cfg(target_os = "macos")]
     let spawn = tokio::process::Command::new("open").arg(&url).spawn();
     #[cfg(all(not(windows), not(target_os = "macos")))]

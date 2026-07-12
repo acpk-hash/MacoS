@@ -8,6 +8,7 @@ use tokio::sync::Mutex;
 
 use crate::agent::events::{AgentEvent, AgentEventEnvelope, RawEvent};
 use crate::agent::tracker::FileTracker;
+use crate::procext::NoWindowExt;
 
 // ── Error type ────────────────────────────────────────────────────────────────
 
@@ -475,11 +476,14 @@ fn codex_cmd() -> Command {
     {
         let mut cmd = Command::new("cmd");
         cmd.args(["/c", "codex"]);
+        cmd.no_window();
         cmd
     }
     #[cfg(not(windows))]
     {
-        Command::new("codex")
+        let mut cmd = Command::new("codex");
+        cmd.no_window();
+        cmd
     }
 }
 

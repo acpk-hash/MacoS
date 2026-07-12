@@ -19,6 +19,7 @@ use similar::{ChangeTag, TextDiff};
 use tokio::process::Command;
 
 use crate::agent::events::AgentEvent;
+use crate::procext::NoWindowExt;
 
 // ── Error ─────────────────────────────────────────────────────────────────────
 
@@ -160,6 +161,7 @@ impl FileTracker {
             let out = Command::new("git")
                 .args(["diff", "--", path])
                 .current_dir(&self.workdir)
+                .no_window()
                 .output()
                 .await
                 .map_err(|e| TrackerError::Git(e.to_string()))?;
@@ -191,6 +193,7 @@ impl FileTracker {
         let out = Command::new("git")
             .args(["checkout", "--", path])
             .current_dir(&self.workdir)
+            .no_window()
             .output()
             .await
             .map_err(|e| TrackerError::Git(e.to_string()))?;
@@ -336,6 +339,7 @@ pub async fn check_is_git(workdir: &Path) -> bool {
     Command::new("git")
         .args(["rev-parse", "--is-inside-work-tree"])
         .current_dir(workdir)
+        .no_window()
         .output()
         .await
         .map(|o| o.status.success())
@@ -349,6 +353,7 @@ async fn git_tracked(workdir: &Path, abs_path: &Path) -> bool {
         .args(["ls-files", "--error-unmatch"])
         .arg(abs_path)
         .current_dir(workdir)
+        .no_window()
         .output()
         .await
         .map(|o| o.status.success())

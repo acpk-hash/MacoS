@@ -12,6 +12,8 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use toml_edit::{DocumentMut, Item, Table, value as toml_value};
 
+use crate::procext::NoWindowExt;
+
 // ── Public types ──────────────────────────────────────────────────────────────
 
 /// Configuration info returned to the frontend (no plaintext key).
@@ -335,7 +337,8 @@ pub async fn engine_config_test() -> Result<TestResult, String> {
     ])
     .stdin(std::process::Stdio::null())
     .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped());
+    .stderr(std::process::Stdio::piped())
+    .no_window();
 
     let timeout_result = tokio::time::timeout(
         std::time::Duration::from_secs(30),

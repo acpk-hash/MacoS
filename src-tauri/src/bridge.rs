@@ -31,6 +31,7 @@ use tokio::sync::{watch, Mutex};
 use crate::agent::codex::{AgentAdapter, CodexAdapter, SessionMap, TrackerMap};
 use crate::db::Db;
 use crate::feishu;
+use crate::procext::NoWindowExt;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -849,7 +850,8 @@ async fn spawn_node(
         .env("BRIDGE_TOKEN", token)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .kill_on_drop(true);
+        .kill_on_drop(true)
+        .no_window();
 
     cmd.spawn().map_err(|e| format!("spawn node 失败: {e}"))
 }
@@ -861,6 +863,7 @@ async fn kill_child(child: &mut tokio::process::Child) {
     if let Some(pid) = child.id() {
         let _ = tokio::process::Command::new("taskkill")
             .args(["/F", "/T", "/PID", &pid.to_string()])
+            .no_window()
             .status()
             .await;
     }

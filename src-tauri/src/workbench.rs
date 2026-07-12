@@ -44,6 +44,7 @@ use tokio::sync::{mpsc, watch, Mutex};
 
 use crate::agent::embedded::{locate_codex_exe, EngineEvent};
 use crate::db::Db;
+use crate::procext::NoWindowExt;
 
 /// Engine start_thread → thread_started handshake budget (codex-core builds
 /// its stack lazily on the first thread; no network involved).
@@ -406,6 +407,11 @@ async fn spawn_engine(
     )
     .await
     .map_err(|e| format!("写入引擎配置失败: {e}"))?;
+    // 全局输出风格指引：codex-core 会读取 $CODEX_HOME/AGENTS.md 作为
+    // global user instructions（只影响回复详略，不影响工具调用能力）。
+    tokio::fs::write(codex_home.join("AGENTS.md"), OUTPUT_STYLE_AGENTS_MD)
+        .await
+        .map_err(|e| format!("写入输出风格指引失败: {e}"))?;
 
     let mut child = Command::new(&engine_bin)
         .args(["--codex-exe", &codex_exe])
@@ -416,6 +422,7 @@ async fn spawn_engine(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true)
+        .no_window()
         .spawn()
         .map_err(|e| {
             format!(
@@ -760,6 +767,19 @@ fn accumulate_usage(
     }
 }
 
+/// 输出风格指引，写入临时 CODEX_HOME/AGENTS.md（codex-core 把它并入
+/// global user instructions）。目标：该详则详、该简则简；只约束文字回复，
+/// 不触碰工具调用/改文件行为。
+const OUTPUT_STYLE_AGENTS_MD: &str = "\
+# 输出风格（AgentBoard 工作台）
+
+- 用中文回复。回答简洁直接：简单问题一两句话说清，不铺垫、不客套、不复述问题。
+- 复杂问题分点展开，说明关键步骤和依据；不啰嗦，也不省略必要环节。
+- 修改文件后，用一两句话说明改了哪些文件、每处改动做了什么。
+- 执行命令时只汇报关键结果与失败原因，不粘贴大段无关输出。
+- 以上只约束文字回复的详略，不改变你使用工具读写文件、执行命令的方式。
+";
+
 /// Generate the temp-CODEX_HOME `config.toml`. The API key is an `env_key`
 /// *reference* — the plaintext never lands on disk.
 ///
@@ -920,6 +940,7 @@ async fn kill_child_id(child_id: Option<u32>) {
     if let Some(pid) = child_id {
         let _ = tokio::process::Command::new("taskkill")
             .args(["/F", "/T", "/PID", &pid.to_string()])
+            .no_window()
             .output()
             .await;
     }
@@ -1045,6 +1066,19 @@ mod tests {
         // The key must be an env reference, never a literal secret.
         assert!(t.contains(&format!(r#"env_key = "{KEY_ENV}""#)));
         assert!(!t.to_lowercase().contains("sk-"));
+    }
+
+    #[test]
+    fn output_style_agents_md_is_sane() {
+        // 详略两头都要压：既要求简洁，也要求复杂问题分点、改动说明。
+        assert!(OUTPUT_STYLE_AGENTS_MD.contains("简洁直接"));
+        assert!(OUTPUT_STYLE_AGENTS_MD.contains("分点展开"));
+        assert!(OUTPUT_STYLE_AGENTS_MD.contains("改了哪些文件"));
+        // 不得削弱工具调用/改文件能力。
+        assert!(OUTPUT_STYLE_AGENTS_MD.contains("不改变你使用工具"));
+        // 无 BOM、无密钥类内容。
+        assert!(!OUTPUT_STYLE_AGENTS_MD.starts_with('\u{feff}'));
+        assert!(!OUTPUT_STYLE_AGENTS_MD.to_lowercase().contains("sk-"));
     }
 
     #[test]
@@ -1247,6 +1281,7 @@ mod tests {
         std::fs::create_dir_all(&codex_home).unwrap();
         std::fs::write(codex_home.join("config.toml"), build_config_toml(&base_url, &model))
             .unwrap();
+        std::fs::write(codex_home.join("AGENTS.md"), OUTPUT_STYLE_AGENTS_MD).unwrap();
         let work = std::env::temp_dir().join(format!("wb-live-work-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&work).unwrap();
 
@@ -1259,6 +1294,7 @@ mod tests {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true)
+            .no_window()
             .spawn()
             .expect("spawn engine");
 

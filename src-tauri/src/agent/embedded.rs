@@ -20,6 +20,7 @@ use crate::agent::codex::{
 };
 use crate::agent::events::{AgentEvent, AgentEventEnvelope};
 use crate::agent::tracker::FileTracker;
+use crate::procext::NoWindowExt;
 
 // -- Engine wire events (mirror agentboard-engine's OutEvent) -----------------
 //
@@ -218,9 +219,9 @@ pub(crate) async fn locate_codex_exe(explicit: Option<&str>) -> Result<String, S
     }
     // Fall back to PATH lookup.
     #[cfg(windows)]
-    let probe = Command::new("where").arg("codex").output().await;
+    let probe = Command::new("where").arg("codex").no_window().output().await;
     #[cfg(not(windows))]
-    let probe = Command::new("which").arg("codex").output().await;
+    let probe = Command::new("which").arg("codex").no_window().output().await;
     if let Ok(out) = probe {
         if out.status.success() {
             let text = String::from_utf8_lossy(&out.stdout);
@@ -278,6 +279,7 @@ impl EmbeddedAdapter {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true)
+            .no_window()
             .spawn()
             .map_err(|e| CodexError::Engine(format!("spawn engine 失败: {e}")))?;
 
