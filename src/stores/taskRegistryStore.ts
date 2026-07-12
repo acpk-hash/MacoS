@@ -11,9 +11,12 @@ export type TaskModule =
   | 'coding'
   | 'office'
   | 'image'
+  | 'video'
   | 'science'
   | 'auto'
   | 'commerce'
+  | 'mcp'
+  | 'hooks'
 
 export type GlobalTaskStatus = 'running' | 'done' | 'error'
 
@@ -32,9 +35,12 @@ export const MODULE_LABEL: Record<TaskModule, string> = {
   coding: '编码',
   office: '办公',
   image: '图像',
+  video: '视频',
   science: '科研',
   auto: 'Auto',
   commerce: '电商',
+  mcp: 'MCP',
+  hooks: 'Hooks',
 }
 
 interface TaskRegistryState {

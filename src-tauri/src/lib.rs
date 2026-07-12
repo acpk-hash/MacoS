@@ -41,7 +41,7 @@ use agent::{
     new_session_map, SessionMap,
 };
 use db::{CanvasEventRow, CanvasSessionRow, Db, TaskRow, TimelineItem};
-use mcp::{McpServer, add_mcp_server, list_mcp_servers, remove_mcp_server, codex_config_path};
+use mcp::{McpServer, McpCatalogEntry, add_mcp_server, list_mcp_servers, remove_mcp_server, codex_config_path, mcp_catalog as mcp_catalog_fn};
 use procext::NoWindowExt;
 
 // ── Shared state ──────────────────────────────────────────────────────────────
@@ -729,6 +729,12 @@ async fn mcp_remove(name: String) -> Result<(), String> {
     remove_mcp_server(&path, &name)
 }
 
+/// Return the curated MCP server catalog (built-in discovery list).
+#[tauri::command]
+async fn mcp_catalog() -> Vec<McpCatalogEntry> {
+    mcp_catalog_fn()
+}
+
 /// Send a test Feishu card to verify the notification configuration.
 /// Returns a human-readable success or error message (error text is transparent).
 #[tauri::command]
@@ -1136,6 +1142,7 @@ pub fn run() {
             mcp_list,
             mcp_add,
             mcp_remove,
+            mcp_catalog,
             feishu_test,
             feishu_recent_logs,
             wecom_test,
