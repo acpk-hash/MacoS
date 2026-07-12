@@ -9,6 +9,7 @@ pub mod hermes;
 pub mod litsearch;
 pub mod market;
 pub mod mcp;
+pub mod pi_rpc;
 pub mod procext;
 pub mod providers;
 pub mod pty;
@@ -1059,6 +1060,7 @@ pub fn run() {
             pty: pty::PtyState::new(),
         })
         .manage(subagents::SubagentManager::default())
+        .manage(pi_rpc::PiEngine::default())
         .manage(kb_watch::KbWatcher::default())
         .setup(|app| {
             // NOTE: no provider seeding from ~/.codex here. The providers table
@@ -1181,6 +1183,12 @@ pub fn run() {
             workbench_stats,
             workbench_export_html,
             workbench_close,
+            pi_rpc::pi_open,
+            pi_rpc::pi_prompt,
+            pi_rpc::pi_steer,
+            pi_rpc::pi_follow_up,
+            pi_rpc::pi_abort,
+            pi_rpc::pi_close,
             subagents::subagent_spawn,
             subagents::subagent_stop,
             subagents::subagent_list,
