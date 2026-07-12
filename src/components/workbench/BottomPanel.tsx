@@ -6,12 +6,14 @@ import { useEffect, useMemo, useState } from 'react'
 import { useWorkbenchStore } from '../../stores/workbenchStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { useSshStore } from '../../stores/sshStore'
+import { useSubagentStore } from '../../stores/subagentStore'
 import StatusDot from '../ui/StatusDot'
 import SshPanel from './SshPanel'
 import TerminalPane from './TerminalPane'
 import RulesPane from './RulesPane'
+import SubagentsPanel from './SubagentsPanel'
 
-export type BottomTab = 'tasks' | 'terminal' | 'ailog' | 'rules' | 'ssh'
+export type BottomTab = 'tasks' | 'terminal' | 'ailog' | 'rules' | 'ssh' | 'subagents'
 
 function baseName(p: string): string {
   const parts = p.split(/[\\/]/)
@@ -32,6 +34,7 @@ export default function BottomPanel({
   const entries = useWorkbenchStore((s) => s.entries)
   const running = useWorkbenchStore((s) => s.running)
   const sshCount = useSshStore((s) => s.conns.length)
+  const subRunning = useSubagentStore((s) => s.agents.filter((a) => a.status === 'running').length)
   // 本地 shell 永远起在本地工作根（远程浏览时也不切到 SFTP 根）。
   const localRoot = useWorkspaceStore((s) => (s.remote ? s.localRoot : s.root))
 
@@ -88,6 +91,7 @@ export default function BottomPanel({
         <Tab id="terminal" label="终端" />
         <Tab id="ailog" label="AI 日志" count={bashes.length} />
         <Tab id="rules" label="规则" />
+        <Tab id="subagents" label="子任务" count={subRunning} />
         <Tab id="ssh" label="SSH" count={sshCount} />
         <div className="flex-1" />
         {running && (
@@ -131,6 +135,11 @@ export default function BottomPanel({
       {open && tab === 'rules' && (
         <div className="flex-1 min-h-0 px-3 py-2">
           <RulesPane />
+        </div>
+      )}
+      {open && tab === 'subagents' && (
+        <div className="flex-1 min-h-0 px-3 py-2">
+          <SubagentsPanel />
         </div>
       )}
       {open && (tab === 'tasks' || tab === 'ailog') && (
