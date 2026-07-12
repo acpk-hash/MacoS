@@ -6,6 +6,8 @@ import {
 } from '../stores/studioStore'
 import { useImageStore } from '../stores/imageStore'
 import PromptBuilder from '../components/image/PromptBuilder'
+import ReferencePanel from '../components/image/ReferencePanel'
+import AnnotatorModal from '../components/image/AnnotatorModal'
 import MediaCard from '../components/image/MediaCard'
 import FilterBar, { rangeStart, type TimeRange } from '../components/image/FilterBar'
 import Lightbox from '../components/image/Lightbox'
@@ -54,18 +56,29 @@ export default function ImageStudio() {
     mediaLoaded,
     loadModels,
     loadMedia,
-    generateImage,
     deleteMedia,
   } = useStudioStore()
-  const { favoriteIds, toggleFavorite, removeFavorite } = useImageStore()
-
-  // ── 生成面板状态 ────────────────────────────────────────────────────────────
-  const [draft, setDraft] = useState('')
-  const [imageModel, setImageModel] = useState('')
-  const [imageProviderId, setImageProviderId] = useState('')
-  const [size, setSize] = useState<string>('1024x1024')
-  const [count, setCount] = useState(1)
-  const [submitting, setSubmitting] = useState(false)
+  // 生成面板状态（草稿/模型/尺寸/数量/参考/标注工作台）全在 imageStore ——
+  // 离开页面回来完整恢复；生成与再加工任务在 store 内后台继续跑。
+  const {
+    favoriteIds,
+    toggleFavorite,
+    removeFavorite,
+    draft,
+    setDraft,
+    imageModel,
+    imageProviderId,
+    setImageSel,
+    size,
+    setSize,
+    count,
+    setCount,
+    assembling,
+    generate,
+    annotator,
+    openAnnotator,
+    closeAnnotator,
+  } = useImageStore()
 
   // ── 画廊筛选状态 ────────────────────────────────────────────────────────────
   const [filterModel, setFilterModel] = useState('')
@@ -107,8 +120,7 @@ export default function ImageStudio() {
   useEffect(() => {
     if (imageModels.length === 0) return
     if (!imageModel || !imageModels.some((m) => m.modelId === imageModel)) {
-      setImageProviderId(imageModels[0].providerId)
-      setImageModel(imageModels[0].modelId)
+      setImageSel(imageModels[0].providerId, imageModels[0].modelId)
     }
   }, [imageModels, imageModel])
 
@@ -152,22 +164,34 @@ export default function ImageStudio() {
     else if (lightboxIdx >= doneItems.length) setLightboxIdx(doneItems.length - 1)
   }, [doneItems.length, lightboxIdx])
 
+  // 再加工工作台的源图记录；源图被删或缺文件时自动关闭工作台。
+  const annotatorRow = useMemo(
+    () =>
+      annotator
+        ? media.find(
+            (m) =>
+              m.id === annotator.sourceId &&
+              m.status === 'done' &&
+              !!m.local_path,
+          ) ?? null
+        : null,
+    [annotator, media],
+  )
+  useEffect(() => {
+    if (annotator && mediaLoaded && !annotatorRow) closeAnnotator()
+  }, [annotator, annotatorRow, mediaLoaded, closeAnnotator])
+
   // ── 动作 ────────────────────────────────────────────────────────────────────
   const handleGenerate = async () => {
-    const prompt = draft.trim()
-    if (!prompt || submitting) return
+    if (!draft.trim() || assembling) return
     if (!imageModel) {
       showToast('当前没有可用的图像模型')
       return
     }
-    setSubmitting(true)
-    try {
-      await generateImage(prompt, imageModel, size, count, imageProviderId || null)
-      const err = useStudioStore.getState().loadError
-      if (err && err.startsWith('图像生成失败')) showToast(err)
-    } finally {
-      setSubmitting(false)
-    }
+    // 组装（含等待参考图风格分析收尾）后即返回；生成本体在后台跑，
+    // 挂全局任务条（module: image），离开页面不中断。
+    const warn = await generate()
+    showToast(warn ?? '已提交生成任务，完成后自动入画廊')
   }
 
   const handleRetry = (row: GenMediaRow) => {
@@ -177,10 +201,7 @@ export default function ImageStudio() {
     const match = row.model
       ? imageModels.find((m) => m.modelId === row.model)
       : undefined
-    if (match) {
-      setImageProviderId(match.providerId)
-      setImageModel(match.modelId)
-    }
+    if (match) setImageSel(match.providerId, match.modelId)
     draftRef.current?.focus()
     showToast('已回填参数，可重新生成')
   }
@@ -217,7 +238,7 @@ export default function ImageStudio() {
 
   const selCls =
     'bg-surface-2 border border-line rounded-lg px-2.5 py-1.5 text-xs text-ink focus:outline-none focus:border-lavender transition-colors disabled:opacity-50 disabled:cursor-not-allowed'
-  const canGenerate = !!draft.trim() && !!imageModel && !submitting
+  const canGenerate = !!draft.trim() && !!imageModel && !assembling
 
   return (
     <div className="flex h-full min-h-0">
@@ -256,6 +277,9 @@ export default function ImageStudio() {
             />
           </div>
 
+          {/* 参考输入：图片(后台转风格描述) / txt·md 文件(并入提示词) */}
+          <ReferencePanel onToast={showToast} />
+
           {/* 结构化 Prompt 构建器（默认折叠） */}
           <PromptBuilder onApply={(p) => setDraft(p)} />
 
@@ -268,8 +292,10 @@ export default function ImageStudio() {
                 onChange={(e) => {
                   const i = e.target.value.indexOf('|')
                   if (i < 0) return
-                  setImageProviderId(e.target.value.slice(0, i))
-                  setImageModel(e.target.value.slice(i + 1))
+                  setImageSel(
+                    e.target.value.slice(0, i),
+                    e.target.value.slice(i + 1),
+                  )
                 }}
                 disabled={imageModels.length === 0}
                 className={selCls + ' flex-1 min-w-0'}
@@ -327,7 +353,7 @@ export default function ImageStudio() {
             disabled={!canGenerate}
             className="w-full py-2 rounded-lg text-sm font-medium bg-grad-primary text-white shadow-glow-primary hover:-translate-y-px disabled:opacity-40 disabled:shadow-none disabled:translate-y-0 disabled:cursor-not-allowed transition-all"
           >
-            {submitting ? '生成中…' : '生成图像'}
+            {assembling ? '整理参考中…' : '生成图像'}
           </button>
           <p className="text-[11px] text-ink-dim leading-relaxed">
             图像由 AI 生成，可能与描述存在差异。
@@ -408,6 +434,7 @@ export default function ImageStudio() {
                   row={row}
                   fav={favSet.has(row.id)}
                   onOpen={() => openLightbox(row)}
+                  onEdit={() => openAnnotator(row.id)}
                   onDownload={() => void downloadMedia(row, showToast)}
                   onDelete={() =>
                     row.status === 'done' ? setConfirmDelete(row) : doDelete(row.id)
@@ -430,11 +457,18 @@ export default function ImageStudio() {
           fav={favSet.has(doneItems[lightboxIdx].id)}
           onIndex={setLightboxIdx}
           onClose={() => setLightboxIdx(null)}
+          onEdit={(row) => {
+            setLightboxIdx(null)
+            openAnnotator(row.id)
+          }}
           onDownload={(row) => void downloadMedia(row, showToast)}
           onDelete={(row) => setConfirmDelete(row)}
           onToggleFav={(row) => toggleFavorite(row.id)}
         />
       )}
+
+      {/* 再加工（标注）工作台：状态在 imageStore，跨导航保留 */}
+      {annotator && annotatorRow && <AnnotatorModal row={annotatorRow} />}
 
       {/* 删除确认 */}
       {confirmDelete && (

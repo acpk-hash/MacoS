@@ -15,15 +15,21 @@ export function sizeOf(row: GenMediaRow): string | null {
   }
 }
 
-/** 该记录是否由「标注修改」二次生成而来。 */
-export function isEditedRow(row: GenMediaRow): boolean {
-  if (!row.params_json) return false
+/** 读取「标注再加工」记录的来源图 id（image_edit 在 params_json 里记
+ *  source_media_id 溯源），非再加工记录返回 null。 */
+export function sourceIdOf(row: GenMediaRow): string | null {
+  if (!row.params_json) return null
   try {
     const p = JSON.parse(row.params_json) as { source_media_id?: string }
-    return !!p.source_media_id
+    return p.source_media_id ?? null
   } catch {
-    return false
+    return null
   }
+}
+
+/** 该记录是否由「标注修改」二次生成而来。 */
+export function isEditedRow(row: GenMediaRow): boolean {
+  return sourceIdOf(row) !== null
 }
 
 export function formatTime(ms: number): string {

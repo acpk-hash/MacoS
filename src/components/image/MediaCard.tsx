@@ -45,6 +45,8 @@ export interface MediaCardProps {
   row: GenMediaRow
   fav: boolean
   onOpen: () => void
+  /** 进入「再加工」标注工作台（仅 done 状态可用）。 */
+  onEdit: () => void
   onDownload: () => void
   onDelete: () => void
   onCopyPrompt: () => void
@@ -56,6 +58,7 @@ export default function MediaCard({
   row,
   fav,
   onOpen,
+  onEdit,
   onDownload,
   onDelete,
   onCopyPrompt,
@@ -142,6 +145,9 @@ export default function MediaCard({
 
       {/* Hover actions */}
       <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <IconBtn title="再加工（标注修改）" onClick={onEdit}>
+          ✎
+        </IconBtn>
         <IconBtn title="下载" onClick={onDownload}>
           ↓
         </IconBtn>

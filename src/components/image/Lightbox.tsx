@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import type { GenMediaRow } from '../../stores/studioStore'
-import { formatTime, isEditedRow, sizeOf } from './mediaUtils'
+import { formatTime, sizeOf, sourceIdOf } from './mediaUtils'
 
 // 灯箱（恢复自 698a026 StudioGen 的 Lightbox，图像专用）。
 // 变化：去掉视频分支与标注入口；新增收藏切换。键盘 Esc 关闭、左右键翻页。
@@ -12,6 +12,8 @@ export interface LightboxProps {
   fav: boolean
   onIndex: (i: number) => void
   onClose: () => void
+  /** 进入「再加工」标注工作台。 */
+  onEdit: (row: GenMediaRow) => void
   onDownload: (row: GenMediaRow) => void
   onDelete: (row: GenMediaRow) => void
   onToggleFav: (row: GenMediaRow) => void
@@ -23,6 +25,7 @@ export default function Lightbox({
   fav,
   onIndex,
   onClose,
+  onEdit,
   onDownload,
   onDelete,
   onToggleFav,
@@ -42,6 +45,9 @@ export default function Lightbox({
   if (!row) return null
   const src = row.local_path ? convertFileSrc(row.local_path) : ''
   const size = sizeOf(row)
+  // 再加工溯源：该图若由标注修改而来，展示来源并支持跳回原图。
+  const sourceId = sourceIdOf(row)
+  const sourceIdx = sourceId ? items.findIndex((i) => i.id === sourceId) : -1
 
   return (
     <div
@@ -67,6 +73,12 @@ export default function Lightbox({
             ].join(' ')}
           >
             {fav ? '★ 已收藏' : '☆ 收藏'}
+          </button>
+          <button
+            onClick={() => onEdit(row)}
+            className="px-3 py-1.5 rounded-lg bg-grad-primary text-white text-xs hover:-translate-y-px transition-all"
+          >
+            再加工
           </button>
           <button
             onClick={() => onDownload(row)}
@@ -129,7 +141,19 @@ export default function Lightbox({
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-ink-dim">
           <span>模型：{row.model || '—'}</span>
           {size && <span>尺寸：{size}</span>}
-          {isEditedRow(row) && <span className="text-sky">由标注修改而来</span>}
+          {sourceId && (
+            <span className="text-sky">
+              再加工自 {sourceId.slice(0, 8)}
+              {sourceIdx >= 0 && (
+                <button
+                  onClick={() => onIndex(sourceIdx)}
+                  className="ml-1 underline hover:text-ink transition-colors"
+                >
+                  查看原图
+                </button>
+              )}
+            </span>
+          )}
           <span>时间：{formatTime(row.created_at)}</span>
         </div>
       </div>
