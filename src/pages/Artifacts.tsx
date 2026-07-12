@@ -1,17 +1,24 @@
-// Artifacts 页（H3）——文档 / PPT 的 HTML 可视化编辑，类似 claude.ai 的 artifacts。
+// Artifacts 页（H3/P7）——文档 / PPT 的两阶段生成 + HTML 可视化编辑。
 //
-// 三区布局（蓝白科研风）：
-//   左：AI 对话 / 指令区——描述需求让模型产出完整、离线、自包含的 HTML；可继续
-//       对话让它改。
-//   中：Monaco HTML 源码（可折叠）——手改源码实时刷新预览。
-//   右：iframe 实时预览——srcDoc=当前 HTML；「可视化编辑」模式下点击文字块就地
-//       编辑，blur 后经 postMessage 把改动写回源码字符串。
+// P7 起改为「先规划询问、确认后再生成」（claude.ai/design 式两阶段）：
+//   ① 规划：描述需求 → 模型先产出结构化规划（markdown，不出 HTML）；
+//   ② 确认：右侧面板展示规划，可直接编辑文本或再对话让模型修订；
+//   ③ 生成：点「按此规划生成」→ 以最终规划为强上下文产出自包含 HTML，
+//      之后进入原有的 预览 / 源码 / 可视化编辑 / 保存 / 导出 流程。
 //
-// 单一数据源 = artifactStore.html。预览、Monaco、可视化编辑三者都读/写它。
-import { useEffect, useMemo, useRef, useState } from 'react'
+// 三区布局：
+//   左：AI 对话 / 指令区（带 规划›确认›生成 步骤指示）。
+//   中：Monaco HTML 源码（可折叠，仅生成后显示）——手改源码实时刷新预览。
+//   右：规划确认面板（阶段①②）或 iframe 实时预览（阶段③）；「可视化编辑」
+//       模式下点击文字块就地编辑，blur 后经 postMessage 把改动写回源码字符串。
+//
+// 单一数据源 = artifactStore.html（规划阶段则是 artifactStore.plan）。
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import Editor from '@monaco-editor/react'
+import ReactMarkdown, { type Components } from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { MONACO_THEME } from '../lib/monacoSetup'
-import { useArtifactStore } from '../stores/artifactStore'
+import { useArtifactStore, type ArtifactStage } from '../stores/artifactStore'
 import {
   applyEdit,
   injectEditableIds,
@@ -52,6 +59,84 @@ function buildPreviewDoc(html: string, mode: Mode): string {
   return withIds + script
 }
 
+// ── 步骤指示（规划 › 确认 › 生成） ──────────────────────────────────
+
+const STEP_LABELS = ['规划', '确认', '生成']
+
+function stageStep(stage: ArtifactStage): number {
+  if (stage === 'idle' || stage === 'planning') return 0
+  if (stage === 'plan_ready') return 1
+  return 2
+}
+
+function StepIndicator({ stage }: { stage: ArtifactStage }) {
+  const cur = stageStep(stage)
+  return (
+    <div className="flex items-center gap-1 px-3 py-1.5 border-b border-line flex-shrink-0">
+      {STEP_LABELS.map((label, i) => (
+        <Fragment key={label}>
+          {i > 0 && <span className="text-[10px] text-ink-dim">›</span>}
+          <span
+            className={[
+              'px-1.5 py-0.5 rounded-md text-[11px] transition-colors',
+              i === cur
+                ? 'bg-primary-tint text-primary font-medium'
+                : i < cur
+                  ? 'text-ink-muted'
+                  : 'text-ink-dim',
+            ].join(' ')}
+          >
+            {i < cur ? '✓ ' : ''}
+            {label}
+          </span>
+        </Fragment>
+      ))}
+    </div>
+  )
+}
+
+// ── 规划 markdown 渲染（深色主题、轻量组件映射） ────────────────────
+
+const planMdComponents: Components = {
+  h1: ({ children }) => (
+    <h1 className="text-[16px] font-bold text-ink mt-3 mb-1.5 first:mt-0">{children}</h1>
+  ),
+  h2: ({ children }) => (
+    <h2 className="text-[14.5px] font-semibold text-primary mt-3 mb-1 first:mt-0">
+      {children}
+    </h2>
+  ),
+  h3: ({ children }) => (
+    <h3 className="text-[13.5px] font-semibold text-ink mt-2 mb-1">{children}</h3>
+  ),
+  p: ({ children }) => <p className="my-1 text-ink-muted">{children}</p>,
+  ul: ({ children }) => (
+    <ul className="list-disc pl-5 my-1 space-y-0.5 text-ink-muted">{children}</ul>
+  ),
+  ol: ({ children }) => (
+    <ol className="list-decimal pl-5 my-1 space-y-0.5 text-ink-muted">{children}</ol>
+  ),
+  strong: ({ children }) => (
+    <strong className="text-ink font-semibold">{children}</strong>
+  ),
+  code: ({ children }) => (
+    <code className="px-1 py-0.5 rounded bg-surface-2 text-[12px] text-primary">
+      {children}
+    </code>
+  ),
+  hr: () => <hr className="my-2 border-line" />,
+}
+
+function PlanMarkdown({ text }: { text: string }) {
+  return (
+    <div className="text-[13px] leading-6 text-ink break-words">
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={planMdComponents}>
+        {text}
+      </ReactMarkdown>
+    </div>
+  )
+}
+
 export default function Artifacts() {
   const {
     aggModels,
@@ -59,13 +144,17 @@ export default function Artifacts() {
     currentModel,
     currentProviderId,
     turns,
+    stage,
+    plan,
     html,
     streaming,
     error,
     loadModels,
     setModelSel,
     ask,
+    confirmPlan,
     stop,
+    setPlan,
     setHtml,
     saveDraft,
     reset,
@@ -74,6 +163,7 @@ export default function Artifacts() {
   const [draft, setDraft] = useState('')
   const [mode, setMode] = useState<Mode>('source')
   const [showSource, setShowSource] = useState(true)
+  const [planEditing, setPlanEditing] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const [attachments, setAttachments] = useState<Attachment[]>([])
 
@@ -98,6 +188,11 @@ export default function Artifacts() {
     [html, mode],
   )
   const editableCount = useMemo(() => (html ? countEditable(html) : 0), [html])
+
+  // 阶段①②（以及首次生成中）右侧显示规划面板而非预览。
+  const showPlanPanel =
+    !html &&
+    (stage === 'planning' || stage === 'plan_ready' || stage === 'generating')
 
   // 监听 iframe 可视化编辑的回写消息。
   useEffect(() => {
@@ -162,9 +257,12 @@ export default function Artifacts() {
   const submit = () => {
     let t = draft.trim()
     if (streaming) return
-    // 只附了参考文件没打字：用一个默认指令直接生成。
+    // 只附了参考文件没打字：用一个默认指令。
     if (!t && attachments.length > 0) {
-      t = '请基于附带的参考资料生成文档 / PPT。'
+      t =
+        stage === 'idle'
+          ? '请基于附带的参考资料规划一份文档 / PPT。'
+          : '请基于附带的参考资料调整。'
     }
     if (!t) return
     setDraft('')
@@ -173,8 +271,14 @@ export default function Artifacts() {
     void ask(t, atts)
   }
 
+  const handleNew = () => {
+    reset()
+    setPlanEditing(false)
+    setDraft('')
+  }
+
   const handleSaveDraft = () => {
-    if (!html) return
+    if (!html && !plan) return
     const ok = saveDraft()
     showToast(ok ? '已保存草稿（刷新 / 重启后自动恢复）' : '保存失败')
   }
@@ -230,13 +334,16 @@ export default function Artifacts() {
           <span className="text-sm font-semibold text-primary">文档 / PPT</span>
           <div className="flex-1" />
           <button
-            onClick={() => reset()}
+            onClick={handleNew}
             className="text-xs text-ink-muted hover:text-ink border border-line rounded-lg px-2 py-1 transition-colors"
             title="清空并新建文档"
           >
             新建
           </button>
         </div>
+
+        {/* 步骤指示：规划 › 确认 › 生成 */}
+        <StepIndicator stage={stage} />
 
         {/* 对话流 */}
         <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3 min-h-0">
@@ -245,7 +352,7 @@ export default function Artifacts() {
               <Mascot mood="happy" size={64} className="mb-3" />
               <p className="text-sm text-ink-muted mb-1">描述你想要的文档或 PPT</p>
               <p className="text-xs text-ink-dim mb-4">
-                模型会产出可离线打开的自包含 HTML
+                模型会先给出规划供你确认 / 调整，确认后再生成可离线打开的 HTML
               </p>
               <div className="space-y-2 w-full">
                 {EXAMPLES.map((p) => (
@@ -284,18 +391,20 @@ export default function Artifacts() {
                   key={i}
                   className="px-3 py-2 rounded-lg bg-surface border border-line text-[12.5px] text-ink-muted leading-6"
                 >
-                  已生成 / 更新 HTML（见中栏源码与右侧预览）
+                  {t.kind === 'plan'
+                    ? '已产出 / 更新规划（见右侧面板，可编辑或确认）'
+                    : '已生成 / 更新 HTML（见中栏源码与右侧预览）'}
                 </div>
               ),
             )
           )}
           {streaming && (
             <div className="px-3 py-2 rounded-lg bg-surface border border-line text-[12.5px] text-ink-dim">
-              正在生成 HTML…
+              {stage === 'planning' ? '正在拟定规划…' : '正在生成 HTML…'}
             </div>
           )}
           {error && (
-            <div className="px-3 py-2 rounded-lg bg-[#fef2f2] border border-[#fecaca] text-[12.5px] text-failed break-words">
+            <div className="px-3 py-2 rounded-lg bg-coral/10 border border-coral/30 text-[12.5px] text-coral break-words">
               {error}
             </div>
           )}
@@ -373,9 +482,11 @@ export default function Artifacts() {
             }}
             rows={3}
             placeholder={
-              turns.length === 0
-                ? '例如：做一个 5 页关于 XX 的 PPT…（可附大纲 / 图片作参考）'
-                : '继续对话让它改，如：把第 2 页标题改成…'
+              stage === 'idle'
+                ? '例如：做一个 5 页关于 XX 的 PPT…（先出规划，确认后再生成）'
+                : stage === 'plan_ready'
+                  ? '想调整规划？如：把第 2 页换成…（也可直接在右侧编辑规划）'
+                  : '继续对话让它改，如：把第 2 页标题改成…'
             }
             className="w-full resize-none bg-surface border border-line rounded-lg px-2.5 py-2 text-[13px] text-ink placeholder:text-ink-dim focus:outline-none focus:border-primary transition-colors"
           />
@@ -393,21 +504,23 @@ export default function Artifacts() {
                 disabled={!currentModel || (!draft.trim() && attachments.length === 0)}
                 className="flex-1 text-xs px-3 py-2 rounded-lg bg-primary text-white hover:bg-primary-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
-                {turns.length === 0 ? '生成' : '发送'}
+                {stage === 'idle'
+                  ? '生成规划'
+                  : stage === 'plan_ready'
+                    ? '调整规划'
+                    : '发送'}
               </button>
             )}
           </div>
         </div>
       </div>
 
-      {/* ── 中：HTML 源码（Monaco，可折叠） ─────────────── */}
-      {showSource && (
+      {/* ── 中：HTML 源码（Monaco，可折叠，仅生成后显示） ── */}
+      {showSource && html && (
         <div className="flex flex-col w-[38%] min-w-[280px] flex-shrink-0 border-r border-line h-full min-h-0">
           <div className="flex items-center gap-2 px-3 h-9 border-b border-line flex-shrink-0 bg-surface/40">
             <span className="text-[12.5px] text-ink-muted font-medium">HTML 源码</span>
-            <span className="text-[11px] text-ink-dim">
-              {html ? html.length + ' 字符' : '空'}
-            </span>
+            <span className="text-[11px] text-ink-dim">{html.length + ' 字符'}</span>
             <div className="flex-1" />
             <button
               onClick={() => setShowSource(false)}
@@ -439,10 +552,10 @@ export default function Artifacts() {
         </div>
       )}
 
-      {/* ── 右：实时预览 ─────────────────────────────────── */}
+      {/* ── 右：规划确认面板（阶段①②）或实时预览（阶段③） ── */}
       <div className="flex flex-col flex-1 min-w-0 h-full min-h-0">
         <div className="flex items-center gap-2 px-3 h-9 border-b border-line flex-shrink-0 bg-surface/40">
-          {!showSource && (
+          {!showSource && html && (
             <button
               onClick={() => setShowSource(true)}
               className="text-[11px] text-ink-dim hover:text-ink"
@@ -451,71 +564,147 @@ export default function Artifacts() {
               ⟩ 源码
             </button>
           )}
-          <span className="text-[12.5px] text-ink-muted font-medium">预览</span>
+          <span className="text-[12.5px] text-ink-muted font-medium">
+            {showPlanPanel ? '规划确认' : '预览'}
+          </span>
 
-          {/* 可视化 / 源码编辑切换 */}
-          <div className="ml-1 flex rounded-lg border border-line overflow-hidden">
-            <button
-              onClick={() => setMode('source')}
-              className={[
-                'px-2.5 py-1 text-[11px] transition-colors',
-                mode === 'source'
-                  ? 'bg-primary text-white'
-                  : 'bg-surface text-ink-muted hover:text-ink',
-              ].join(' ')}
-            >
-              源码编辑
-            </button>
-            <button
-              onClick={() => setMode('visual')}
-              disabled={!html}
-              className={[
-                'px-2.5 py-1 text-[11px] transition-colors disabled:opacity-40',
-                mode === 'visual'
-                  ? 'bg-primary text-white'
-                  : 'bg-surface text-ink-muted hover:text-ink',
-              ].join(' ')}
-              title="点击预览里的文字块即可就地编辑"
-            >
-              可视化编辑
-            </button>
-          </div>
-          {mode === 'visual' && (
-            <span className="text-[11px] text-ink-dim">
-              点文字块编辑（{editableCount} 处可编辑）
-            </span>
+          {/* 可视化 / 源码编辑切换（仅生成后有意义） */}
+          {!showPlanPanel && (
+            <>
+              <div className="ml-1 flex rounded-lg border border-line overflow-hidden">
+                <button
+                  onClick={() => setMode('source')}
+                  className={[
+                    'px-2.5 py-1 text-[11px] transition-colors',
+                    mode === 'source'
+                      ? 'bg-primary text-white'
+                      : 'bg-surface text-ink-muted hover:text-ink',
+                  ].join(' ')}
+                >
+                  源码编辑
+                </button>
+                <button
+                  onClick={() => setMode('visual')}
+                  disabled={!html}
+                  className={[
+                    'px-2.5 py-1 text-[11px] transition-colors disabled:opacity-40',
+                    mode === 'visual'
+                      ? 'bg-primary text-white'
+                      : 'bg-surface text-ink-muted hover:text-ink',
+                  ].join(' ')}
+                  title="点击预览里的文字块即可就地编辑"
+                >
+                  可视化编辑
+                </button>
+              </div>
+              {mode === 'visual' && (
+                <span className="text-[11px] text-ink-dim">
+                  点文字块编辑（{editableCount} 处可编辑）
+                </span>
+              )}
+            </>
           )}
 
           <div className="flex-1" />
 
           <button
             onClick={handleSaveDraft}
-            disabled={!html}
+            disabled={!html && !plan}
             className="text-[11px] text-white bg-primary hover:bg-primary-hover rounded-lg px-2.5 py-1 disabled:opacity-40 transition-colors"
-            title="保存当前草稿到本机（含预览里的就地修改），刷新 / 重启后自动恢复"
+            title="保存当前草稿到本机（含规划与预览里的就地修改），刷新 / 重启后自动恢复"
           >
             保存
           </button>
-          <button
-            onClick={printDoc}
-            disabled={!html}
-            className="text-[11px] text-ink-muted hover:text-ink border border-line rounded-lg px-2 py-1 disabled:opacity-40 transition-colors"
-            title="用系统打印对话框导出为 PDF"
-          >
-            导出 PDF
-          </button>
-          <button
-            onClick={() => void exportHtml()}
-            disabled={!html}
-            className="text-[11px] text-ink-muted hover:text-ink border border-line rounded-lg px-2 py-1 disabled:opacity-40 transition-colors"
-            title="另存为 .html 文件（可离线打开）"
-          >
-            导出 HTML
-          </button>
+          {!showPlanPanel && (
+            <>
+              <button
+                onClick={printDoc}
+                disabled={!html}
+                className="text-[11px] text-ink-muted hover:text-ink border border-line rounded-lg px-2 py-1 disabled:opacity-40 transition-colors"
+                title="用系统打印对话框导出为 PDF"
+              >
+                导出 PDF
+              </button>
+              <button
+                onClick={() => void exportHtml()}
+                disabled={!html}
+                className="text-[11px] text-ink-muted hover:text-ink border border-line rounded-lg px-2 py-1 disabled:opacity-40 transition-colors"
+                title="另存为 .html 文件（可离线打开）"
+              >
+                导出 HTML
+              </button>
+            </>
+          )}
         </div>
 
         <div className="flex-1 min-h-0 bg-bg relative">
-          {html ? (
+          {showPlanPanel ? (
+            /* ── 规划确认面板（深色渲染，可编辑 / 确认） ── */
+            <div className="absolute inset-0 flex flex-col">
+              <div className="flex items-center gap-2 px-4 py-2 border-b border-line flex-shrink-0">
+                <span className="text-[12.5px] font-medium text-ink">📋 规划</span>
+                {stage === 'planning' && (
+                  <span className="text-[11px] text-ink-dim animate-pulse">
+                    模型正在拟定规划…
+                  </span>
+                )}
+                {stage === 'generating' && (
+                  <span className="text-[11px] text-primary animate-pulse">
+                    正在按规划生成 HTML…
+                  </span>
+                )}
+                <div className="flex-1" />
+                {stage === 'plan_ready' && (
+                  <button
+                    onClick={() => setPlanEditing((v) => !v)}
+                    className="text-[11px] text-ink-muted hover:text-ink border border-line rounded-lg px-2 py-1 transition-colors"
+                    title="直接编辑规划文本（markdown）"
+                  >
+                    {planEditing ? '完成编辑' : '✏️ 编辑规划'}
+                  </button>
+                )}
+              </div>
+
+              <div className="flex-1 min-h-0 flex flex-col px-5 py-4">
+                {plan ? (
+                  planEditing && stage === 'plan_ready' ? (
+                    <textarea
+                      value={plan}
+                      onChange={(e) => setPlan(e.target.value)}
+                      className="flex-1 w-full resize-none bg-surface border border-line rounded-lg p-3 text-[12.5px] font-mono text-ink leading-6 focus:outline-none focus:border-primary transition-colors"
+                      placeholder="在这里直接编辑规划（markdown）…"
+                    />
+                  ) : (
+                    <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+                      <PlanMarkdown text={plan} />
+                    </div>
+                  )
+                ) : (
+                  <div className="flex flex-col items-center mt-16 gap-3">
+                    <Mascot mood="happy" size={64} />
+                    <p className="text-[12.5px] text-ink-dim">
+                      模型正在根据你的需求拟定规划…
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {stage === 'plan_ready' && (
+                <div className="border-t border-line px-4 py-3 flex items-center gap-3 flex-shrink-0">
+                  <button
+                    onClick={() => void confirmPlan()}
+                    disabled={!plan.trim()}
+                    className="text-xs px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    ✅ 按此规划生成
+                  </button>
+                  <span className="text-[11px] text-ink-dim">
+                    不满意？在左侧输入调整要求让模型修订，或点「编辑规划」直接改
+                  </span>
+                </div>
+              )}
+            </div>
+          ) : html ? (
             <iframe
               key={mode}
               ref={iframeRef}
@@ -531,9 +720,11 @@ export default function Artifacts() {
           ) : (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center px-6">
               <Mascot mood="idle" size={72} />
-              <p className="text-[13px] text-ink-muted">左侧描述需求，生成后在这里预览</p>
+              <p className="text-[13px] text-ink-muted">
+                左侧描述需求 → 先出规划 → 确认后生成
+              </p>
               <p className="text-[11px] text-ink-dim">
-                支持点文字就地编辑、导出 HTML / 打印 PDF
+                生成后支持点文字就地编辑、导出 HTML / 打印 PDF
               </p>
             </div>
           )}
