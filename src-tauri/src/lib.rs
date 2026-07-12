@@ -1210,6 +1210,7 @@ pub fn run() {
             openscience::os_stop,
             openscience::os_artifacts,
             openscience::os_read_text,
+            openscience::os_read_bytes,
             subagents::subagent_spawn,
             subagents::subagent_stop,
             subagents::subagent_list,

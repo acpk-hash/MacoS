@@ -3,9 +3,12 @@
 // 拖窄过阈值吸合关闭（恢复钮由 Auto 页渲染）、头部按钮/双击拖柄最大化覆盖全页。
 // 内容：os_artifacts 按 kind 分组（pdf/md/tex/溯源），md/tex/jsonl 走 os_read_text
 // 预览（md 用 MarkdownLite），pdf 显示路径+复制；运行中由 store 8s 轮询刷新。
-import { useEffect, useState } from 'react'
+import { useEffect, useState, lazy, Suspense } from 'react'
 import { useAutoStore, type OsArtifact } from '../../stores/autoStore'
 import MarkdownLite from '../ui/MarkdownLite'
+
+// PDF 预览(pdfjs 懒加载,不进主 chunk)
+const PdfPreviewPanel = lazy(() => import('./PdfPreviewPanel'))
 import { fmtDateTime, fmtSize } from './format'
 import {
   IconChevronRight,
@@ -33,6 +36,13 @@ const KIND_META: Record<string, { label: string; tone: string }> = {
 }
 const KIND_ORDER = ['pdf', 'md', 'tex', 'jsonl']
 
+/** PDF 预览态:base64 数据(从 os_read_bytes 拿)。 */
+interface PdfPreviewState {
+  name: string
+  path: string
+  base64: string
+}
+
 interface Preview {
   name: string
   kind: string
@@ -52,6 +62,9 @@ export default function ArtifactPane() {
   const runStatus = useAutoStore((s) => s.runStatus)
   const width = useAutoStore((s) => s.inspectorWidth)
   const maximized = useAutoStore((s) => s.inspectorMaximized)
+
+  const [pdfPreview, setPdfPreview] = useState<PdfPreviewState | null>(null)
+  const [pdfLoading, setPdfLoading] = useState(false)
 
   // 拖动中的实时宽度放本地；松手才写回 store（persist）。
   const [dragWidth, setDragWidth] = useState<number | null>(null)
@@ -92,6 +105,20 @@ export default function ArtifactPane() {
     setDragWidth(null)
   }
 
+  const openPdfPreview = async (a: OsArtifact) => {
+    setPdfLoading(true)
+    setPreviewErr(null)
+    try {
+      const res = await tauriInvoke<{ base64: string; size: number }>('os_read_bytes', { path: a.path })
+      setPdfPreview({ name: a.name, path: a.path, base64: res.base64 })
+      setPreview(null)
+    } catch (e) {
+      setPreviewErr(String(e))
+    } finally {
+      setPdfLoading(false)
+    }
+  }
+
   const openPreview = async (a: OsArtifact) => {
     setPreviewErr(null)
     setPreview({ name: a.name, kind: a.kind, path: a.path, text: null })
@@ -122,18 +149,18 @@ export default function ArtifactPane() {
     <div className="flex h-full flex-col bg-surface">
       {/* 头部 */}
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-line px-3">
-        {preview ? (
+        {(preview || pdfPreview) ? (
           <>
             <button
               className="flex items-center gap-1 text-[11.5px] text-ink-dim hover:text-ink transition-colors"
-              onClick={() => setPreview(null)}
+              onClick={() => { setPreview(null); setPdfPreview(null) }}
               title="返回产物列表"
             >
               <IconChevronRight size={11} className="rotate-180" />
               产物
             </button>
-            <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-ink" title={preview.path}>
-              {preview.name}
+            <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-ink" title={preview?.path ?? pdfPreview?.path}>
+              {preview?.name ?? pdfPreview?.name}
             </span>
           </>
         ) : (
@@ -176,7 +203,13 @@ export default function ArtifactPane() {
 
       {/* 内容体 */}
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {preview ? (
+        {pdfPreview ? (
+          <Suspense fallback={<div className="py-8 text-center text-[11.5px] text-ink-faint">加载 PDF 渲染器…</div>}>
+            <PdfPreviewPanel base64={pdfPreview.base64} />
+          </Suspense>
+        ) : pdfLoading ? (
+          <div className="py-8 text-center text-[11.5px] text-ink-faint">读取 PDF…</div>
+        ) : preview ? (
           <div className="px-3 py-2.5">
             {preview.text === null ? (
               <div className="py-8 text-center text-[11.5px] text-ink-faint">读取中…</div>
@@ -224,9 +257,13 @@ export default function ArtifactPane() {
                             {a.kind}
                           </span>
                           {a.kind === 'pdf' ? (
-                            <span className="min-w-0 flex-1 truncate text-[12px] text-ink" title={a.path}>
+                            <button
+                              className="min-w-0 flex-1 truncate text-left text-[12px] text-ink hover:underline"
+                              onClick={() => void openPdfPreview(a)}
+                              title={'预览 ' + a.path}
+                            >
                               {a.name}
-                            </span>
+                            </button>
                           ) : (
                             <button
                               className="min-w-0 flex-1 truncate text-left text-[12px] text-ink hover:underline"
@@ -251,7 +288,7 @@ export default function ArtifactPane() {
                         </div>
                         <div className="pl-1.5 text-[10px] text-ink-faint tabular-nums truncate">
                           {fmtSize(a.size)} · {fmtDateTime(a.mtime)}
-                          {a.kind === 'pdf' ? ' · 复制路径后用系统查看器打开' : ''}
+                          {a.kind === 'pdf' ? ' · 点击预览' : ''}
                         </div>
                       </li>
                     ))}

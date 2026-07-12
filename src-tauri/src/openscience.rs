@@ -51,6 +51,8 @@ const SCAN_MAX_DEPTH: usize = 6;
 const SCAN_MAX_ITEMS: usize = 500;
 /// os_read_text 预览上限（1 MB，防止把大文件整个吸进前端）。
 const READ_TEXT_MAX_BYTES: u64 = 1024 * 1024;
+/// os_read_bytes 预览上限（50 MB，base64 膨胀后 ~67 MB 仍在 WebView 可接受范围）。
+const READ_BYTES_MAX: u64 = 50 * 1024 * 1024;
 
 // ── Engine state（tauri managed）─────────────────────────────────────────────
 
@@ -422,6 +424,35 @@ pub async fn os_read_text(path: String) -> Result<String, String> {
     }
     let bytes = tokio::fs::read(&p).await.map_err(|e| e.to_string())?;
     Ok(String::from_utf8_lossy(&bytes).to_string())
+}
+
+/// 读取二进制产物（PDF 等）用于应用内预览，base64 返回。≤50 MB。
+#[derive(serde::Serialize)]
+pub struct OsBytes {
+    pub base64: String,
+    pub size: u64,
+}
+
+#[tauri::command]
+pub async fn os_read_bytes(path: String) -> Result<OsBytes, String> {
+    let p = PathBuf::from(path.trim());
+    if !p.is_file() {
+        return Err(format!("文件不存在: {}", p.display()));
+    }
+    let meta = tokio::fs::metadata(&p).await.map_err(|e| e.to_string())?;
+    if meta.len() > READ_BYTES_MAX {
+        return Err(format!(
+            "文件过大（{:.1} MB > {} MB），请用系统查看器打开",
+            meta.len() as f64 / (1024.0 * 1024.0),
+            READ_BYTES_MAX / (1024 * 1024)
+        ));
+    }
+    let bytes = tokio::fs::read(&p).await.map_err(|e| e.to_string())?;
+    use base64::Engine as _;
+    Ok(OsBytes {
+        base64: base64::engine::general_purpose::STANDARD.encode(&bytes),
+        size: meta.len(),
+    })
 }
 
 /// 同步递归扫描（spawn_blocking 里跑）。跳过依赖/版本控制目录。
