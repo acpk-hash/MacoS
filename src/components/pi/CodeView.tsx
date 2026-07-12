@@ -43,9 +43,9 @@ export default function CodeView({
           : await invoke<WsFileContent>('ws_read_file', { relPath })
         if (!alive) return
         if (res.too_large) {
-          setState({ kind: 'placeholder', text: '文件超过预览上限（1 MB），已跳过' })
+          setState({ kind: 'placeholder', text: '文件较大（>1 MB），文本预览已跳过。可用右上方「路径」按钮复制后用系统应用打开。' })
         } else if (res.encoding === 'binary') {
-          setState({ kind: 'placeholder', text: '二进制文件，无法文本预览' })
+          setState({ kind: 'placeholder', text: '二进制文件，无法文本预览。可用右上方「路径」按钮复制后用系统应用打开。' })
         } else {
           setState({ kind: 'text', content: res.content })
         }

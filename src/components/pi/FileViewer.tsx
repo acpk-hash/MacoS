@@ -45,11 +45,43 @@ function extOf(name: string): string {
   return i < 0 ? '' : name.slice(i + 1).toLowerCase()
 }
 
+const OFFICE_EXTS = new Set(['docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt', 'odt', 'ods', 'odp'])
+const MARKDOWN_EXTS = new Set(['md', 'markdown', 'mdx'])
+
 const fallback = (
   <div className="w-full h-full flex items-center justify-center text-[12px] text-ink-dim">
     加载预览组件…
   </div>
 )
+
+function OfficePlaceholder({ relPath, name }: { relPath: string; name: string }) {
+  const [opening, setOpening] = useState(false)
+  const openSystem = async () => {
+    setOpening(true)
+    try {
+      const { invoke } = await import('@tauri-apps/api/core')
+      await invoke('ws_open_system', { relPath })
+    } catch (e) {
+      console.warn('打开失败:', e)
+    } finally {
+      setOpening(false)
+    }
+  }
+  return (
+    <div className="w-full h-full flex flex-col items-center justify-center gap-3 px-6 text-center">
+      <div className="text-[32px]">📄</div>
+      <p className="text-[13px] text-ink font-medium">{name}</p>
+      <p className="text-[12px] text-ink-muted">Office 文档需用系统应用打开</p>
+      <button
+        onClick={() => void openSystem()}
+        disabled={opening}
+        className="px-4 py-1.5 rounded-btn bg-primary text-white text-[12px] hover:bg-primary-hover disabled:opacity-50"
+      >
+        {opening ? '正在打开…' : '用系统应用打开'}
+      </button>
+    </div>
+  )
+}
 
 export default function FileViewer({ preview }: { preview: PiFilePreview }) {
   const closePreview = usePiStore((s) => s.closePreview)
@@ -66,6 +98,7 @@ export default function FileViewer({ preview }: { preview: PiFilePreview }) {
   const ext = extOf(preview.name)
   const isImage = !!IMAGE_MIME[ext]
   const isPdf = ext === 'pdf'
+  const isOffice = OFFICE_EXTS.has(ext)
   const binaryOnRemote = !!remote && (isImage || isPdf)
 
   const doCopy = async (text: string, label: string) => {
@@ -121,6 +154,8 @@ export default function FileViewer({ preview }: { preview: PiFilePreview }) {
           <Suspense fallback={fallback}>
             <PdfPreview relPath={preview.relPath} />
           </Suspense>
+        ) : isOffice ? (
+          <OfficePlaceholder relPath={preview.relPath} name={preview.name} />
         ) : (
           <Suspense fallback={fallback}>
             <CodeView relPath={preview.relPath} name={preview.name} line={preview.line} />

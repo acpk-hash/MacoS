@@ -524,6 +524,43 @@ pub(crate) async fn ws_read_bytes(
     read_bytes_capped(&root, &rel_path, MAX_PREVIEW_BYTES)
 }
 
+/// Open a file with the system default application (explorer/xdg-open).
+#[tauri::command]
+pub(crate) async fn ws_open_system(
+    rel_path: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let root = state.ws.root()?;
+    let path = resolve_within(&root, &rel_path)?;
+    if !path.is_file() {
+        return Err(format!("文件不存在: {}", path.display()));
+    }
+    #[cfg(windows)]
+    {
+        use crate::procext::NoWindowExt;
+        std::process::Command::new("explorer")
+            .arg(&path)
+            .no_window()
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 /// Write a text file back (UTF-8, no BOM).
 #[tauri::command]
 pub(crate) async fn ws_write_file(
