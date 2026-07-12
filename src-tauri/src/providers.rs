@@ -212,7 +212,15 @@ fn ensure_default(db: &Db, candidate: &str) {
 /// 聊天下拉就会让 对话/画布/工作台 全部报错（2026-07 实测）。
 pub(crate) fn classify_model(id: &str) -> &'static str {
     let l = id.to_ascii_lowercase();
-    const NON_CHAT: [&str; 11] = [
+    // 2026-07-12 复测（responses API 真调）：gpt-5.6-luna/-sol/-terra 已能正常
+    // 应答并计费，解除封禁；裸 `gpt-5.6` 仍报 upstream_error，继续归 other。
+    if l.contains("gpt-5.6") {
+        const LIVE_56: [&str; 3] = ["-luna", "-sol", "-terra"];
+        if !LIVE_56.iter().any(|s| l.ends_with(s)) {
+            return "other";
+        }
+    }
+    const NON_CHAT: [&str; 10] = [
         "auto-review",
         "embedding",
         "embed-",
@@ -221,17 +229,10 @@ pub(crate) fn classify_model(id: &str) -> &'static str {
         "rerank",
         "moderation",
         "transcribe",
-        // 幽灵模型家族（跑不通，见上）。
-        "gpt-5.6",
         "audio",
         "realtime",
     ];
     if NON_CHAT.iter().any(|m| l.contains(m)) {
-        return "other";
-    }
-    // `-luna/-sol/-terra` 后缀是同一批幽灵模型的变体。
-    const GHOST_SUFFIXES: [&str; 3] = ["-luna", "-sol", "-terra"];
-    if GHOST_SUFFIXES.iter().any(|s| l.ends_with(s)) {
         return "other";
     }
     if l.contains("sora") || l.contains("video") || l.contains("veo-") {
@@ -665,21 +666,22 @@ mod tests {
         assert_eq!(classify_model("sora-2"), "video");
     }
 
-    /// The exact ghost ids observed on the aiboys relay must be filtered out of
-    /// the chat pickers — selecting them 400s ("not supported when using Codex
-    /// with a ChatGPT account") and used to break 对话/画布/工作台.
+    /// Ghost ids observed on the aiboys relay must be filtered out of the chat
+    /// pickers. 2026-07-12 复测：gpt-5.6-luna/-sol/-terra 已可真实应答（responses
+    /// API 实调验证），升级为 chat；裸 gpt-5.6 仍 upstream_error，保持 other。
     #[test]
     fn classify_model_filters_relay_ghosts() {
         for ghost in [
             "gpt-5.6",
-            "gpt-5.6-luna",
-            "gpt-5.6-sol",
-            "gpt-5.6-terra",
             "codex-auto-review",
             "gpt-4o-audio-preview",
             "gpt-4o-realtime-preview",
         ] {
             assert_eq!(classify_model(ghost), "other", "ghost must be other: {ghost}");
+        }
+        // 复活的 5.6 变体（真调通过）。
+        for live in ["gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra"] {
+            assert_eq!(classify_model(live), "chat", "must be chat now: {live}");
         }
         // Known-good chat models must survive the ghost rules untouched.
         for good in [
@@ -834,7 +836,12 @@ mod tests {
         let ghosts: Vec<&ProviderModelEntry> = s
             .models
             .iter()
-            .filter(|m| m.id.contains("gpt-5.6") || m.id.contains("audio") || m.id.contains("realtime") || m.id.contains("auto-review"))
+            .filter(|m| {
+                let l = m.id.to_ascii_lowercase();
+                // luna/sol/terra 已复活为 chat（2026-07-12 实调），不再算 ghost。
+                (l.contains("gpt-5.6") && !["-luna", "-sol", "-terra"].iter().any(|s| l.ends_with(s)))
+                    || l.contains("audio") || l.contains("realtime") || l.contains("auto-review")
+            })
             .collect();
         assert!(
             ghosts.iter().all(|m| m.kind == "other"),
