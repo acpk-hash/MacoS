@@ -11,6 +11,7 @@ import ImageAnnotator from '../components/ImageAnnotator'
 import ModelPicker from '../components/ModelPicker'
 import ProviderGuideCard from '../components/ProviderGuideCard'
 import { Mascot } from '../components/ui'
+import PromptBuilder from '../components/studio/PromptBuilder'
 
 // ── Environment guard ─────────────────────────────────────────────────────────
 
@@ -771,6 +772,13 @@ export default function StudioGen() {
           <div className="flex-1" />
         )}
       </div>
+
+      {/* Structured Prompt Builder — image mode only */}
+      {mode === 'image' && (
+        <div className="px-4 pt-1 flex-shrink-0">
+          <PromptBuilder onApply={(p) => setDraft(p)} />
+        </div>
+      )}
 
       {/* Composer with params slot */}
       <Composer
