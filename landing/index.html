@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AgentBoard — 本地运行的 Agent 任务工作台</title>
-<meta name="description" content="AgentBoard 是一个本地优先、开源引擎的 AI Agent 工作台：内置引擎开箱即用，多模态、数据不出机，桌面与手机实时同步。">
+<title>AgentBoard — 本地 AI 编码 Agent 桌面应用</title>
+<meta name="description" content="AgentBoard 是本地运行的 AI 编码 Agent 桌面应用：内置 pi 编码 Agent 运行时，打开项目文件夹、描述任务，Agent 真实读写代码、执行命令；自带 API Key 接多模型，代码不经过我们的服务器。">
 <link rel="preconnect" href="https://fonts.loli.net">
 <link href="https://fonts.loli.net/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
 <style>
@@ -863,13 +863,13 @@ header {
       <line x1="20" y1="7" x2="20" y2="33" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
     </svg>
     <span class="logo-text">AgentBoard</span>
-    <span class="ver-chip">v0.10.0 Beta</span>
+    <span class="ver-chip">v0.11.0 Beta</span>
     <nav class="nav-links">
       <a class="nav-link" href="#features">功能</a>
       <a class="nav-link" href="#workflow">工作流</a>
       <a class="nav-link" href="#download">下载</a>
       <a class="nav-link" href="#faq">FAQ</a>
-      <a class="nav-cta" href="/downloads/AgentBoard_0.10.0_x64-setup.exe">下载</a>
+      <a class="nav-cta" href="/downloads/AgentBoard_0.11.0_x64-setup.exe">下载</a>
     </nav>
   </div>
 </header>
@@ -878,46 +878,44 @@ header {
 <section class="hero">
   <div class="wrap hero-grid">
     <div class="hero-copy">
-      <div class="eyebrow">本地优先 · 开源引擎</div>
-      <h1>把 AI Agent 装进<br>你自己的<em>工作台</em></h1>
-      <p class="lead">AgentBoard 在你的电脑上本地运行——自研引擎随安装包内置，装完即用，无需再装任何命令行工具。多模态对话、看板任务、代码工作区一体化，任务与文件全在本机，数据不出机。</p>
+      <div class="eyebrow">本地运行 · 编码 Agent</div>
+      <h1>把编码 Agent 装进<br>你自己的<em>电脑</em></h1>
+      <p class="lead">打开项目文件夹，用一句话描述任务，看 Agent 在你的机器上真实读写代码、执行命令、多步把事情做完。运行时随安装包内置，装完即用，代码不经过我们的服务器。</p>
       <div class="cta-row">
-        <a class="btn btn-primary" href="/downloads/AgentBoard_0.10.0_x64-setup.exe">
+        <a class="btn btn-primary" href="/downloads/AgentBoard_0.11.0_x64-setup.exe">
           <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M7.5 2v8m0 0L4.5 7m3 3 3-3M2 12h11" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
           下载 Windows 版
         </a>
         <a class="btn btn-secondary" href="#features">查看全部功能</a>
       </div>
-      <p class="hero-note">Windows x64 · v0.10.0 · 内置引擎 · 0 依赖安装</p>
+      <p class="hero-note">Windows x64 · v0.11.0 · 内置运行时 · 0 依赖安装</p>
     </div>
     <div class="preview">
       <div class="preview-bar">
         <span class="p-dot" style="background:#ff4d6d"></span>
         <span class="p-dot" style="background:#ffc93c"></span>
         <span class="p-dot" style="background:#2ece8f"></span>
-        <span class="preview-title">agentboard · 工作台</span>
+        <span class="preview-title">agentboard · 编码 Agent</span>
       </div>
       <div class="preview-body">
         <div class="p-tree">
-          <div class="row dir">&#9662; project</div>
-          <div class="row">&nbsp;&nbsp;&#9662; src</div>
-          <div class="row active">&nbsp;&nbsp;&nbsp;&nbsp;app.ts</div>
-          <div class="row">&nbsp;&nbsp;&nbsp;&nbsp;api.ts</div>
-          <div class="row">&nbsp;&nbsp;&nbsp;&nbsp;utils.ts</div>
-          <div class="row dir">&nbsp;&nbsp;&#9662; docs</div>
-          <div class="row">&nbsp;&nbsp;&nbsp;&nbsp;README.md</div>
-          <div class="row">&nbsp;&nbsp;package.json</div>
+          <div class="row dir">&#9662; 会话</div>
+          <div class="row active">&nbsp;&nbsp;加超时重试</div>
+          <div class="row">&nbsp;&nbsp;重构 api 层</div>
+          <div class="row">&nbsp;&nbsp;补单元测试</div>
+          <div class="row dir">&#9662; 项目</div>
+          <div class="row">&nbsp;&nbsp;my-app/</div>
         </div>
         <div class="p-main">
           <div class="p-bubble">帮我给 app.ts 的请求加上超时重试</div>
           <div class="p-code"><span class="del">- const res = await fetch(url)</span><span class="add">+ const res = await <span class="kw">withRetry</span>(() =&gt;</span><span class="add">+&nbsp;&nbsp;fetch(url, { signal }))</span><span>&nbsp;&nbsp;return res.json()</span></div>
         </div>
         <div class="p-side">
-          <div class="h">任务清单</div>
-          <div class="p-check"><span class="box done">&#10003;</span>读取 app.ts</div>
-          <div class="p-check"><span class="box done">&#10003;</span>生成补丁</div>
-          <div class="p-check"><span class="box run">&bull;</span>应用 diff</div>
-          <div class="p-check pending"><span class="box"></span>运行校验</div>
+          <div class="h">工具步骤</div>
+          <div class="p-check"><span class="box done">&#10003;</span>read app.ts</div>
+          <div class="p-check"><span class="box done">&#10003;</span>edit app.ts</div>
+          <div class="p-check"><span class="box run">&bull;</span>bash npm test</div>
+          <div class="p-check pending"><span class="box"></span>汇总改动</div>
           <div class="p-token">tokens 1,284 / 上下文</div>
           <div class="p-bar"><span></span></div>
         </div>
@@ -932,23 +930,23 @@ header {
     <div class="section-head">
       <div class="eyebrow">Why AgentBoard</div>
       <h2>为什么选它</h2>
-      <p>不是又一个网页版套壳。AgentBoard 把前沿 AI 能力搬回你自己的桌面——你掌控数据、掌控密钥、掌控模型。</p>
+      <p>不是网页套壳，也不只是聊天窗口。编码 Agent 直接在你的电脑上干活——真实文件、真实命令、真实结果。</p>
     </div>
     <div class="trio">
       <div class="pillar">
         <div class="p-ico">&#128274;</div>
-        <h3>本地优先</h3>
-        <p>任务、文件、对话历史与快照全部保存在本机，运行不依赖任何云端服务。数据不出机——除非你自己选择开启手机同步，且只传必要内容。</p>
+        <h3>本地运行 · 代码不出机</h3>
+        <p>全部在本机运行，你的代码不经过我们的服务器。只有 Agent 调用模型 API 时，才会访问你自己配置的服务商——发给谁、发什么，由你掌控。</p>
       </div>
       <div class="pillar">
         <div class="p-ico">&#9881;</div>
-        <h3>内置引擎</h3>
-        <p>自研 Agent 引擎随安装包自带，装完即用，不需要你另外安装任何命令行工具或运行时。回复逐字流式输出，比外挂子进程更快更稳。</p>
+        <h3>内置运行时 · 0 依赖</h3>
+        <p>安装包内置 pi 编码 Agent 运行时与自包含 Node 环境，装完即用——不需要你安装 Node、Python 或任何命令行工具。</p>
       </div>
       <div class="pillar">
         <div class="p-ico">&#128268;</div>
-        <h3>自带 Key · 多服务商</h3>
-        <p>接入任意 OpenAI 兼容服务商，下拉即切模型、切账号。API 密钥只存本机凭据管理器，永不上传，随时可换、随时可删。</p>
+        <h3>自带 Key · 多模型</h3>
+        <p>接入任意 OpenAI 兼容服务商或中转，在设置里填入 Key 即可切换模型。密钥存 Windows 凭据管理器，不落盘、不上传。</p>
       </div>
     </div>
   </div>
@@ -960,13 +958,13 @@ header {
     <div class="section-head">
       <div class="eyebrow">Workflow</div>
       <h2>四步跑通一个任务</h2>
-      <p>从选定文件夹到导出成果，全程可见、可控、可回溯——像管理项目一样管理你的 AI。</p>
+      <p>从打开文件夹到审阅改动，全程可见、可控、可中断。</p>
     </div>
     <div class="steps">
       <div class="step">
         <div class="num">01</div>
-        <h3>选一个文件夹</h3>
-        <p>打开本地项目目录，AgentBoard 直接在真实文件上工作，不搬运、不上传。</p>
+        <h3>打开项目</h3>
+        <p>选择本地项目文件夹，Agent 直接在真实文件上工作，不搬运、不上传。</p>
         <div class="step-viz">
           <div style="display:flex;flex-direction:column;gap:5px;width:100%">
             <span class="viz-line c"></span><span class="viz-line a"></span><span class="viz-line b"></span>
@@ -975,31 +973,31 @@ header {
       </div>
       <div class="step">
         <div class="num">02</div>
-        <h3>自然语言对话</h3>
-        <p>用一句话描述需求，AI 直接改本地文件：文件树 + Monaco 编辑器 + inline diff，Trae 式体验。</p>
+        <h3>描述任务</h3>
+        <p>用一句话说清要做什么，Agent 自动拆成多步：读文件、改代码、跑命令。</p>
         <div class="step-viz">
-          <div class="viz-diff">
-            <span class="neu"></span><span class="add"></span><span class="del"></span>
+          <div class="viz-ck">
+            <i><b></b>read 文件</i><i><b></b>edit 代码</i><i><b></b>bash 命令</i>
           </div>
         </div>
       </div>
       <div class="step">
         <div class="num">03</div>
-        <h3>逐条打勾进度</h3>
-        <p>任务拆成清单逐项执行，实时打勾看进度，并显示每一步的 token 消耗。</p>
+        <h3>盯着它干活</h3>
+        <p>输出逐字流式呈现，工具步骤可折叠；运行中可插话修正、排队追加，也可一键中断。</p>
         <div class="step-viz">
-          <div class="viz-ck">
-            <i><b></b>读取文件</i><i><b></b>生成补丁</i><i><b></b>应用 diff</i>
+          <div style="display:flex;flex-direction:column;gap:5px;width:100%">
+            <span class="viz-line a"></span><span class="viz-line c"></span><span class="viz-line b"></span>
           </div>
         </div>
       </div>
       <div class="step">
         <div class="num">04</div>
-        <h3>导出 / 同步</h3>
-        <p>成果一键导出为 Markdown 或自包含 HTML，或实时同步到手机，随时随地验收。</p>
+        <h3>审阅改动</h3>
+        <p>右侧面板汇总本次会话改动的文件，逐个查看确认，满意再派下一个任务。</p>
         <div class="step-viz">
-          <div class="viz-dev">
-            <span class="scr"></span><span class="arw">&rarr;</span><span class="phn"></span>
+          <div class="viz-diff">
+            <span class="neu"></span><span class="add"></span><span class="del"></span>
           </div>
         </div>
       </div>
@@ -1013,93 +1011,65 @@ header {
     <div class="section-head">
       <div class="eyebrow">Capabilities</div>
       <h2>它能做什么</h2>
-      <p>一套本地工作台，覆盖代码、对话、图像、文档与科研——点标签切换看看。</p>
+      <p>一个专注编码 Agent 的桌面应用——点标签切换看看。</p>
     </div>
     <div class="tabs" role="tablist" aria-label="能力展示">
-      <button class="tab" role="tab" id="tab-code" aria-controls="panel-code" aria-selected="true">代码工作台</button>
-      <button class="tab" role="tab" id="tab-chat" aria-controls="panel-chat" aria-selected="false">直连对话</button>
-      <button class="tab" role="tab" id="tab-image" aria-controls="panel-image" aria-selected="false">图像生成</button>
-      <button class="tab" role="tab" id="tab-doc" aria-controls="panel-doc" aria-selected="false">PPT · 文档</button>
-      <button class="tab" role="tab" id="tab-research" aria-controls="panel-research" aria-selected="false">科研 Agent</button>
-      <button class="tab" role="tab" id="tab-sync" aria-controls="panel-sync" aria-selected="false">手机同步</button>
+      <button class="tab" role="tab" id="tab-workspace" aria-controls="panel-workspace" aria-selected="true">三栏工作区</button>
+      <button class="tab" role="tab" id="tab-tools" aria-controls="panel-tools" aria-selected="false">真实工具执行</button>
+      <button class="tab" role="tab" id="tab-steer" aria-controls="panel-steer" aria-selected="false">流式 · 可插话</button>
+      <button class="tab" role="tab" id="tab-models" aria-controls="panel-models" aria-selected="false">多模型 · 自带 Key</button>
     </div>
     <div class="tab-panels">
-      <div class="tab-panel active" role="tabpanel" id="panel-code" aria-labelledby="tab-code">
+      <div class="tab-panel active" role="tabpanel" id="panel-workspace" aria-labelledby="tab-workspace">
         <div class="tab-copy">
-          <h3>Trae 式代码工作台</h3>
-          <p>文件树 + Monaco 编辑器 + AI 对话三合一。AI 直接改本地文件并展示 inline diff，你审阅后再落盘。</p>
-          <ul><li>可连 SSH 远程编辑</li><li>挂载 MCP 工具与技能</li><li>进度条实时显示 token 消耗</li></ul>
+          <h3>熟悉的三栏工作区</h3>
+          <p>左侧管理多个会话，中间是流式对话 Timeline 与输入框，右侧展示会话信息与改动文件。多任务并行，切换不丢上下文。</p>
+          <ul><li>多会话并行管理</li><li>工具步骤可展开、可折叠</li><li>改动文件一目了然</li></ul>
         </div>
         <div class="tab-visual">
-          <div class="vhead">app.ts · inline diff</div>
-          <div><span class="vk">- </span><span class="vm">fetch(url)</span></div>
-          <div><span class="vk">+ </span>withRetry(() =&gt; fetch(url))</div>
-          <div class="vm">&#9656; 已应用 · 校验通过</div>
+          <div class="vhead">sessions · timeline · changes</div>
+          <div><span class="vk">&#9656;</span> 会话：加超时重试</div>
+          <div><span class="vk">&#9656;</span> timeline：流式输出中&hellip;</div>
+          <div class="vm">&#9656; 改动文件：src/app.ts</div>
         </div>
       </div>
-      <div class="tab-panel" role="tabpanel" id="panel-chat" aria-labelledby="tab-chat">
+      <div class="tab-panel" role="tabpanel" id="panel-tools" aria-labelledby="tab-tools">
         <div class="tab-copy">
-          <h3>直连 API 对话</h3>
-          <p>ChatGPT 级聊天界面，直连你自己的 API Key。数学公式 LaTeX 渲染、代码高亮、真实可点搜索链接。</p>
-          <ul><li>流式输出 · 多会话管理</li><li>图片与文件附件</li><li>一键导出 Markdown / 自包含 HTML</li></ul>
+          <h3>真实读写代码、执行命令</h3>
+          <p>Agent 内置 bash / read / edit / write 等工具，在你的项目文件夹里真实读写文件、执行命令，多步完成任务——每一步都在 Timeline 里可见。</p>
+          <ul><li>bash · read · edit · write 工具</li><li>多步自动执行</li><li>每一步可见、可折叠</li></ul>
         </div>
         <div class="tab-visual">
-          <div class="vhead">chat · LaTeX 渲染</div>
-          <div>&#8747; e^x dx = <span class="vk">e^x + C</span></div>
-          <div class="vm">&#9656; 流式输出中&hellip;</div>
-          <div class="vm">&#9656; 已导出 answer.html</div>
+          <div class="vhead">tools · run</div>
+          <div><span class="vk">&#9656;</span> edit src/app.ts</div>
+          <div><span class="vk">&#9656;</span> bash npm test</div>
+          <div class="vm">&#9656; 2 files changed</div>
         </div>
       </div>
-      <div class="tab-panel" role="tabpanel" id="panel-image" aria-labelledby="tab-image">
+      <div class="tab-panel" role="tabpanel" id="panel-steer" aria-labelledby="tab-steer">
         <div class="tab-copy">
-          <h3>图像生成工作台</h3>
-          <p>输入描述即出图，画廊网格管理全部作品，一键另存到本地。视频生成模式已就绪，模型开通即可用。</p>
-          <ul><li>提示词 &rarr; 成图，画廊管理</li><li>一键另存本地</li><li>视频生成模式预留</li></ul>
+          <h3>流式输出，运行中可插话</h3>
+          <p>回复逐字流式呈现，不用等它跑完：随时插话（steer）修正方向，新要求可以排队追加，也可以一键中断。</p>
+          <ul><li>逐字流式输出</li><li>运行中插话 steer</li><li>排队追加 · 一键中断</li></ul>
         </div>
         <div class="tab-visual">
-          <div class="vhead">gallery</div>
-          <div class="vm">&#9723; &#9723; &#9723;&nbsp;&nbsp;&nbsp;&#9723; &#9723; &#9723;</div>
-          <div><span class="vk">prompt</span> &rarr; 512&times;512</div>
-          <div class="vm">&#9656; 已保存到本地画廊</div>
+          <div class="vhead">steer · queue</div>
+          <div><span class="vk">&#9656;</span> 生成中&hellip;（插话：改用 axios）</div>
+          <div><span class="vk">&#9656;</span> 已排队：补一条测试</div>
+          <div class="vm">&#9656; 可随时中断</div>
         </div>
       </div>
-      <div class="tab-panel" role="tabpanel" id="panel-doc" aria-labelledby="tab-doc">
+      <div class="tab-panel" role="tabpanel" id="panel-models" aria-labelledby="tab-models">
         <div class="tab-copy">
-          <h3>PPT · 文档可视化编辑</h3>
-          <p>一句话让 AI 生成 PPT 或文档的 HTML，右侧实时预览，点文字就地修改、导出成品——像在设计稿上直接改。</p>
-          <ul><li>自然语言生成 HTML</li><li>右侧所见即所得预览</li><li>点选文字就地编辑</li></ul>
+          <h3>多模型，自带 Key</h3>
+          <p>在设置里填入任意 OpenAI 兼容服务商或中转的地址与 API Key，即可切换模型。密钥存 Windows 凭据管理器，不落盘、不上传。</p>
+          <ul><li>OpenAI 兼容 · 中转可用</li><li>自定义 base_url</li><li>Key 存凭据管理器，不落盘</li></ul>
         </div>
         <div class="tab-visual">
-          <div class="vhead">slide · live preview</div>
-          <div class="vm">&#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;</div>
-          <div>&#9474; <span class="vk">标题</span> · 可点改 &#9474;</div>
-          <div class="vm">&#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;</div>
-        </div>
-      </div>
-      <div class="tab-panel" role="tabpanel" id="panel-research" aria-labelledby="tab-research">
-        <div class="tab-copy">
-          <h3>科研 Agent 与技能流水线</h3>
-          <p>内置论文科研的 Agent 库与技能库，可浏览、编辑、一键跑流水线，执行仪表盘追踪每一次运行与产物。</p>
-          <ul><li>Agent 库 / 技能库可编辑</li><li>一键跑流水线</li><li>执行仪表盘追踪运行与产物</li></ul>
-        </div>
-        <div class="tab-visual">
-          <div class="vhead">pipeline · run</div>
-          <div><span class="vk">&#9656;</span> 检索 &rarr; 阅读 &rarr; 归纳</div>
-          <div><span class="vk">&#9656;</span> 生成报告草稿</div>
-          <div class="vm">&#9656; dashboard: 3 runs</div>
-        </div>
-      </div>
-      <div class="tab-panel" role="tabpanel" id="panel-sync" aria-labelledby="tab-sync">
-        <div class="tab-copy">
-          <h3>手机实时同步</h3>
-          <p>注册一个账号，手机 App 实时看到电脑上的任务进度与对话内容。躺在沙发上派新任务、一键验收，通道全程加密。</p>
-          <ul><li>桌面 &harr; 手机实时同步</li><li>远程派发任务 · 一键验收</li><li>通道加密 · 默认关闭</li></ul>
-        </div>
-        <div class="tab-visual">
-          <div class="vhead">desktop &#8646; phone</div>
-          <div><span class="vk">&#9656;</span> 任务进度已推送</div>
-          <div><span class="vk">&#9656;</span> 手机验收 &#10003;</div>
-          <div class="vm">&#9656; 通道加密</div>
+          <div class="vhead">settings · models</div>
+          <div><span class="vk">base_url</span> https://your-provider/v1</div>
+          <div><span class="vk">api_key</span> &bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;（凭据管理器）</div>
+          <div class="vm">&#9656; 模型下拉切换</div>
         </div>
       </div>
     </div>
@@ -1111,30 +1081,30 @@ header {
   <div class="wrap">
     <div class="section-head">
       <div class="eyebrow">Engine &amp; Models</div>
-      <h2>内置引擎 · 多模型</h2>
-      <p>自带引擎让你装完即用，多服务商让你自由选模型——两者都在你自己的掌控之下。</p>
+      <h2>内置运行时 · 多模型</h2>
+      <p>Agent 运行时随安装包自带，装完即用；模型与 Key 由你掌控。</p>
     </div>
     <div class="engine-grid">
       <div class="panel">
-        <h3>内置 Agent 引擎</h3>
-        <p>自研引擎随安装包自带（codex 式工具执行 + pi 内核），不催动任何外部命令行工具，也不额外拉起子进程。逐字流式回复，工具调用与文件改动实时可见。</p>
+        <h3>内置 pi 编码 Agent 运行时</h3>
+        <p>安装包内置 pi 编码 Agent 运行时与自包含 Node 环境，无需安装任何依赖。Agent 拥有 bash、read、edit、write 等工具，逐字流式回复，每一步工具调用实时可见、可折叠。</p>
         <div class="chip-row">
-          <span class="chip">内置执行引擎</span>
-          <span class="chip">工具调用</span>
-          <span class="chip">inline diff</span>
-          <span class="chip">MCP 挂载</span>
+          <span class="chip">内置运行时</span>
+          <span class="chip">自包含 Node</span>
+          <span class="chip mono">bash · read · edit · write</span>
+          <span class="chip">流式输出</span>
           <span class="chip">0 依赖安装</span>
         </div>
       </div>
       <div class="panel">
         <h3>接任意 OpenAI 兼容服务商</h3>
-        <p>填入你自己的服务商地址与 API Key，下拉即可切换模型与账号。密钥只存本机凭据管理器，永不上传。以下为常见接入形态示意，具体以你配置的服务商为准。</p>
+        <p>填入你自己的服务商地址与 API Key 即可切换模型，官方接口或中转都行。密钥存 Windows 凭据管理器，不落盘、不上传，随时可换、随时可删。</p>
         <div class="chip-row">
           <span class="chip mono">OpenAI 兼容</span>
           <span class="chip mono">自定义 base_url</span>
-          <span class="chip mono">gpt-5.5 等</span>
-          <span class="chip mono">自带 Key</span>
-          <span class="chip mono">下拉切换</span>
+          <span class="chip">中转可用</span>
+          <span class="chip">自带 Key</span>
+          <span class="chip">凭据管理器存储</span>
         </div>
       </div>
     </div>
@@ -1146,54 +1116,39 @@ header {
   <div class="wrap">
     <div class="section-head">
       <div class="eyebrow">Core Features</div>
-      <h2>核心能力网格</h2>
-      <p>一套本地工作台，覆盖对话、看板、代码、图像与科研——每一次运行都可见、可控、可回溯。</p>
+      <h2>核心能力</h2>
+      <p>专注一件事：让编码 Agent 在你的电脑上把任务真正干完——每一步可见、可控、可审阅。</p>
     </div>
     <div class="features">
       <div class="card">
         <div class="card-icon">&#128295;</div>
-        <h3>Trae 式代码工作区</h3>
-        <p>文件树 + Monaco 编辑器 + AI 对话直接改文件并展示 inline diff；可连 SSH 远程编辑、挂载 MCP 工具与技能，进度条实时显示 token 消耗。</p>
+        <h3>真实工具执行</h3>
+        <p>Agent 内置 bash / read / edit / write 等工具，在项目文件夹里真实读写代码、执行命令，多步完成任务。</p>
       </div>
       <div class="card">
-        <div class="card-icon">&#9881;</div>
-        <h3>内置 Agent 引擎</h3>
-        <p>自研引擎随安装包开箱即用，无需再装任何命令行工具；回复逐字流式输出，比子进程模式更快更稳。</p>
+        <div class="card-icon">&#9889;</div>
+        <h3>流式输出 · 步骤可折叠</h3>
+        <p>回复逐字流式呈现，每一步工具调用在 Timeline 中实时可见，细节可展开、可折叠。</p>
       </div>
       <div class="card">
         <div class="card-icon">&#128172;</div>
-        <h3>直连对话 + 公式</h3>
-        <p>直连 API 的流式对话：数学公式 LaTeX 渲染、代码高亮、可点搜索链接，一键导出 Markdown 或自包含 HTML。</p>
-      </div>
-      <div class="card">
-        <div class="card-icon">&#127912;</div>
-        <h3>图像生成 + 画廊</h3>
-        <p>输入描述即出图，画廊网格管理全部作品，一键另存到本地。视频生成模式已就绪，模型开通即可用。</p>
-      </div>
-      <div class="card">
-        <div class="card-icon">&#128209;</div>
-        <h3>PPT · 文档可视化</h3>
-        <p>一句话让 AI 生成 PPT 或文档的 HTML，右侧实时预览，点文字就地修改、导出成品——像在设计稿上直接改。</p>
-      </div>
-      <div class="card">
-        <div class="card-icon">&#966;</div>
-        <h3>科研集成</h3>
-        <p>内置论文科研的 Agent 库与技能库，可浏览、编辑、一键跑流水线，执行仪表盘追踪每一次运行与产物。</p>
+        <h3>运行中可插话</h3>
+        <p>不用等它跑完：随时插话（steer）修正方向，新要求排队追加，也可以一键中断。</p>
       </div>
       <div class="card">
         <div class="card-icon">&#128203;</div>
-        <h3>逐条打勾任务流</h3>
-        <p>任务拆成清单逐项执行，实时打勾看进度，看板组织多个并行任务，切换不丢上下文。</p>
+        <h3>多会话并行</h3>
+        <p>左侧会话列表并行管理多个任务，右侧面板展示会话信息与改动文件，切换不丢上下文。</p>
       </div>
       <div class="card">
-        <div class="card-icon">&#128241;</div>
-        <h3>手机实时同步</h3>
-        <p>注册一个账号，手机 App 实时看到电脑上的任务进度与对话；躺着派任务、一键验收，通道全程加密。</p>
+        <div class="card-icon">&#128268;</div>
+        <h3>多模型 · 自带 Key</h3>
+        <p>接任意 OpenAI 兼容服务商或中转；API Key 存 Windows 凭据管理器，不落盘、不上传。</p>
       </div>
       <div class="card">
         <div class="card-icon">&#128274;</div>
-        <h3>数据可控</h3>
-        <p>任务历史、文件快照全在本机；手机同步只传必要内容，API 密钥永不上传，同步默认关闭。</p>
+        <h3>本地隐私</h3>
+        <p>全部本地运行，代码不经过我们的服务器；仅 Agent 调用模型 API 时访问你自己配置的服务商。</p>
       </div>
     </div>
   </div>
@@ -1208,12 +1163,9 @@ header {
       <p>下面每一项都可以自己核验——我们不写星标数、用户数这类无法证实的数字。</p>
     </div>
     <div class="metrics">
-      <div class="metric"><div class="num accent">100%</div><div class="label">核心功能本地运行</div></div>
-      <div class="metric"><div class="num">6</div><div class="label">大功能模块（代码/对话/图像/文档/科研/同步）</div></div>
-      <div class="metric"><div class="num">220+</div><div class="label">自动化测试用例</div></div>
-      <div class="metric"><div class="num accent">3</div><div class="label">端触达（桌面 · 手机 · 网页）</div></div>
-      <div class="metric"><div class="num">0</div><div class="label">额外依赖安装（引擎内置）</div></div>
-      <div class="metric"><div class="num accent">&infin;</div><div class="label">多服务商 · 自带 Key</div></div>
+      <div class="metric"><div class="num accent">100%</div><div class="label">本地运行，代码不经过我们的服务器</div></div>
+      <div class="metric"><div class="num">0</div><div class="label">额外依赖安装（运行时与 Node 已内置）</div></div>
+      <div class="metric"><div class="num accent">&infin;</div><div class="label">OpenAI 兼容服务商 · 自带 Key</div></div>
     </div>
   </div>
 </section>
@@ -1223,14 +1175,14 @@ header {
   <div class="wrap">
     <div class="cta-band">
       <div class="eyebrow" style="justify-content:center">Get started</div>
-      <h2>把前沿 AI 能力搬回<br>你自己的桌面</h2>
-      <p>开源引擎 · 本地运行 · 多模态。免费下载，装完即用，数据始终在你手里。</p>
+      <h2>把编码 Agent 装进<br>你自己的电脑</h2>
+      <p>本地运行 · 内置运行时 · 自带 Key。免费下载，装完即用，代码始终在你手里。</p>
       <div class="cta-row">
-        <a class="btn btn-primary" href="/downloads/AgentBoard_0.10.0_x64-setup.exe">
+        <a class="btn btn-primary" href="/downloads/AgentBoard_0.11.0_x64-setup.exe">
           <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M7.5 2v8m0 0L4.5 7m3 3 3-3M2 12h11" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
           下载 Windows 版
         </a>
-        <a class="btn btn-secondary" href="/downloads/AgentBoard_1.0.0.apk">下载 Android 版</a>
+        <a class="btn btn-secondary" href="#download">全部下载 · SHA256 校验</a>
       </div>
     </div>
   </div>
@@ -1242,23 +1194,23 @@ header {
     <div class="section-head">
       <div class="eyebrow">Download</div>
       <h2>下载安装包</h2>
-      <p>桌面 v0.10.0 · 安卓 v1.0.0 · Beta · 免费使用。</p>
+      <p>桌面 v0.11.0 · 安卓 v1.0.0 · Beta · 免费使用。</p>
     </div>
     <div class="download-grid">
       <div class="dl-card">
         <div class="platform">Windows</div>
         <div class="dl-title">AgentBoard for Windows</div>
         <div class="dl-specs">
-          <span class="spec">v0.10.0</span>
+          <span class="spec">v0.11.0</span>
           <span class="spec">x64</span>
           <span class="spec">.exe</span>
-          <span class="spec">&asymp;300MB</span>
+          <span class="spec">内置运行时</span>
         </div>
         <div class="dl-meta">
-          内置引擎的完整安装包，装完即用。<br>
-          <span class="sha">SHA256</span> 校验值见同目录 <a class="sha" href="/downloads/AgentBoard_0.10.0_x64-setup.exe.sha256">.sha256 文件</a>
+          内置编码 Agent 运行时的完整安装包，装完即用。<br>
+          <span class="sha">SHA256</span> 校验值见同目录 <a class="sha" href="/downloads/AgentBoard_0.11.0_x64-setup.exe.sha256">.sha256 文件</a>
         </div>
-        <a class="btn btn-primary" href="/downloads/AgentBoard_0.10.0_x64-setup.exe">
+        <a class="btn btn-primary" href="/downloads/AgentBoard_0.11.0_x64-setup.exe">
           <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M7.5 2v8m0 0L4.5 7m3 3 3-3M2 12h11" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
           下载 Windows 版
         </a>
@@ -1297,44 +1249,40 @@ header {
     <div class="section-head">
       <div class="eyebrow">FAQ</div>
       <h2>常见问题</h2>
-      <p>关于本地运行、数据安全、模型接入与安装的常见疑问。</p>
+      <p>关于本地运行、代码安全、模型接入与安装的常见疑问。</p>
     </div>
     <div class="faq">
       <details open>
         <summary>AgentBoard 是什么？<span class="sign"></span></summary>
-        <div class="answer"><div><p>一个本地优先的 AI Agent 工作台。它把对话、看板任务、代码工作区、图像生成、文档可视化与科研流水线整合到一个桌面应用里，自研引擎随安装包内置，装完即用。你在真实的本地文件上工作，全过程可见、可控、可回溯。</p></div></div>
+        <div class="answer"><div><p>一个本地运行的 AI 编码 Agent 桌面应用。打开项目文件夹、描述任务，内置 Agent 就在你的电脑上真实读写代码、执行命令、多步完成任务。界面是熟悉的三栏：左边会话列表，中间流式对话 Timeline 与输入框，右边会话信息与改动文件。</p></div></div>
       </details>
       <details>
         <summary>免费吗？<span class="sign"></span></summary>
         <div class="answer"><div><p>应用本身免费下载使用，当前为 Beta。调用大模型的费用取决于你自己配置的 API 服务商——你用自己的 Key，按你选择的服务商计费，AgentBoard 不在中间加价。</p></div></div>
       </details>
       <details>
-        <summary>我的数据安全吗？<span class="sign"></span></summary>
-        <div class="answer"><div><p>任务历史、文件快照与对话记录都保存在本机。手机同步默认关闭；即使开启，也只传递必要的任务与对话内容，且通道加密。API 密钥始终存于本机凭据管理器，永不上传。</p></div></div>
+        <summary>我的代码会上传到你们的服务器吗？<span class="sign"></span></summary>
+        <div class="answer"><div><p>不会。AgentBoard 全部在本机运行，你的代码不经过我们的服务器。只有 Agent 调用模型 API 时，相关上下文才会发送给你自己配置的模型服务商——用哪家服务、发给谁，完全由你决定。</p></div></div>
       </details>
       <details>
-        <summary>需要另外安装命令行工具吗？<span class="sign"></span></summary>
-        <div class="answer"><div><p>不需要。Agent 引擎已随安装包内置，装完即用，无需你再单独安装任何 CLI、运行时或外部依赖。这也是安装包偏大（约 300MB）的原因。</p></div></div>
+        <summary>需要另外安装 Node、Python 或命令行工具吗？<span class="sign"></span></summary>
+        <div class="answer"><div><p>不需要。安装包内置 pi 编码 Agent 运行时与自包含 Node 环境，装完即用，无需再安装任何 CLI、运行时或外部依赖。</p></div></div>
       </details>
       <details>
-        <summary>支持哪些模型？<span class="sign"></span></summary>
-        <div class="answer"><div><p>支持任意 OpenAI 兼容的服务商。你填入自己的服务地址与 API Key，就能在下拉里切换模型与账号。用哪个模型、走哪个中继完全由你决定。</p></div></div>
+        <summary>需要什么 API Key？支持哪些模型？<span class="sign"></span></summary>
+        <div class="answer"><div><p>任意 OpenAI 兼容的服务商或中转都可以：在设置里填入服务地址（base_url）与你自己的 API Key，即可切换模型。密钥保存在 Windows 凭据管理器中，不落盘、不上传。</p></div></div>
       </details>
       <details>
-        <summary>手机怎么同步？<span class="sign"></span></summary>
-        <div class="answer"><div><p>在桌面端与手机 App 登录同一个账号即可。手机会实时看到电脑上的任务进度与对话内容，你也可以从手机远程派发新任务、一键验收。通道全程加密，同步默认关闭、按需开启。</p></div></div>
+        <summary>Agent 正在运行时能干预吗？<span class="sign"></span></summary>
+        <div class="answer"><div><p>可以。输出是逐字流式的，你可以随时插话（steer）修正方向，把新要求排队追加，或者一键中断。每一步工具调用都显示在 Timeline 里，可展开查看细节。</p></div></div>
       </details>
       <details>
         <summary>安装时 SmartScreen 提示怎么办？<span class="sign"></span></summary>
         <div class="answer"><div><p>安装包目前未做代码签名，Windows 首次运行可能弹出「Windows 已保护你的电脑」。这是正常现象：点击「更多信息」，再点「仍要运行」即可继续安装。你也可以先用同目录的 .sha256 文件校验安装包完整性。</p></div></div>
       </details>
       <details>
-        <summary>支持 SSH 远程和 MCP 吗？<span class="sign"></span></summary>
-        <div class="answer"><div><p>支持。代码工作台可连接 SSH 进行远程编辑，也可以挂载 MCP 工具与技能，让 Agent 调用你需要的外部能力。</p></div></div>
-      </details>
-      <details>
         <summary>系统要求是什么？<span class="sign"></span></summary>
-        <div class="answer"><div><p>桌面端为 Windows x64（v0.10.0，安装包约 300MB，内置引擎）。手机端为 Android 7.0 及以上（v1.0.0 签名 APK）。安装后即可本地运行，接入模型时需要联网访问你配置的 API 服务商。</p></div></div>
+        <div class="answer"><div><p>桌面端为 Windows x64（v0.11.0）。应用本身在本地运行；Agent 调用模型时需要联网访问你自己配置的 API 服务商。</p></div></div>
       </details>
     </div>
   </div>
@@ -1352,13 +1300,13 @@ header {
         </svg>
         <span class="logo-text">AgentBoard</span>
       </div>
-      <p>本地优先的 AI Agent 工作台。开源引擎、本地运行、多模态，数据始终在你手里。</p>
+      <p>本地运行的 AI 编码 Agent 桌面应用。内置运行时、自带 Key，代码始终在你手里。</p>
     </div>
     <div class="footer-col">
       <h4>下载</h4>
-      <a href="/downloads/AgentBoard_0.10.0_x64-setup.exe">Windows v0.10.0</a>
+      <a href="/downloads/AgentBoard_0.11.0_x64-setup.exe">Windows v0.11.0</a>
       <a href="/downloads/AgentBoard_1.0.0.apk">Android v1.0.0</a>
-      <a href="/downloads/AgentBoard_0.10.0_x64-setup.exe.sha256">Windows SHA256</a>
+      <a href="/downloads/AgentBoard_0.11.0_x64-setup.exe.sha256">Windows SHA256</a>
       <a href="/downloads/AgentBoard_1.0.0.apk.sha256">Android SHA256</a>
       <a href="/downloads/">安装包目录</a>
     </div>
@@ -1366,19 +1314,19 @@ header {
       <h4>功能</h4>
       <a href="#features">核心能力</a>
       <a href="#workflow">工作流</a>
-      <a href="#engine">内置引擎</a>
+      <a href="#engine">内置运行时</a>
       <a href="#faq">常见问题</a>
     </div>
     <div class="footer-col">
       <h4>说明</h4>
-      <span class="static">本地优先 · 数据不出机</span>
-      <span class="static">开源引擎 · 内置随装</span>
+      <span class="static">本地运行 · 代码不出机</span>
+      <span class="static">内置运行时 · 0 依赖安装</span>
       <a href="/THIRD-PARTY-NOTICES.txt">第三方声明</a>
     </div>
   </div>
   <div class="footer-bottom">
-    <span>© 2025 AgentBoard · 本地优先 · 开源即将上线</span>
-    <span>桌面 v0.10.0 · 安卓 v1.0.0 · Beta</span>
+    <span>© 2025 AgentBoard · 本地运行的编码 Agent</span>
+    <span>桌面 v0.11.0 · Beta</span>
   </div>
 </footer>
 
