@@ -1,24 +1,123 @@
+import type { ReactNode } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import Logo from './Logo'
 import { useAuthStore } from '../stores/authStore'
 import { useProviderStore } from '../stores/providerStore'
 
-// 极简导航：编码（pi 三栏壳，产品主界面）+ 设置。
-const navItems = [
-  { to: '/', label: '编码', title: '编码 · pi 三栏工作区', end: true },
-  { to: '/settings', label: '设置', title: '设置 · 服务商 / Key / 账号' },
+/** 活动栏图标：统一 24 viewBox 描边线稿风格（lucide 风）。 */
+function NavIcon({ children }: { children: ReactNode }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-[17px] w-[17px]"
+      aria-hidden="true"
+    >
+      {children}
+    </svg>
+  )
+}
+
+type NavItem = { to: string; label: string; title?: string; end?: boolean; icon: ReactNode }
+
+// 六大板块导航：编码 / 办公 / 图像 / 视频 / 科研 / 用量，设置固定末位。
+const navItems: NavItem[] = [
+  {
+    to: '/',
+    label: '编码',
+    title: '编码 · pi 三栏工作区',
+    end: true,
+    icon: (
+      <NavIcon>
+        <polyline points="16 18 22 12 16 6" />
+        <polyline points="8 6 2 12 8 18" />
+      </NavIcon>
+    ),
+  },
+  {
+    to: '/office',
+    label: '办公',
+    title: '办公 · PPT / Excel / Word 智能处理',
+    icon: (
+      <NavIcon>
+        <rect x="2" y="7" width="20" height="14" rx="2" />
+        <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
+      </NavIcon>
+    ),
+  },
+  {
+    to: '/image',
+    label: '图像',
+    title: '图像 · AI 图像生成',
+    icon: (
+      <NavIcon>
+        <rect x="3" y="3" width="18" height="18" rx="2" />
+        <circle cx="9" cy="9" r="2" />
+        <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+      </NavIcon>
+    ),
+  },
+  {
+    to: '/video',
+    label: '视频',
+    title: '视频 · 视频生成与处理',
+    icon: (
+      <NavIcon>
+        <path d="m22 8-6 4 6 4V8Z" />
+        <rect x="2" y="6" width="14" height="12" rx="2" />
+      </NavIcon>
+    ),
+  },
+  {
+    to: '/science',
+    label: '科研',
+    title: '科研 · 文献综述 / 知识库 / 自动科研',
+    icon: (
+      <NavIcon>
+        <path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2" />
+        <path d="M8.5 2h7" />
+        <path d="M7 16h10" />
+      </NavIcon>
+    ),
+  },
+  {
+    to: '/usage',
+    label: '用量',
+    title: '用量 · Token 消耗与运行统计',
+    icon: (
+      <NavIcon>
+        <path d="M3 3v18h18" />
+        <path d="M18 17V9" />
+        <path d="M13 17V5" />
+        <path d="M8 17v-3" />
+      </NavIcon>
+    ),
+  },
+  {
+    to: '/settings',
+    label: '设置',
+    title: '设置 · 服务商 / Key / 账号',
+    icon: (
+      <NavIcon>
+        <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+        <circle cx="12" cy="12" r="3" />
+      </NavIcon>
+    ),
+  },
 ]
 
 // VSCode 活动栏式导航项：选中态 = 左侧 2px 强调条 + accent-soft 底 + 亮字。
 const linkClass = ({ isActive }: { isActive: boolean }) =>
   [
-    'group relative flex flex-col items-center justify-center h-9 rounded-btn text-xs transition-colors duration-150',
+    'group relative flex flex-col items-center justify-center gap-1 h-12 rounded-btn text-xs transition-colors duration-150',
     isActive
       ? 'text-ink bg-primary-tint font-semibold'
       : 'text-ink-dim hover:bg-surface-2 hover:text-ink-muted',
   ].join(' ')
-
-type NavItem = { to: string; label: string; title?: string; end?: boolean }
 
 function NavEntry({ item }: { item: NavItem }) {
   return (
@@ -33,7 +132,8 @@ function NavEntry({ item }: { item: NavItem }) {
               (isActive ? 'bg-primary' : 'bg-transparent')
             }
           />
-          <span className="leading-none">{item.label}</span>
+          {item.icon}
+          <span className="text-[10px] leading-none">{item.label}</span>
         </>
       )}
     </NavLink>
@@ -156,7 +256,7 @@ export default function Layout() {
             </div>
           </div>
 
-          {/* 主导航：编码 / 设置 */}
+          {/* 主导航：六大板块 + 设置（末位） */}
           <nav className="flex flex-col gap-0.5 w-full px-2">
             {navItems.map((item) => (
               <NavEntry key={item.to} item={item} />

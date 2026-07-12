@@ -1,6 +1,11 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import Layout from './components/Layout'
 import PiShell from './pages/PiShell'
+import Office from './pages/Office'
+import ImageStudio from './pages/ImageStudio'
+import VideoStudio from './pages/VideoStudio'
+import Science from './pages/Science'
+import Usage from './pages/Usage'
 import Settings from './pages/Settings'
 import Login from './pages/Login'
 import { useAuthStore } from './stores/authStore'
@@ -25,6 +30,11 @@ export default function App() {
           <Route index element={<PiShell />} />
           {/* 旧 /pi 路径保留为别名，统一跳回根路由。 */}
           <Route path="pi" element={<Navigate to="/" replace />} />
+          <Route path="office" element={<Office />} />
+          <Route path="image" element={<ImageStudio />} />
+          <Route path="video" element={<VideoStudio />} />
+          <Route path="science" element={<Science />} />
+          <Route path="usage" element={<Usage />} />
           <Route path="settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
