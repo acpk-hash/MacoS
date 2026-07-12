@@ -1,22 +1,24 @@
-// Artifacts 页（H3/P7）——文档 / PPT 的两阶段生成 + HTML 可视化编辑。
+// Artifacts 页（H3/P7/Q3）——文档 / PPT 的选项驱动生成 + HTML 可视化编辑。
 //
-// P7 起改为「先规划询问、确认后再生成」（claude.ai/design 式两阶段）：
-//   ① 规划：描述需求 → 模型先产出结构化规划（markdown，不出 HTML）；
-//   ② 确认：右侧面板展示规划，可直接编辑文本或再对话让模型修订；
-//   ③ 生成：点「按此规划生成」→ 以最终规划为强上下文产出自包含 HTML，
+// Q3 起改为「选项驱动」三阶段（出选项 → 勾选 → workflow → 生成）：
+//   ① 选项：描述需求 → 模型产出结构化选项 JSON（类型/风格/篇幅/受众/重点
+//      模块…），右侧渲染成可点击的单选/多选控件，带模型推荐默认值；
+//   ② 流程：勾选完点「生成流程」→ 模型按选择产出 workflow（有序步骤流），
+//      每步可直接微调文字、增删步骤，也可继续对话让模型改；
+//   ③ 生成：确认流程 → 以「选择汇总 + 步骤流」为强上下文产出自包含 HTML，
 //      之后进入原有的 预览 / 源码 / 可视化编辑 / 保存 / 导出 流程。
 //
 // 三区布局：
-//   左：AI 对话 / 指令区（带 规划›确认›生成 步骤指示）。
+//   左：AI 对话 / 指令区（带 选项›流程›生成 步骤指示）。
 //   中：Monaco HTML 源码（可折叠，仅生成后显示）——手改源码实时刷新预览。
-//   右：规划确认面板（阶段①②）或 iframe 实时预览（阶段③）；「可视化编辑」
-//       模式下点击文字块就地编辑，blur 后经 postMessage 把改动写回源码字符串。
+//   右：选项勾选 / 流程确认面板（阶段①②）或 iframe 实时预览（阶段③）；
+//       「可视化编辑」模式下点击文字块就地编辑，blur 后经 postMessage 把改动
+//       写回源码字符串。
 //
-// 单一数据源 = artifactStore.html（规划阶段则是 artifactStore.plan）。
+// 单一数据源 = artifactStore.html（选项阶段 = optionGroups+selections，
+// 流程阶段 = workflow）。
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import Editor from '@monaco-editor/react'
-import ReactMarkdown, { type Components } from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 import { MONACO_THEME } from '../lib/monacoSetup'
 import { useArtifactStore, type ArtifactStage } from '../stores/artifactStore'
 import {
@@ -59,13 +61,14 @@ function buildPreviewDoc(html: string, mode: Mode): string {
   return withIds + script
 }
 
-// ── 步骤指示（规划 › 确认 › 生成） ──────────────────────────────────
+// ── 步骤指示（选项 › 流程 › 生成） ──────────────────────────────────
 
-const STEP_LABELS = ['规划', '确认', '生成']
+const STEP_LABELS = ['选项', '流程', '生成']
 
 function stageStep(stage: ArtifactStage): number {
-  if (stage === 'idle' || stage === 'planning') return 0
-  if (stage === 'plan_ready') return 1
+  if (stage === 'idle' || stage === 'options' || stage === 'options_ready')
+    return 0
+  if (stage === 'workflow' || stage === 'workflow_ready') return 1
   return 2
 }
 
@@ -95,48 +98,6 @@ function StepIndicator({ stage }: { stage: ArtifactStage }) {
   )
 }
 
-// ── 规划 markdown 渲染（深色主题、轻量组件映射） ────────────────────
-
-const planMdComponents: Components = {
-  h1: ({ children }) => (
-    <h1 className="text-[16px] font-bold text-ink mt-3 mb-1.5 first:mt-0">{children}</h1>
-  ),
-  h2: ({ children }) => (
-    <h2 className="text-[14.5px] font-semibold text-primary mt-3 mb-1 first:mt-0">
-      {children}
-    </h2>
-  ),
-  h3: ({ children }) => (
-    <h3 className="text-[13.5px] font-semibold text-ink mt-2 mb-1">{children}</h3>
-  ),
-  p: ({ children }) => <p className="my-1 text-ink-muted">{children}</p>,
-  ul: ({ children }) => (
-    <ul className="list-disc pl-5 my-1 space-y-0.5 text-ink-muted">{children}</ul>
-  ),
-  ol: ({ children }) => (
-    <ol className="list-decimal pl-5 my-1 space-y-0.5 text-ink-muted">{children}</ol>
-  ),
-  strong: ({ children }) => (
-    <strong className="text-ink font-semibold">{children}</strong>
-  ),
-  code: ({ children }) => (
-    <code className="px-1 py-0.5 rounded bg-surface-2 text-[12px] text-primary">
-      {children}
-    </code>
-  ),
-  hr: () => <hr className="my-2 border-line" />,
-}
-
-function PlanMarkdown({ text }: { text: string }) {
-  return (
-    <div className="text-[13px] leading-6 text-ink break-words">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={planMdComponents}>
-        {text}
-      </ReactMarkdown>
-    </div>
-  )
-}
-
 export default function Artifacts() {
   const {
     aggModels,
@@ -145,16 +106,23 @@ export default function Artifacts() {
     currentProviderId,
     turns,
     stage,
-    plan,
+    optionGroups,
+    selections,
+    workflow,
     html,
     streaming,
     error,
     loadModels,
     setModelSel,
     ask,
-    confirmPlan,
+    toggleOption,
+    confirmOptions,
+    confirmWorkflow,
+    backToOptions,
+    setWorkflowStep,
+    addWorkflowStep,
+    removeWorkflowStep,
     stop,
-    setPlan,
     setHtml,
     saveDraft,
     reset,
@@ -163,7 +131,6 @@ export default function Artifacts() {
   const [draft, setDraft] = useState('')
   const [mode, setMode] = useState<Mode>('source')
   const [showSource, setShowSource] = useState(true)
-  const [planEditing, setPlanEditing] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const [attachments, setAttachments] = useState<Attachment[]>([])
 
@@ -189,10 +156,10 @@ export default function Artifacts() {
   )
   const editableCount = useMemo(() => (html ? countEditable(html) : 0), [html])
 
-  // 阶段①②（以及首次生成中）右侧显示规划面板而非预览。
-  const showPlanPanel =
-    !html &&
-    (stage === 'planning' || stage === 'plan_ready' || stage === 'generating')
+  // 阶段①②（以及首次生成中）右侧显示 选项/流程 面板而非预览。
+  const showConfigPanel = !html && stage !== 'idle' && stage !== 'done'
+  // 面板处于选项子阶段还是流程子阶段。
+  const inOptions = stage === 'options' || stage === 'options_ready'
 
   // 监听 iframe 可视化编辑的回写消息。
   useEffect(() => {
@@ -261,7 +228,7 @@ export default function Artifacts() {
     if (!t && attachments.length > 0) {
       t =
         stage === 'idle'
-          ? '请基于附带的参考资料规划一份文档 / PPT。'
+          ? '请基于附带的参考资料给出文档 / PPT 的配置选项。'
           : '请基于附带的参考资料调整。'
     }
     if (!t) return
@@ -273,12 +240,11 @@ export default function Artifacts() {
 
   const handleNew = () => {
     reset()
-    setPlanEditing(false)
     setDraft('')
   }
 
   const handleSaveDraft = () => {
-    if (!html && !plan) return
+    if (!html && optionGroups.length === 0 && workflow.length === 0) return
     const ok = saveDraft()
     showToast(ok ? '已保存草稿（刷新 / 重启后自动恢复）' : '保存失败')
   }
@@ -342,7 +308,7 @@ export default function Artifacts() {
           </button>
         </div>
 
-        {/* 步骤指示：规划 › 确认 › 生成 */}
+        {/* 步骤指示：选项 › 流程 › 生成 */}
         <StepIndicator stage={stage} />
 
         {/* 对话流 */}
@@ -352,7 +318,8 @@ export default function Artifacts() {
               <Mascot mood="happy" size={64} className="mb-3" />
               <p className="text-sm text-ink-muted mb-1">描述你想要的文档或 PPT</p>
               <p className="text-xs text-ink-dim mb-4">
-                模型会先给出规划供你确认 / 调整，确认后再生成可离线打开的 HTML
+                模型先给出可勾选的选项，选完汇总成制作流程（workflow），确认后再生成可离线打开的
+                HTML
               </p>
               <div className="space-y-2 w-full">
                 {EXAMPLES.map((p) => (
@@ -391,16 +358,24 @@ export default function Artifacts() {
                   key={i}
                   className="px-3 py-2 rounded-lg bg-surface border border-line text-[12.5px] text-ink-muted leading-6"
                 >
-                  {t.kind === 'plan'
-                    ? '已产出 / 更新规划（见右侧面板，可编辑或确认）'
-                    : '已生成 / 更新 HTML（见中栏源码与右侧预览）'}
+                  {t.kind === 'options'
+                    ? '已给出配置选项（见右侧面板，勾选后生成流程）'
+                    : t.kind === 'workflow'
+                      ? '已生成制作流程（见右侧面板，可微调后确认生成）'
+                      : t.kind === 'plan'
+                        ? '已产出规划（旧版草稿）'
+                        : '已生成 / 更新 HTML（见中栏源码与右侧预览）'}
                 </div>
               ),
             )
           )}
           {streaming && (
             <div className="px-3 py-2 rounded-lg bg-surface border border-line text-[12.5px] text-ink-dim">
-              {stage === 'planning' ? '正在拟定规划…' : '正在生成 HTML…'}
+              {stage === 'options'
+                ? '正在生成选项…'
+                : stage === 'workflow'
+                  ? '正在编排制作流程…'
+                  : '正在生成 HTML…'}
             </div>
           )}
           {error && (
@@ -483,10 +458,12 @@ export default function Artifacts() {
             rows={3}
             placeholder={
               stage === 'idle'
-                ? '例如：做一个 5 页关于 XX 的 PPT…（先出规划，确认后再生成）'
-                : stage === 'plan_ready'
-                  ? '想调整规划？如：把第 2 页换成…（也可直接在右侧编辑规划）'
-                  : '继续对话让它改，如：把第 2 页标题改成…'
+                ? '例如：做一个 5 页关于 XX 的 PPT…（先出选项供你勾选）'
+                : stage === 'options_ready'
+                  ? '选项不合适？描述调整要求让模型重出选项…'
+                  : stage === 'workflow_ready'
+                    ? '想调整流程？如：在第 2 步后加一页案例…（也可直接改右侧步骤文字）'
+                    : '继续对话让它改，如：把第 2 页标题改成…'
             }
             className="w-full resize-none bg-surface border border-line rounded-lg px-2.5 py-2 text-[13px] text-ink placeholder:text-ink-dim focus:outline-none focus:border-primary transition-colors"
           />
@@ -505,10 +482,12 @@ export default function Artifacts() {
                 className="flex-1 text-xs px-3 py-2 rounded-lg bg-primary text-white hover:bg-primary-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 {stage === 'idle'
-                  ? '生成规划'
-                  : stage === 'plan_ready'
-                    ? '调整规划'
-                    : '发送'}
+                  ? '出选项'
+                  : stage === 'options_ready'
+                    ? '调整选项'
+                    : stage === 'workflow_ready'
+                      ? '调整流程'
+                      : '发送'}
               </button>
             )}
           </div>
@@ -552,7 +531,7 @@ export default function Artifacts() {
         </div>
       )}
 
-      {/* ── 右：规划确认面板（阶段①②）或实时预览（阶段③） ── */}
+      {/* ── 右：选项 / 流程面板（阶段①②）或实时预览（阶段③） ── */}
       <div className="flex flex-col flex-1 min-w-0 h-full min-h-0">
         <div className="flex items-center gap-2 px-3 h-9 border-b border-line flex-shrink-0 bg-surface/40">
           {!showSource && html && (
@@ -565,11 +544,11 @@ export default function Artifacts() {
             </button>
           )}
           <span className="text-[12.5px] text-ink-muted font-medium">
-            {showPlanPanel ? '规划确认' : '预览'}
+            {showConfigPanel ? (inOptions ? '选项配置' : '流程确认') : '预览'}
           </span>
 
           {/* 可视化 / 源码编辑切换（仅生成后有意义） */}
-          {!showPlanPanel && (
+          {!showConfigPanel && (
             <>
               <div className="ml-1 flex rounded-lg border border-line overflow-hidden">
                 <button
@@ -609,13 +588,13 @@ export default function Artifacts() {
 
           <button
             onClick={handleSaveDraft}
-            disabled={!html && !plan}
+            disabled={!html && optionGroups.length === 0 && workflow.length === 0}
             className="text-[11px] text-white bg-primary hover:bg-primary-hover rounded-lg px-2.5 py-1 disabled:opacity-40 transition-colors"
-            title="保存当前草稿到本机（含规划与预览里的就地修改），刷新 / 重启后自动恢复"
+            title="保存当前草稿到本机（含选项、流程与预览里的就地修改），刷新 / 重启后自动恢复"
           >
             保存
           </button>
-          {!showPlanPanel && (
+          {!showConfigPanel && (
             <>
               <button
                 onClick={printDoc}
@@ -638,68 +617,181 @@ export default function Artifacts() {
         </div>
 
         <div className="flex-1 min-h-0 bg-bg relative">
-          {showPlanPanel ? (
-            /* ── 规划确认面板（深色渲染，可编辑 / 确认） ── */
+          {showConfigPanel ? (
+            /* ── 选项勾选 / 流程确认面板（深色，可交互） ── */
             <div className="absolute inset-0 flex flex-col">
               <div className="flex items-center gap-2 px-4 py-2 border-b border-line flex-shrink-0">
-                <span className="text-[12.5px] font-medium text-ink">📋 规划</span>
-                {stage === 'planning' && (
+                <span className="text-[12.5px] font-medium text-ink">
+                  {inOptions ? '🧩 选项配置' : '🛠 制作流程'}
+                </span>
+                {stage === 'options' && (
                   <span className="text-[11px] text-ink-dim animate-pulse">
-                    模型正在拟定规划…
+                    模型正在生成选项…
+                  </span>
+                )}
+                {stage === 'options_ready' && (
+                  <span className="text-[11px] text-ink-dim">
+                    勾选你想要的，然后生成制作流程
+                  </span>
+                )}
+                {stage === 'workflow' && (
+                  <span className="text-[11px] text-ink-dim animate-pulse">
+                    模型正在编排制作流程…
+                  </span>
+                )}
+                {stage === 'workflow_ready' && (
+                  <span className="text-[11px] text-ink-dim">
+                    可直接微调步骤文字，确认后开始生成
                   </span>
                 )}
                 {stage === 'generating' && (
                   <span className="text-[11px] text-primary animate-pulse">
-                    正在按规划生成 HTML…
+                    正在按流程生成 HTML…
                   </span>
-                )}
-                <div className="flex-1" />
-                {stage === 'plan_ready' && (
-                  <button
-                    onClick={() => setPlanEditing((v) => !v)}
-                    className="text-[11px] text-ink-muted hover:text-ink border border-line rounded-lg px-2 py-1 transition-colors"
-                    title="直接编辑规划文本（markdown）"
-                  >
-                    {planEditing ? '完成编辑' : '✏️ 编辑规划'}
-                  </button>
                 )}
               </div>
 
-              <div className="flex-1 min-h-0 flex flex-col px-5 py-4">
-                {plan ? (
-                  planEditing && stage === 'plan_ready' ? (
-                    <textarea
-                      value={plan}
-                      onChange={(e) => setPlan(e.target.value)}
-                      className="flex-1 w-full resize-none bg-surface border border-line rounded-lg p-3 text-[12.5px] font-mono text-ink leading-6 focus:outline-none focus:border-primary transition-colors"
-                      placeholder="在这里直接编辑规划（markdown）…"
-                    />
+              <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
+                {inOptions ? (
+                  optionGroups.length > 0 ? (
+                    <div className="space-y-4">
+                      {optionGroups.map((g) => (
+                        <div key={g.id}>
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <span className="text-[12.5px] font-medium text-ink">
+                              {g.title}
+                            </span>
+                            <span className="text-[10px] text-ink-dim">
+                              {g.multi ? '可多选' : '单选'}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {g.options.map((o) => {
+                              const sel = (selections[g.id] ?? []).includes(o.id)
+                              return (
+                                <button
+                                  key={o.id}
+                                  onClick={() => toggleOption(g.id, o.id)}
+                                  disabled={stage !== 'options_ready'}
+                                  title={o.desc}
+                                  className={[
+                                    'px-2.5 py-1.5 rounded-lg border text-[12px] transition-colors disabled:opacity-50',
+                                    sel
+                                      ? 'bg-primary-tint border-primary text-primary font-medium'
+                                      : 'bg-surface border-line text-ink-muted hover:border-line-strong hover:text-ink',
+                                  ].join(' ')}
+                                >
+                                  {sel ? '✓ ' : ''}
+                                  {o.label}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   ) : (
-                    <div className="flex-1 min-h-0 overflow-y-auto pr-1">
-                      <PlanMarkdown text={plan} />
+                    <div className="flex flex-col items-center mt-16 gap-3">
+                      <Mascot mood="happy" size={64} />
+                      <p className="text-[12.5px] text-ink-dim">
+                        模型正在根据你的需求生成可勾选的选项…
+                      </p>
                     </div>
                   )
+                ) : workflow.length > 0 ? (
+                  <div className="space-y-2">
+                    {workflow.map((st, i) => (
+                      <div
+                        key={i}
+                        className="flex items-start gap-2 rounded-lg bg-surface border border-line px-3 py-2.5"
+                      >
+                        <span className="w-5 h-5 mt-0.5 rounded-full bg-primary-tint text-primary text-[11px] font-medium flex items-center justify-center flex-shrink-0">
+                          {i + 1}
+                        </span>
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <input
+                            value={st.title}
+                            disabled={stage !== 'workflow_ready'}
+                            onChange={(e) =>
+                              setWorkflowStep(i, { ...st, title: e.target.value })
+                            }
+                            placeholder="步骤标题"
+                            className="w-full bg-transparent text-[12.5px] font-medium text-ink border-b border-transparent focus:outline-none focus:border-primary transition-colors"
+                          />
+                          <textarea
+                            value={st.detail}
+                            disabled={stage !== 'workflow_ready'}
+                            onChange={(e) =>
+                              setWorkflowStep(i, { ...st, detail: e.target.value })
+                            }
+                            rows={2}
+                            placeholder="这一步做什么（内容 / 风格要点）"
+                            className="w-full resize-none bg-transparent text-[12px] text-ink-muted leading-5 border-b border-transparent focus:outline-none focus:border-primary transition-colors"
+                          />
+                        </div>
+                        {stage === 'workflow_ready' && (
+                          <button
+                            onClick={() => removeWorkflowStep(i)}
+                            className="text-ink-dim hover:text-failed text-[12px] mt-0.5 transition-colors"
+                            title="删除此步骤"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    {stage === 'workflow_ready' && (
+                      <button
+                        onClick={addWorkflowStep}
+                        className="w-full py-2 rounded-lg border border-dashed border-line text-[12px] text-ink-dim hover:text-ink hover:border-line-strong transition-colors"
+                      >
+                        ＋ 添加步骤
+                      </button>
+                    )}
+                  </div>
                 ) : (
                   <div className="flex flex-col items-center mt-16 gap-3">
                     <Mascot mood="happy" size={64} />
                     <p className="text-[12.5px] text-ink-dim">
-                      模型正在根据你的需求拟定规划…
+                      模型正在把你的选择编排成制作流程…
                     </p>
                   </div>
                 )}
               </div>
 
-              {stage === 'plan_ready' && (
+              {stage === 'options_ready' && (
                 <div className="border-t border-line px-4 py-3 flex items-center gap-3 flex-shrink-0">
                   <button
-                    onClick={() => void confirmPlan()}
-                    disabled={!plan.trim()}
+                    onClick={() => void confirmOptions()}
+                    disabled={optionGroups.length === 0}
                     className="text-xs px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   >
-                    ✅ 按此规划生成
+                    ✅ 按所选生成流程
                   </button>
                   <span className="text-[11px] text-ink-dim">
-                    不满意？在左侧输入调整要求让模型修订，或点「编辑规划」直接改
+                    选项不合适？在左侧输入调整要求让模型重出
+                  </span>
+                </div>
+              )}
+              {stage === 'workflow_ready' && (
+                <div className="border-t border-line px-4 py-3 flex items-center gap-2 flex-shrink-0">
+                  <button
+                    onClick={() => void confirmWorkflow()}
+                    disabled={workflow.length === 0}
+                    className="text-xs px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    ✅ 按此流程生成
+                  </button>
+                  <button
+                    onClick={backToOptions}
+                    disabled={optionGroups.length === 0}
+                    className="text-[11px] text-ink-muted hover:text-ink border border-line rounded-lg px-2.5 py-1.5 disabled:opacity-40 transition-colors"
+                    title="回到选项勾选（已出的流程会保留）"
+                  >
+                    ‹ 返回选项
+                  </button>
+                  <span className="text-[11px] text-ink-dim">
+                    可直接改步骤文字，或在左侧输入让模型调整
                   </span>
                 </div>
               )}
@@ -721,7 +813,7 @@ export default function Artifacts() {
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center px-6">
               <Mascot mood="idle" size={72} />
               <p className="text-[13px] text-ink-muted">
-                左侧描述需求 → 先出规划 → 确认后生成
+                左侧描述需求 → 勾选选项 → 确认流程 → 生成
               </p>
               <p className="text-[11px] text-ink-dim">
                 生成后支持点文字就地编辑、导出 HTML / 打印 PDF
