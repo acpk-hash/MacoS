@@ -22,6 +22,8 @@ import {
   type LitPaperExtras,
   type LitFigure,
 } from '../stores/researchStore'
+import LibraryTab from '../components/research/LibraryTab'
+import { useKbStore } from '../stores/kbStore'
 
 const NL = String.fromCharCode(10)
 
@@ -1120,6 +1122,12 @@ export default function Research() {
     if (tab === 'agents' && !store.agentsLoaded) void store.loadAgents()
     if (tab === 'skills' && !store.skillsLoaded) void store.loadSkills()
     if (tab === 'pipelines' && !store.pipelinesLoaded) void store.loadPipelines()
+    if (tab === 'library') {
+      const kb = useKbStore.getState()
+      void kb.loadPapers()
+      void kb.loadCategories()
+      void kb.loadTags()
+    }
   }, [tab]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const openAgent = async (meta: MdMeta) => {
@@ -1229,6 +1237,7 @@ export default function Research() {
           <TabButton id="pipelines" label="流水线" />
           <TabButton id="dashboard" label="仪表盘" />
           <TabButton id="lit" label="文献搜索" />
+          <TabButton id="library" label="知识库" />
         </div>
         <p className="text-[11px] text-ink-dim mt-1">
           集成本地 agent管理 / skills管理:浏览编辑 agent·skill 定义、运行流水线、查看运行仪表盘、搜索并分析文献。
@@ -1314,6 +1323,8 @@ export default function Research() {
       {tab === 'dashboard' && <DashboardTab />}
 
       {tab === 'lit' && <LitSearchTab />}
+
+      {tab === 'library' && <LibraryTab />}
 
       {editing && (
         <MdEditorOverlay

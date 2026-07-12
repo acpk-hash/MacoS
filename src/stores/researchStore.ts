@@ -138,7 +138,7 @@ export interface LitAnalyzeResult {
   papers: LitPaperExtras[]
 }
 
-export type ResearchTab = 'agents' | 'skills' | 'pipelines' | 'dashboard' | 'lit'
+export type ResearchTab = 'agents' | 'skills' | 'pipelines' | 'dashboard' | 'lit' | 'library'
 
 // -- Store ------------------------------------------------------------------
 
