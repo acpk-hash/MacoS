@@ -64,7 +64,7 @@ function PdfPage({
       task?.cancel()
     }
   }, [doc, pageNo, scale])
-  return <canvas ref={canvasRef} className="bg-white shadow-lg flex-shrink-0" />
+  return <canvas ref={canvasRef} className="bg-white border border-line shadow-lg flex-shrink-0" />
 }
 
 export default function PdfPreview({ relPath }: { relPath: string }) {

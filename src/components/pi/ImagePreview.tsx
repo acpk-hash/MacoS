@@ -31,7 +31,7 @@ const ZOOM_STEPS = [0.1, 0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4, 6, 8]
 
 /** 透明底棋盘格（深色，配 Trae 主题）。 */
 const CHECKER: React.CSSProperties = {
-  background: 'repeating-conic-gradient(#26262c 0% 25%, #1e1e22 0% 50%) 0 0 / 16px 16px',
+  background: 'repeating-conic-gradient(#e9e9e6 0% 25%, #f7f7f5 0% 50%) 0 0 / 16px 16px',
 }
 
 export default function ImagePreview({ relPath, ext }: { relPath: string; ext: string }) {

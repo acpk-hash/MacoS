@@ -84,7 +84,7 @@ function KbPdfPage({ doc, pageNo, scale }: { doc: PDFDocumentProxy; pageNo: numb
       task?.cancel()
     }
   }, [doc, pageNo, scale])
-  return <canvas ref={canvasRef} className="bg-white shadow-lg flex-shrink-0" />
+  return <canvas ref={canvasRef} className="bg-white border border-line shadow-lg flex-shrink-0" />
 }
 function KbPdfPreview({ paperId }: { paperId: string }) {
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null)
@@ -641,7 +641,7 @@ function DetailDrawer({ paper, categories, tags, onClose }: {
         </span>
         <button
           onClick={() => setEditStarred((v) => !v)}
-          className={'text-[16px] transition-colors ' + (editStarred ? 'text-yellow-400' : 'text-ink-dim hover:text-yellow-400')}
+          className={'text-[16px] transition-colors ' + (editStarred ? 'text-gold' : 'text-ink-dim hover:text-gold')}
           title={editStarred ? '取消星标' : '星标'}
         >&#9733;</button>
         <button
@@ -920,7 +920,7 @@ function PaperRow({
     >
       <td className="px-3 py-2 max-w-0">
         <div className="flex items-center gap-1 min-w-0">
-          {paper.starred === 1 && <span className="text-yellow-400 flex-shrink-0 text-[12px]">&#9733;</span>}
+          {paper.starred === 1 && <span className="text-gold flex-shrink-0 text-[12px]">&#9733;</span>}
           <span className="truncate text-ink font-medium" title={paper.title ?? paper.orig_filename ?? ''}>
             {paper.title || paper.orig_filename || '无标题'}
           </span>

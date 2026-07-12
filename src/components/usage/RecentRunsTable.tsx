@@ -15,9 +15,9 @@ const STATUS_LABEL: Record<string, string> = {
 }
 
 function statusClass(s: string): string {
-  if (s === 'failed') return 'bg-[#f851491f] text-failed'
-  if (s === 'running' || s === 'active') return 'bg-[#5b8cff1f] text-running'
-  if (s === 'awaiting_review') return 'bg-[#d299221f] text-awaiting'
+  if (s === 'failed') return 'bg-[#d0342c1a] text-failed'
+  if (s === 'running' || s === 'active') return 'bg-[#0d8de31a] text-running'
+  if (s === 'awaiting_review') return 'bg-[#b7791f1a] text-awaiting'
   return 'bg-elevated/60 text-ink-muted'
 }
 
@@ -56,7 +56,7 @@ export default function RecentRunsTable({ runs }: { runs: RecentRun[] }) {
                     'text-[10px] px-1.5 py-0.5 rounded font-medium',
                     r.kind === 'board'
                       ? 'bg-primary-tint text-primary'
-                      : 'bg-[#3fb9501f] text-done',
+                      : 'bg-[#10a37f1a] text-done',
                   ].join(' ')}
                 >
                   {r.kind === 'board' ? '看板' : '工作台'}

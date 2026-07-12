@@ -3,43 +3,43 @@
 @tailwind utilities;
 
 /* ══════════════════════════════════════════════════════════════════════════
-   v0.10 P-ai 风深色 — 基础层
-   kawayiYokami/P-ai 实测色值：大圆角 + flat 层次（背景色差分层，弱阴影）。
-   深色唯一，无浅色切换。P-ai 紫强调 + 柔和语义色。
+   v0.11 Codex 风白色系浅色 — 基础层
+   白底、极浅灰分层、细浅边框、近黑文字：大圆角 + flat 层次（背景色差分层，极轻阴影）。
+   浅色唯一，无深色切换。中性近黑强调 + 浅底可读语义色。
    ══════════════════════════════════════════════════════════════════════════ */
 
 :root {
-  --bg: #22262f;
-  --editor: #282c34;
-  --panel: #22262f;
-  --surface: #22262f;
-  --surface-2: #41454c;
-  --elevated: #41454c;
-  --border: #363b44;
-  --border-soft: #2d3239;
-  --border-strong: #4a5060;
+  --bg: #f7f7f5;
+  --editor: #ffffff;
+  --panel: #fafaf9;
+  --surface: #fafaf9;
+  --surface-2: #f0f0ee;
+  --elevated: #f0f0ee;
+  --border: #e6e6e3;
+  --border-soft: #efefec;
+  --border-strong: #d6d6d2;
 
-  --primary: #8e5da1;
-  --primary-hover: #a06fb3;
-  --primary-active: #7d5191;
-  --primary-tint: rgba(142, 93, 161, 0.16);
-  --primary-ring: rgba(142, 93, 161, 0.4);
+  --primary: #202123;
+  --primary-hover: #3a3a38;
+  --primary-active: #101010;
+  --primary-tint: rgba(32, 33, 35, 0.06);
+  --primary-ring: rgba(32, 33, 35, 0.3);
 
-  --running: #56b6c2;
-  --done: #9ccb9a;
-  --awaiting: #f6e2b7;
-  --failed: #eba0ac;
-  --todo: #7a8089;
+  --running: #0d8de3;
+  --done: #10a37f;
+  --awaiting: #b7791f;
+  --failed: #d0342c;
+  --todo: #8a8a85;
 
-  --text: #dcdfe4;
-  --text-muted: #a8adb5;
-  --text-dim: #7a8089;
-  --text-faint: #5c6370;
+  --text: #1f1f1e;
+  --text-muted: #55554f;
+  --text-dim: #8a8a85;
+  --text-faint: #b3b3ad;
 
-  --grad-primary: linear-gradient(120deg, #8e5da1 0%, #56b6c2 100%);
+  --grad-primary: linear-gradient(120deg, #3a3a38 0%, #202123 100%);
   /* flat — 靠背景色差分层；弹层轻投影 + 细边 */
-  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.28);
-  --shadow-pop: 0 6px 20px rgba(0, 0, 0, 0.4);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.12);
 }
 
 *,
@@ -66,22 +66,22 @@ body {
   background-color: var(--bg);
   -webkit-font-smoothing: antialiased;
   font-feature-settings: 'tnum';
-  color-scheme: dark;
+  color-scheme: light;
 }
 
-/* 原生控件（select/option/input 日期等）走深色 */
+/* 原生控件（select/option/input 日期等）走浅色 */
 select,
 input,
 textarea {
-  color-scheme: dark;
+  color-scheme: light;
 }
 select option,
 select optgroup {
-  background-color: #41454c;
-  color: #dcdfe4;
+  background-color: #ffffff;
+  color: #1f1f1e;
 }
 
-/* ── 面板/卡片工具类（深底细边，flat，无发光） ─────────────────────────────── */
+/* ── 面板/卡片工具类（浅底细边，flat，无发光） ─────────────────────────────── */
 @layer components {
   .glass {
     background: var(--panel);
@@ -97,7 +97,7 @@ select optgroup {
     border: 1px solid var(--border);
   }
 
-  /* 底部状态栏（VSCode 式细条）：深底、小字、分段 */
+  /* 底部状态栏（VSCode 式细条）：浅底、小字、分段 */
   .statusbar {
     height: 24px;
     flex-shrink: 0;
@@ -165,23 +165,23 @@ select optgroup {
   }
 }
 
-/* ── 滚动条（深色，方直，hover 才醒目） ─────────────────────────────── */
+/* ── 滚动条（浅色，方直，hover 才醒目） ─────────────────────────────── */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+  scrollbar-color: rgba(0, 0, 0, 0.18) transparent;
 }
 *::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 *::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.14);
   border-radius: 5px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.24);
+  background: rgba(0, 0, 0, 0.28);
   background-clip: padding-box;
 }
 *::-webkit-scrollbar-corner {
@@ -199,15 +199,15 @@ select optgroup {
   }
 }
 
-/* ── Workflow canvas (React Flow) — 深色 P-ai 配色覆盖 ────────────────────── */
+/* ── Workflow canvas (React Flow) — 浅色配色覆盖 ────────────────────── */
 
 @keyframes canvasBreathe {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(142, 93, 161, 0.28);
+    box-shadow: 0 0 0 0 rgba(32, 33, 35, 0.18);
   }
   50% {
-    box-shadow: 0 0 0 4px rgba(142, 93, 161, 0.16);
+    box-shadow: 0 0 0 4px rgba(32, 33, 35, 0.1);
   }
 }
 
@@ -221,15 +221,15 @@ select optgroup {
 }
 
 .react-flow__edge-path {
-  stroke: #4a5060;
+  stroke: #d6d6d2;
   stroke-width: 1.5;
 }
 .react-flow__edge.animated .react-flow__edge-path {
-  stroke: #8e5da1;
+  stroke: #202123;
 }
 
 .react-flow__node.selected > div {
-  outline: 1.5px solid #8e5da1;
+  outline: 1.5px solid #202123;
   outline-offset: 2px;
 }
 
@@ -237,17 +237,17 @@ select optgroup {
   box-shadow: var(--shadow-pop);
 }
 .react-flow__controls-button {
-  background: #22262f;
-  border-bottom: 1px solid #363b44;
-  color: #a8adb5;
-  fill: #a8adb5;
+  background: #ffffff;
+  border-bottom: 1px solid #e6e6e3;
+  color: #55554f;
+  fill: #55554f;
 }
 .react-flow__controls-button:hover {
-  background: #41454c;
+  background: #f0f0ee;
 }
 .react-flow__attribution {
   background: transparent;
-  color: #5c6370;
+  color: #b3b3ad;
 }
 
 /* ── 任务清单打勾轻过渡（reduced-motion 由上方全局守卫兜底）───────────────── */
@@ -271,7 +271,7 @@ select optgroup {
 /* ── 清单跳转时目标卡片高亮一下 ──────────────────────────────────────────── */
 @keyframes clFlash {
   0% {
-    background-color: rgba(142, 93, 161, 0.16);
+    background-color: rgba(32, 33, 35, 0.08);
   }
   100% {
     background-color: transparent;
@@ -285,10 +285,10 @@ select optgroup {
 /* ── 工作台「代码追随」：AI 改动行高亮，数秒后渐隐 ──────────────────────── */
 @keyframes aiEditLineFade {
   0% {
-    background-color: rgba(142, 93, 161, 0.24);
+    background-color: rgba(32, 33, 35, 0.14);
   }
   60% {
-    background-color: rgba(142, 93, 161, 0.16);
+    background-color: rgba(32, 33, 35, 0.08);
   }
   100% {
     background-color: transparent;
@@ -309,7 +309,7 @@ select optgroup {
 .ai-edit-gutter {
   width: 3px !important;
   margin-left: 3px;
-  background: #8e5da1;
+  background: #202123;
   border-radius: 2px;
   animation: aiEditGutterFade 3s ease-out forwards;
 }

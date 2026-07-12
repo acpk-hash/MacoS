@@ -455,7 +455,7 @@ export default function ImageStudio() {
                   doDelete(confirmDelete.id)
                   setConfirmDelete(null)
                 }}
-                className="text-xs px-3 py-1.5 rounded-lg bg-[#da3633] hover:bg-failed text-white border border-failed transition-colors"
+                className="text-xs px-3 py-1.5 rounded-lg bg-[#d0342c] hover:bg-failed text-white border border-failed transition-colors"
               >
                 删除
               </button>

@@ -32,7 +32,7 @@ function IconBtn({
       className={[
         'w-7 h-7 flex items-center justify-center rounded-lg text-sm border backdrop-blur transition-colors',
         danger
-          ? 'bg-black/50 border-white/20 text-white hover:bg-[#da3633] hover:border-failed'
+          ? 'bg-black/50 border-white/20 text-white hover:bg-[#d0342c] hover:border-failed'
           : 'bg-black/50 border-white/20 text-white hover:bg-elevated/20',
       ].join(' ')}
     >
@@ -95,7 +95,7 @@ export default function MediaCard({
         </span>
         <button
           onClick={onRetry}
-          className="mt-1 px-2.5 py-1 rounded-lg bg-red-900/60 hover:bg-red-800 text-red-100 text-[11px] border border-[#f8514940] transition-colors"
+          className="mt-1 px-2.5 py-1 rounded-lg bg-red-900/60 hover:bg-red-800 text-red-100 text-[11px] border border-[#d0342c40] transition-colors"
         >
           重试
         </button>

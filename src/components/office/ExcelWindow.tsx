@@ -67,7 +67,7 @@ export default function ExcelWindow() {
       </div>
 
       {s.excelError && (
-        <div className="rounded-card border border-[#f8514940] bg-[#f851491a] px-4 py-2.5 text-xs text-failed">
+        <div className="rounded-card border border-[#d0342c40] bg-[#d0342c14] px-4 py-2.5 text-xs text-failed">
           {s.excelError}
         </div>
       )}
@@ -121,7 +121,7 @@ export default function ExcelWindow() {
           </div>
 
           {s.excelDiff && (
-            <div className="rounded-card border border-[#3fb95040] bg-[#3fb9501f] px-4 py-3 text-xs text-done">
+            <div className="rounded-card border border-[#10a37f40] bg-[#10a37f1a] px-4 py-3 text-xs text-done">
               <div className="font-medium">✓ 已应用修改：{s.excelDiff.summary}</div>
               <div className="mt-1 text-ink-muted">
                 行数 {s.excelDiff.rowsBefore} → {s.excelDiff.rowsAfter}，列数{' '}

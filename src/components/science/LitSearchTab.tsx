@@ -361,7 +361,7 @@ function PaperCard({
             {LIT_SOURCE_LABEL[paper.source] ?? paper.source}
           </span>
           {paper.venue && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#3fb9501f] text-done font-medium flex-shrink-0">
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#10a37f1a] text-done font-medium flex-shrink-0">
               {paper.venue}
             </span>
           )}

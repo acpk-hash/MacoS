@@ -39,7 +39,7 @@ export default function TrendChart({ series }: { series: TokenSeriesPoint[] }) {
                 <div className="tabular-nums">
                   合计 {fmtTokens(p.total)} · 运行 {p.runs} 次
                 </div>
-                <div className="tabular-nums text-white/80">
+                <div className="tabular-nums text-ink-muted">
                   输入 {fmtTokens(p.input)} · 输出 {fmtTokens(p.output)}
                   {cache > 0 && <> · 缓存 {fmtTokens(cache)}</>}
                 </div>
@@ -50,9 +50,9 @@ export default function TrendChart({ series }: { series: TokenSeriesPoint[] }) {
                            group-hover:opacity-80 transition-opacity"
                 style={{ height: `${Math.min(100, pct(p.total))}%` }}
               >
-                <div className="w-full bg-[#7ea6ff]" style={{ flexGrow: p.input }} />
-                <div className="w-full bg-[#5b8cff]" style={{ flexGrow: p.output }} />
-                <div className="w-full bg-[#2e3a55]" style={{ flexGrow: cache }} />
+                <div className="w-full bg-[#8ab4e8]" style={{ flexGrow: p.input }} />
+                <div className="w-full bg-[#0d8de3]" style={{ flexGrow: p.output }} />
+                <div className="w-full bg-[#d7dee8]" style={{ flexGrow: cache }} />
               </div>
               {/* 无数据日的基线刻度 */}
               {p.total === 0 && <div className="w-full h-[2px] bg-line rounded-full" />}
@@ -67,13 +67,13 @@ export default function TrendChart({ series }: { series: TokenSeriesPoint[] }) {
       </div>
       <div className="mt-2 flex items-center gap-4 text-[10.5px] text-ink-muted">
         <span className="flex items-center gap-1.5">
-          <i className="w-2.5 h-2.5 rounded-sm bg-[#7ea6ff] inline-block" />输入
+          <i className="w-2.5 h-2.5 rounded-sm bg-[#8ab4e8] inline-block" />输入
         </span>
         <span className="flex items-center gap-1.5">
-          <i className="w-2.5 h-2.5 rounded-sm bg-[#5b8cff] inline-block" />输出
+          <i className="w-2.5 h-2.5 rounded-sm bg-[#0d8de3] inline-block" />输出
         </span>
         <span className="flex items-center gap-1.5">
-          <i className="w-2.5 h-2.5 rounded-sm bg-[#2e3a55] inline-block" />缓存等
+          <i className="w-2.5 h-2.5 rounded-sm bg-[#d7dee8] inline-block" />缓存等
         </span>
       </div>
     </div>

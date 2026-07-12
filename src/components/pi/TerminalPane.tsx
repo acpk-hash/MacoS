@@ -19,29 +19,29 @@ function b64ToBytes(b64: string): Uint8Array {
   return out
 }
 
-/** 深色 Trae 主题配色（对齐 tailwind.config.js 的 v0.9 token）。 */
+/** 浅色终端主题配色（对齐 tailwind.config.js 的 v0.11 浅色 token）。 */
 const TRAE_THEME = {
-  background: '#17171b',
-  foreground: '#e6e6ea',
-  cursor: '#8b7cff',
-  cursorAccent: '#17171b',
-  selectionBackground: 'rgba(139, 124, 255, 0.28)',
-  black: '#1e1e22',
-  red: '#f85149',
-  green: '#3fb950',
-  yellow: '#d29922',
-  blue: '#5b8cff',
-  magenta: '#8b7cff',
-  cyan: '#39c5cf',
-  white: '#b4b4be',
-  brightBlack: '#63636e',
-  brightRed: '#ff7b72',
-  brightGreen: '#56d364',
-  brightYellow: '#e3b341',
-  brightBlue: '#79a6ff',
-  brightMagenta: '#a99cff',
-  brightCyan: '#56d4dd',
-  brightWhite: '#e6e6ea',
+  background: '#ffffff',
+  foreground: '#333333',
+  cursor: '#202123',
+  cursorAccent: '#ffffff',
+  selectionBackground: 'rgba(32, 33, 35, 0.15)',
+  black: '#1f1f1e',
+  red: '#c5221f',
+  green: '#137333',
+  yellow: '#a05a00',
+  blue: '#0b57d0',
+  magenta: '#8e24aa',
+  cyan: '#007b83',
+  white: '#8a8a85',
+  brightBlack: '#666660',
+  brightRed: '#d0342c',
+  brightGreen: '#10a37f',
+  brightYellow: '#b7791f',
+  brightBlue: '#0d8de3',
+  brightMagenta: '#a352cc',
+  brightCyan: '#0997a5',
+  brightWhite: '#b3b3ad',
 }
 
 export default function TerminalPane({ cwd, visible }: { cwd: string; visible: boolean }) {

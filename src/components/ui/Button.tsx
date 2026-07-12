@@ -25,9 +25,9 @@ const variants: Record<Variant, string> = {
   ghost:
     'text-ink-muted bg-transparent border border-line hover:text-ink hover:bg-surface-2 hover:border-line-strong',
   soft:
-    'text-primary bg-primary-tint border border-[#8b7cff3d] hover:bg-[#8b7cff29]',
+    'text-primary bg-primary-tint border border-[#2021233d] hover:bg-[#20212314]',
   danger:
-    'text-failed bg-[#f851491a] border border-[#f8514940] hover:bg-[#f8514929]',
+    'text-failed bg-[#d0342c14] border border-[#d0342c40] hover:bg-[#d0342c24]',
 }
 
 export default function Button({

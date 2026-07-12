@@ -1,4 +1,4 @@
-// StatusDot — 语义状态点：实心圆（无光晕，IDE 深色语义色系）。
+// StatusDot — 语义状态点：实心圆（无光晕，IDE 浅色语义色系）。
 // 映射：running->蓝, done->绿, awaiting->黄, failed->红, todo->灰。
 export type StatusKind =
   | 'running'
@@ -9,12 +9,12 @@ export type StatusKind =
   | 'idle'
 
 const map: Record<StatusKind, string> = {
-  running: '#5b8cff',
-  done: '#3fb950',
-  todo: '#8a8a95',
-  failed: '#f85149',
-  awaiting: '#d29922',
-  idle: '#63636e',
+  running: '#0d8de3',
+  done: '#10a37f',
+  todo: '#8a8a85',
+  failed: '#d0342c',
+  awaiting: '#b7791f',
+  idle: '#b3b3ad',
 }
 
 export interface StatusDotProps {

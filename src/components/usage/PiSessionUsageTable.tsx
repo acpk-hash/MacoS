@@ -11,9 +11,9 @@ const PI_STATUS_LABEL: Record<PiSessionStatus, string> = {
 }
 
 function piStatusClass(s: PiSessionStatus): string {
-  if (s === 'error') return 'bg-[#f851491f] text-failed'
-  if (s === 'running') return 'bg-[#5b8cff1f] text-running'
-  if (s === 'done') return 'bg-[#3fb9501f] text-done'
+  if (s === 'error') return 'bg-[#d0342c1a] text-failed'
+  if (s === 'running') return 'bg-[#0d8de31a] text-running'
+  if (s === 'done') return 'bg-[#10a37f1a] text-done'
   return 'bg-elevated/60 text-ink-muted'
 }
 

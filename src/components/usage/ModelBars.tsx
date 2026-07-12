@@ -36,7 +36,7 @@ export default function ModelBars({ models }: { models: ModelStat[] }) {
             </div>
             <div className="h-2 rounded-full bg-surface-2 overflow-hidden">
               <div
-                className="h-full rounded-full bg-gradient-to-r from-[#8b7cff] to-[#5b8cff]"
+                className="h-full rounded-full bg-gradient-to-r from-[#3a3a38] to-[#202123]"
                 style={{ width: `${widthPct}%` }}
                 title={`输入 ${fmtTokens(m.input)} · 输出 ${fmtTokens(m.output)}`}
               />

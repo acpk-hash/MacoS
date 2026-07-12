@@ -76,7 +76,7 @@ export default function Lightbox({
           </button>
           <button
             onClick={() => onDelete(row)}
-            className="px-3 py-1.5 rounded-lg bg-surface-2 hover:bg-[#da3633] text-ink text-xs border border-line hover:border-failed transition-colors"
+            className="px-3 py-1.5 rounded-lg bg-surface-2 hover:bg-[#d0342c] text-ink hover:text-white text-xs border border-line hover:border-failed transition-colors"
           >
             删除
           </button>

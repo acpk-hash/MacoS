@@ -18,17 +18,17 @@ export type ChipTone =
 
 // 深色徽章：语义色 10-14% 底 + 语义色文字 + 25% 细边。旧 tone 名映射到语义色。
 const tones: Record<ChipTone, string> = {
-  primary: 'bg-primary-tint text-primary border-[#8b7cff40]',
-  sakura: 'bg-primary-tint text-primary border-[#8b7cff40]',
-  lavender: 'bg-primary-tint text-primary border-[#8b7cff40]',
-  running: 'bg-[#5b8cff1f] text-running border-[#5b8cff40]',
-  sky: 'bg-[#5b8cff1f] text-running border-[#5b8cff40]',
-  done: 'bg-[#3fb9501f] text-done border-[#3fb95040]',
-  mint: 'bg-[#3fb9501f] text-done border-[#3fb95040]',
-  awaiting: 'bg-[#d299221f] text-awaiting border-[#d2992240]',
-  gold: 'bg-[#d299221f] text-awaiting border-[#d2992240]',
-  failed: 'bg-[#f851491f] text-failed border-[#f8514940]',
-  coral: 'bg-[#f851491f] text-failed border-[#f8514940]',
+  primary: 'bg-primary-tint text-primary border-[#2021233d]',
+  sakura: 'bg-primary-tint text-primary border-[#2021233d]',
+  lavender: 'bg-primary-tint text-primary border-[#2021233d]',
+  running: 'bg-[#0d8de31a] text-running border-[#0d8de340]',
+  sky: 'bg-[#0d8de31a] text-running border-[#0d8de340]',
+  done: 'bg-[#10a37f1a] text-done border-[#10a37f40]',
+  mint: 'bg-[#10a37f1a] text-done border-[#10a37f40]',
+  awaiting: 'bg-[#b7791f1a] text-awaiting border-[#b7791f40]',
+  gold: 'bg-[#b7791f1a] text-awaiting border-[#b7791f40]',
+  failed: 'bg-[#d0342c1a] text-failed border-[#d0342c40]',
+  coral: 'bg-[#d0342c1a] text-failed border-[#d0342c40]',
   todo: 'bg-surface-2 text-todo border-line',
   neutral: 'bg-surface-2 text-ink-muted border-line',
 }

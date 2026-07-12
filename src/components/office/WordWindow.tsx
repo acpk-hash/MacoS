@@ -61,7 +61,7 @@ export default function WordWindow() {
       </div>
 
       {s.wordError && (
-        <div className="rounded-card border border-[#f8514940] bg-[#f851491a] px-4 py-2.5 text-xs text-failed">
+        <div className="rounded-card border border-[#d0342c40] bg-[#d0342c14] px-4 py-2.5 text-xs text-failed">
           {s.wordError}
         </div>
       )}
