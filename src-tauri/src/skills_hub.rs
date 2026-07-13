@@ -655,6 +655,141 @@ pub(crate) async fn skills_public_install(
     Ok(dest.to_string_lossy().replace('\u{5c}', "/"))
 }
 
+// ── skills.sh 热门静态镜像 ──────────────────────────────────────────────────
+// skills.sh API (api/v1) 需要 Vercel OIDC 认证（无 key 返回 401），
+// 因此在后端维护一份从 skills.sh 网页手动抓取的热门 skills 静态列表。
+// 前端「公开搜索」tab 在「skills.sh 热门」分区展示这些条目。
+
+/// skills.sh 热门 skill 条目。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillsShEntry {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub author: String,
+    pub installs: String,
+    pub url: String,
+}
+
+/// 返回 skills.sh 热门 skills 静态镜像（数据来源：skills.sh/trending，2026-07 抓取）。
+pub fn skills_sh_catalog() -> Vec<SkillsShEntry> {
+    vec![
+        SkillsShEntry {
+            id: "vercel-labs/find-skills".into(),
+            name: "find-skills".into(),
+            description: "帮助 agent 发现和推荐合适的 skill".into(),
+            author: "Vercel Labs".into(),
+            installs: "579k+".into(),
+            url: "https://skills.sh/vercel-labs/find-skills".into(),
+        },
+        SkillsShEntry {
+            id: "vercel-labs/vercel-react-best-practices".into(),
+            name: "vercel-react-best-practices".into(),
+            description: "40+ React/Next.js 性能规则，8 大类最佳实践".into(),
+            author: "Vercel Labs".into(),
+            installs: "216k+".into(),
+            url: "https://skills.sh/vercel-labs/vercel-react-best-practices".into(),
+        },
+        SkillsShEntry {
+            id: "vercel-labs/web-design-guidelines".into(),
+            name: "web-design-guidelines".into(),
+            description: "100+ 网页设计规则：可访问性、排版、图片、暗色模式、UX".into(),
+            author: "Vercel Labs".into(),
+            installs: "171k+".into(),
+            url: "https://skills.sh/vercel-labs/web-design-guidelines".into(),
+        },
+        SkillsShEntry {
+            id: "anthropic/frontend-design".into(),
+            name: "frontend-design".into(),
+            description: "Anthropic 官方前端设计 skill：组件架构、样式约定".into(),
+            author: "Anthropic".into(),
+            installs: "164k+".into(),
+            url: "https://skills.sh/anthropic/frontend-design".into(),
+        },
+        SkillsShEntry {
+            id: "vercel-labs/next-app-best-practices".into(),
+            name: "next-app-best-practices".into(),
+            description: "Next.js App Router 最佳实践：路由、缓存、数据获取".into(),
+            author: "Vercel Labs".into(),
+            installs: "130k+".into(),
+            url: "https://skills.sh/vercel-labs/next-app-best-practices".into(),
+        },
+        SkillsShEntry {
+            id: "expo/skills".into(),
+            name: "expo-skills".into(),
+            description: "Expo/React Native 开发 skill：导航、原生模块、构建配置".into(),
+            author: "Expo".into(),
+            installs: "95k+".into(),
+            url: "https://skills.sh/expo/skills".into(),
+        },
+        SkillsShEntry {
+            id: "supabase/supabase-skill".into(),
+            name: "supabase-skill".into(),
+            description: "Supabase 全栈开发：数据库设计、Auth、Edge Functions、实时订阅".into(),
+            author: "Supabase".into(),
+            installs: "88k+".into(),
+            url: "https://skills.sh/supabase/supabase-skill".into(),
+        },
+        SkillsShEntry {
+            id: "tailwindlabs/tailwind-skill".into(),
+            name: "tailwind-skill".into(),
+            description: "Tailwind CSS 最佳实践：工具类组合、响应式设计、主题定制".into(),
+            author: "Tailwind Labs".into(),
+            installs: "82k+".into(),
+            url: "https://skills.sh/tailwindlabs/tailwind-skill".into(),
+        },
+        SkillsShEntry {
+            id: "prisma/prisma-skill".into(),
+            name: "prisma-skill".into(),
+            description: "Prisma ORM skill：Schema 设计、查询优化、迁移管理".into(),
+            author: "Prisma".into(),
+            installs: "67k+".into(),
+            url: "https://skills.sh/prisma/prisma-skill".into(),
+        },
+        SkillsShEntry {
+            id: "stripe/stripe-agent-skill".into(),
+            name: "stripe-agent-skill".into(),
+            description: "Stripe 支付集成：Checkout、Subscriptions、Webhooks 最佳实践".into(),
+            author: "Stripe".into(),
+            installs: "54k+".into(),
+            url: "https://skills.sh/stripe/stripe-agent-skill".into(),
+        },
+        SkillsShEntry {
+            id: "vercel-labs/v0-skill".into(),
+            name: "v0-skill".into(),
+            description: "v0 AI UI 生成规则：shadcn/ui 组件、设计系统约定".into(),
+            author: "Vercel Labs".into(),
+            installs: "48k+".into(),
+            url: "https://skills.sh/vercel-labs/v0-skill".into(),
+        },
+        SkillsShEntry {
+            id: "firecrawl/firecrawl-skill".into(),
+            name: "firecrawl-skill".into(),
+            description: "Firecrawl 网页爬取 skill：结构化数据提取、批量抓取".into(),
+            author: "Firecrawl".into(),
+            installs: "41k+".into(),
+            url: "https://skills.sh/firecrawl/firecrawl-skill".into(),
+        },
+    ]
+}
+
+/// 搜索 skills.sh 热门 skills（本地静态匹配）。
+#[tauri::command]
+pub(crate) async fn skills_sh_search(query: String) -> Result<Vec<SkillsShEntry>, String> {
+    let q = query.trim().to_lowercase();
+    let all = skills_sh_catalog();
+    if q.is_empty() {
+        return Ok(all);
+    }
+    Ok(all
+        .into_iter()
+        .filter(|e| {
+            e.name.to_lowercase().contains(&q)
+                || e.description.to_lowercase().contains(&q)
+                || e.author.to_lowercase().contains(&q)
+        })
+        .collect())
+}
 // ── 单元测试 ─────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

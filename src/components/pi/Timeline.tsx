@@ -28,6 +28,31 @@ const TOOL_ICONS: Record<string, { icon: string; tone: string }> = {
   read: { icon: '☰', tone: 'text-ink-dim' },
 }
 
+/** 彩色 diff 视图：+行绿底 / -行红底，行号，等宽字体。 */
+function DiffView({ diff }: { diff: string }) {
+  const lines = diff.split('\n')
+  return (
+    <div className="overflow-x-auto text-[11px] leading-[1.6] font-mono">
+      {lines.map((line, i) => {
+        const isAdd = line.startsWith('+') && !line.startsWith('+++')
+        const isDel = line.startsWith('-') && !line.startsWith('---')
+        const isHunk = line.startsWith('@@')
+        let bg = ''
+        let fg = 'text-ink-muted'
+        if (isAdd) { bg = 'bg-mint/12'; fg = 'text-mint' }
+        else if (isDel) { bg = 'bg-coral/12'; fg = 'text-coral' }
+        else if (isHunk) { fg = 'text-lavender' }
+        return (
+          <div key={i} className={`flex ${bg}`}>
+            <span className="w-8 flex-shrink-0 text-right pr-2 text-ink-faint select-none">{i + 1}</span>
+            <pre className={`flex-1 whitespace-pre-wrap break-words ${fg}`}>{line}</pre>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function toolIcon(name: string): { icon: string; tone: string } {
   return TOOL_ICONS[name] ?? { icon: '⚙', tone: 'text-lavender' }
 }
@@ -156,6 +181,19 @@ function ToolRow({
               </pre>
             </div>
           )}
+          {typeof (item as Record<string, unknown>).diff === 'string' && (item as Record<string, unknown>).diff !== '' && (
+            <div className="px-2.5 py-1.5 border-t border-line/50">
+              <div className="text-[10px] text-ink-faint mb-0.5 select-none">文件变更 (diff)</div>
+              <div className="max-h-72 overflow-y-auto">
+                <DiffView diff={(item as Record<string, unknown>).diff as string} />
+              </div>
+            </div>
+          )}
+          {(item.toolName === 'write') && !item.result && !(item as Record<string, unknown>).diff && !item.running && (
+            <div className="px-2.5 py-1.5 border-t border-line/50">
+              <span className="inline-block px-1.5 py-0.5 rounded-chip bg-mint/15 text-mint text-[10.5px]">新建文件</span>
+            </div>
+          )}
           {item.running && (
             <div className="px-2.5 py-1.5 text-[11px] text-ink-dim border-t border-line/50">
               执行中…
@@ -241,6 +279,7 @@ function TimelineRow({
 
 export default function PiTimeline() {
   const activeSessionId = usePiStore((s) => s.activeSessionId)
+  const openFileInPanel = usePiStore((s) => s.openFileInPanel)
   const items = usePiStore((s) =>
     s.activeSessionId ? s.timelineById[s.activeSessionId] ?? EMPTY_ITEMS : EMPTY_ITEMS,
   )
@@ -285,6 +324,48 @@ export default function PiTimeline() {
               <TimelineRow key={it.id} item={it} sessionId={activeSessionId} />
             ))
           )}
+          {/* ── 改动文件汇总 ── */}
+          {(() => {
+            const fileOps: Array<{ path: string; op: string; id: string }> = []
+            const seen = new Set<string>()
+            for (const it of items) {
+              if (it.kind !== 'tool') continue
+              const p = pathFromToolArgs(it.args)
+              if (!p) continue
+              const op = it.toolName === 'write' ? 'write' : it.toolName === 'edit' ? 'edit' : it.toolName === 'read' ? 'read' : 'other'
+              const key = `${p}::${op}`
+              if (seen.has(key)) continue
+              seen.add(key)
+              fileOps.push({ path: p, op, id: it.id })
+            }
+            if (fileOps.length === 0) return null
+            const opLabel: Record<string, string> = { write: '新建', edit: '编辑', read: '读取', other: '操作' }
+            const opColor: Record<string, string> = { write: 'text-mint', edit: 'text-gold', read: 'text-ink-dim', other: 'text-lavender' }
+            return (
+              <div className="mt-4 pt-3 border-t border-line/50">
+                <div className="text-[10.5px] text-ink-faint mb-1.5 select-none">改动文件汇总</div>
+                <div className="space-y-1">
+                  {fileOps.map((f) => (
+                    <div key={f.id + f.path} className="flex items-center gap-2 text-[11.5px]">
+                      <span className={`flex-shrink-0 w-7 text-right ${opColor[f.op] || 'text-ink-dim'}`}>
+                        {opLabel[f.op] || f.op}
+                      </span>
+                      <span
+                        role="link"
+                        tabIndex={0}
+                        onClick={() => void openFileInPanel(f.path)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') void openFileInPanel(f.path) }}
+                        className="font-mono text-sky hover:underline underline-offset-2 truncate cursor-pointer"
+                        title={f.path}
+                      >
+                        {f.path.split(/[\\/]/).pop() || f.path}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })()}
         </div>
       </div>
       {!autoScroll && (

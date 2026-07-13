@@ -7,6 +7,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { usePiStore } from '../../stores/piStore'
 import { useHooksStore } from '../../stores/hooksStore'
+import { useMcpStore } from '../../stores/mcpStore'
+import { useAgentHubStore } from '../../stores/agentHubStore'
 
 const EMPTY_QUEUE: string[] = []
 
@@ -92,7 +94,7 @@ export const BUILTIN_COMMANDS: BuiltinCommand[] = [
 
 /** 统一命令面板条目：内置命令 / 已安装 skill / 已安装 hook。 */
 interface PanelItem {
-  kind: 'command' | 'skill' | 'hook'
+  kind: 'command' | 'skill' | 'hook' | 'mcp' | 'agent'
   name: string
   description: string
   /** 内置命令选中后插入的文本；skill 则构造 `/skill:<name> `；hook 则构造 `/hook:<id> `。 */
@@ -164,10 +166,13 @@ export default function PiComposer() {
   const loadInstalledSkills = usePiStore((s) => s.loadInstalledSkills)
   const installedHookIds = useHooksStore((s) => s.installedHookIds)
   const hooksGetActive = useHooksStore((s) => s.getActive)
+  const mcpInstalled = useMcpStore((s) => s.installed)
+  const mcpLoadInstalled = useMcpStore((s) => s.loadInstalled)
+  const agentRecords = useAgentHubStore((s) => s.records)
 
   // 统一命令面板数据源：顶部=内置快捷命令，中间=已安装 skills，底部=已安装 hooks。
-  const panelItems = useMemo<{ commands: PanelItem[]; skills: PanelItem[]; hooks: PanelItem[] }>(() => {
-    if (!slash) return { commands: [], skills: [], hooks: [] }
+  const panelItems = useMemo<{ commands: PanelItem[]; skills: PanelItem[]; hooks: PanelItem[]; mcps: PanelItem[]; agents: PanelItem[] }>(() => {
+    if (!slash) return { commands: [], skills: [], hooks: [], mcps: [], agents: [] }
     const f = slash.filter.toLowerCase()
     const isSkillOnly = f.startsWith('skill:')
     const isHookOnly = f.startsWith('hook:')
@@ -223,11 +228,50 @@ export default function PiComposer() {
             insertText: '/hook:' + h.id + ' ',
           }))
 
-    return { commands, skills, hooks }
-  }, [slash, installedSkills, installedHookIds, hooksGetActive])
+    const isMcpOnly = f.startsWith('mcp:')
+    const mcpFilter = isMcpOnly ? f.replace(/^mcp:/, '') : f
+    const isAgentOnly = f.startsWith('replay:')
+    const agentFilter = isAgentOnly ? f.replace(/^replay:/, '') : f
+
+    const mcps: PanelItem[] = (isSkillOnly || isHookOnly || isAgentOnly)
+      ? []
+      : mcpInstalled
+          .filter(
+            (m) =>
+              !mcpFilter ||
+              m.name.toLowerCase().includes(mcpFilter) ||
+              m.command.toLowerCase().includes(mcpFilter),
+          )
+          .slice(0, 8)
+          .map((m) => ({
+            kind: 'mcp' as const,
+            name: m.name,
+            description: `MCP: ${m.command} ${m.args.slice(0, 2).join(' ')}`,
+            insertText: '@mcp:' + m.name + ' ',
+          }))
+
+    const agents: PanelItem[] = (isSkillOnly || isHookOnly || isMcpOnly)
+      ? []
+      : agentRecords
+          .filter(
+            (r) =>
+              !agentFilter ||
+              r.title.toLowerCase().includes(agentFilter) ||
+              r.id.toLowerCase().includes(agentFilter),
+          )
+          .slice(0, 8)
+          .map((r) => ({
+            kind: 'agent' as const,
+            name: r.title,
+            description: `${r.model || '默认'} · ${new Date(r.finishedAt).toLocaleDateString('zh-CN')}`,
+            insertText: '/replay:' + r.id + ' ',
+          }))
+
+    return { commands, skills, hooks, mcps, agents }
+  }, [slash, installedSkills, installedHookIds, hooksGetActive, mcpInstalled, agentRecords])
 
   const allPanelItems = useMemo(
-    () => [...panelItems.commands, ...panelItems.skills, ...panelItems.hooks],
+    () => [...panelItems.commands, ...panelItems.skills, ...panelItems.hooks, ...panelItems.mcps, ...panelItems.agents],
     [panelItems],
   )
 
@@ -269,7 +313,7 @@ export default function PiComposer() {
     const tok = slashTokenBeforeCaret(v, e.target.selectionStart ?? v.length)
     setSlash(tok)
     setSlashIdx(0)
-    if (tok) void loadInstalledSkills()
+    if (tok) { void loadInstalledSkills(); void mcpLoadInstalled() }
   }
 
   const pickItem = (item: PanelItem) => {
@@ -394,9 +438,13 @@ export default function PiComposer() {
 
   const commandCount = panelItems.commands.length
   const skillsCount = panelItems.skills.length
+  const hooksCount = panelItems.hooks.length
+  const mcpsCount = panelItems.mcps.length
   const hasCommands = commandCount > 0
   const hasSkills = skillsCount > 0
-  const hasHooks = panelItems.hooks.length > 0
+  const hasHooks = hooksCount > 0
+  const hasMcps = mcpsCount > 0
+  const hasAgents = panelItems.agents.length > 0
   const hasAny = allPanelItems.length > 0
 
   return (
@@ -510,6 +558,74 @@ export default function PiComposer() {
                               {item.description.length > 64
                                 ? item.description.slice(0, 64) + '…'
                                 : item.description}
+                            </span>
+                          )}
+                        </button>
+                      </li>
+                    )
+                  })}
+                  {(hasCommands || hasSkills || hasHooks) && hasMcps && (
+                    <li className="my-1 mx-3 border-t border-line" />
+                  )}
+                  {hasMcps && (
+                    <li className="px-3 pt-1 pb-0.5 text-[10px] text-ink-faint select-none">
+                      MCP Servers
+                    </li>
+                  )}
+                  {panelItems.mcps.map((item, mi) => {
+                    const globalIdx = commandCount + skillsCount + hooksCount + mi
+                    return (
+                      <li key={'mcp-' + item.name}>
+                        <button
+                          onMouseDown={(ev) => {
+                            ev.preventDefault()
+                            pickItem(item)
+                          }}
+                          onMouseEnter={() => setSlashIdx(globalIdx)}
+                          className={[
+                            'w-full px-3 py-1.5 text-left transition-colors',
+                            globalIdx === slashIdx ? 'bg-primary-tint' : 'hover:bg-surface-2',
+                          ].join(' ')}
+                        >
+                          <span className="font-mono text-[12px] text-ink">@mcp:{item.name}</span>
+                          {item.description && (
+                            <span className="ml-2 text-[11px] text-ink-muted">
+                              {item.description.length > 64
+                                ? item.description.slice(0, 64) + '…'
+                                : item.description}
+                            </span>
+                          )}
+                        </button>
+                      </li>
+                    )
+                  })}
+                  {(hasCommands || hasSkills || hasHooks || hasMcps) && hasAgents && (
+                    <li className="my-1 mx-3 border-t border-line" />
+                  )}
+                  {hasAgents && (
+                    <li className="px-3 pt-1 pb-0.5 text-[10px] text-ink-faint select-none">
+                      Agent 工作流存档
+                    </li>
+                  )}
+                  {panelItems.agents.map((item, ai) => {
+                    const globalIdx = commandCount + skillsCount + hooksCount + mcpsCount + ai
+                    return (
+                      <li key={'ag-' + item.name}>
+                        <button
+                          onMouseDown={(ev) => {
+                            ev.preventDefault()
+                            pickItem(item)
+                          }}
+                          onMouseEnter={() => setSlashIdx(globalIdx)}
+                          className={[
+                            'w-full px-3 py-1.5 text-left transition-colors',
+                            globalIdx === slashIdx ? 'bg-primary-tint' : 'hover:bg-surface-2',
+                          ].join(' ')}
+                        >
+                          <span className="font-mono text-[12px] text-ink">/replay:{item.name.length > 24 ? item.name.slice(0, 24) + '…' : item.name}</span>
+                          {item.description && (
+                            <span className="ml-2 text-[11px] text-ink-muted">
+                              {item.description}
                             </span>
                           )}
                         </button>

@@ -1214,6 +1214,7 @@ pub fn run() {
             skills_hub::skills_uninstall,
             skills_hub::skills_search_public,
             skills_hub::skills_public_install,
+            skills_hub::skills_sh_search,
             skills_hub::save_clipboard_file,
             openscience::os_detect,
             openscience::os_install,
