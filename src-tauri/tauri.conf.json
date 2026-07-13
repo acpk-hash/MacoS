@@ -1,6 +1,6 @@
 {
   "productName": "Iris",
-  "version": "0.12.2",
+  "version": "0.13.0",
   "identifier": "com.agentboard.app",
   "build": {
     "frontendDist": "../dist",
