@@ -570,11 +570,48 @@ export const usePiStore = create<PiStore>((set, get) => ({
       }
       return
     }
-    // done → follow_up 续聊；idle/error → prompt（error 会话按新一轮提问重试）。
-    const command = sess.status === 'done' ? 'pi_follow_up' : 'pi_prompt'
+    // done → 先尝试 follow_up 续聊；若 pi 进程已退出则自动重建会话并用 prompt。
+    // idle/error → prompt（error 会话按新一轮提问重试）。
     set((s) => ({ sessions: withStatus(s.sessions, id, 'running') }))
     try {
-      await tauriInvoke<void>(command, { sessionId: id, message: body })
+      if (sess.status === 'done') {
+        try {
+          await tauriInvoke<void>('pi_follow_up', { sessionId: id, message: body })
+        } catch {
+          // follow_up 失败(进程已退出)→ 重建会话,用 prompt 重新开始。
+          get()._pushSystem(id, '会话进程已结束，正在重建…')
+          const newId = await tauriInvoke<string>('pi_open', {
+            cwd: sess.cwd,
+            model: sess.model,
+            providerId: get().selProviderId,
+          })
+          // 把旧会话的 timeline 迁移到新会话(视觉上连续)。
+          set((s) => {
+            const oldTimeline = s.timelineById[id] ?? []
+            return {
+              sessions: s.sessions.map((x) =>
+                x.id === id ? { ...x, id: newId } : x,
+              ),
+              activeSessionId: s.activeSessionId === id ? newId : s.activeSessionId,
+              timelineById: {
+                ...s.timelineById,
+                [newId]: oldTimeline,
+              },
+              composerQueue: {
+                ...s.composerQueue,
+                [newId]: s.composerQueue[id] ?? [],
+              },
+              usageById: {
+                ...s.usageById,
+                [newId]: s.usageById[id],
+              },
+            }
+          })
+          await tauriInvoke<void>('pi_prompt', { sessionId: newId, message: body })
+        }
+      } else {
+        await tauriInvoke<void>('pi_prompt', { sessionId: id, message: body })
+      }
     } catch (e) {
       get()._pushSystem(id, `发送失败：${String(e)}`)
       set((s) => ({ sessions: withStatus(s.sessions, id, 'error') }))
