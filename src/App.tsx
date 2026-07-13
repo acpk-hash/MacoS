@@ -10,6 +10,8 @@ import Skills from './pages/Skills'
 import McpHub from './pages/McpHub'
 import HooksHub from './pages/HooksHub'
 import AgentHub from './pages/AgentHub'
+import KnowledgeBase from './pages/KnowledgeBase'
+import Canvas from './pages/Canvas'
 import Commerce from './pages/Commerce'
 import Usage from './pages/Usage'
 import Settings from './pages/Settings'
@@ -45,6 +47,8 @@ export default function App() {
           <Route path="mcp" element={<McpHub />} />
           <Route path="hooks" element={<HooksHub />} />
           <Route path="agent" element={<AgentHub />} />
+          <Route path="kb" element={<KnowledgeBase />} />
+          <Route path="canvas" element={<Canvas />} />
           <Route path="commerce" element={<Commerce />} />
           <Route path="usage" element={<Usage />} />
           <Route path="settings" element={<Settings />} />

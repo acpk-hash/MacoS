@@ -25,7 +25,7 @@ function NavIcon({ children }: { children: ReactNode }) {
 
 type NavItem = { to: string; label: string; title?: string; end?: boolean; icon: ReactNode }
 
-// 大类导航：编码 / 办公 / 图像 / 视频 / 科研 / Auto / Skills / MCP / Agent / 电商 / 用量，设置固定末位。
+// 大类导航：编码 / 办公 / 图像 / 视频 / 科研 / Auto / Skills / MCP / Hooks / Agent / 知识库 / 画布 / 电商 / 用量，设置固定末位。
 const navItems: NavItem[] = [
   {
     to: '/',
@@ -143,6 +143,30 @@ const navItems: NavItem[] = [
         <rect x="3" y="3" width="8" height="8" rx="2" />
         <path d="M7 11v4a2 2 0 0 0 2 2h4" />
         <rect x="13" y="13" width="8" height="8" rx="2" />
+      </NavIcon>
+    ),
+  },
+  {
+    to: '/kb',
+    label: '知识库',
+    title: '知识库 · 文档管理 / 知识图谱 / 导入导出',
+    icon: (
+      <NavIcon>
+        <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" />
+        <path d="M8 7h6" />
+        <path d="M8 11h8" />
+      </NavIcon>
+    ),
+  },
+  {
+    to: '/canvas',
+    label: '画布',
+    title: '画布 · 思维导图 / 自由白板',
+    icon: (
+      <NavIcon>
+        <rect x="3" y="3" width="18" height="18" rx="2" />
+        <path d="M3 9h18" />
+        <path d="M9 3v18" />
       </NavIcon>
     ),
   },
