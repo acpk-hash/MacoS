@@ -1,6 +1,6 @@
 import { useEffect, useCallback, useState, useRef, useMemo } from 'react'
 import { useCanvasStore } from '../stores/canvasStore'
-import type { CanvasNode, CanvasEdge, CanvasMode, CanvasProject } from '../stores/canvasStore'
+import type { CanvasNode, CanvasMode, CanvasProject } from '../stores/canvasStore'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -329,7 +329,7 @@ function CanvasBoard({
                 <ellipse
                   cx={n.x + n.width / 2} cy={n.y + n.height / 2}
                   rx={n.width / 2} ry={n.height / 2}
-                  fill={n.color + '33'} stroke={n.color} strokeWidth={1.5} rx2={8}
+                  fill={n.color + '33'} stroke={n.color} strokeWidth={1.5}
                 />
               ) : (
                 <rect
