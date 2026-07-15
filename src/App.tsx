@@ -14,6 +14,7 @@ import KnowledgeBase from './pages/KnowledgeBase'
 import Canvas from './pages/Canvas'
 import Commerce from './pages/Commerce'
 import Usage from './pages/Usage'
+import Trends from './pages/Trends'
 import Settings from './pages/Settings'
 import Login from './pages/Login'
 import { useAuthStore } from './stores/authStore'
@@ -51,6 +52,7 @@ export default function App() {
           <Route path="canvas" element={<Canvas />} />
           <Route path="commerce" element={<Commerce />} />
           <Route path="usage" element={<Usage />} />
+          <Route path="trends" element={<Trends />} />
           <Route path="settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

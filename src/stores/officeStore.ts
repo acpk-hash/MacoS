@@ -46,6 +46,12 @@ interface StudioEvent {
   text?: string
   status?: string
   message?: string
+  // usage fields (available when backend includes them in done event)
+  input_tokens?: number
+  output_tokens?: number
+  cache_read_tokens?: number
+  cache_write_tokens?: number
+  cost?: number
 }
 
 // ── 表格数据模型（Excel 窗口的单一数据源） ──────────────────────────
@@ -442,6 +448,20 @@ async function ensureListener(): Promise<void> {
           break
         case 'done':
           pendingBySession.delete(p.session_id)
+          // 用量落库：done 事件若带 usage 字段，写入 pi_usage 表统一统计。
+          if (p.input_tokens || p.output_tokens) {
+            const model = useOfficeStore.getState().currentModel
+            void tauriInvoke<void>('pi_usage_insert_manual', {
+              sessionId: p.session_id,
+              model: 'office:' + model,
+              provider: 'studio',
+              input: p.input_tokens ?? 0,
+              output: p.output_tokens ?? 0,
+              cacheRead: p.cache_read_tokens ?? 0,
+              cacheWrite: p.cache_write_tokens ?? 0,
+              cost: p.cost ?? 0,
+            }).catch(() => {})
+          }
           run.resolve({
             text: p.text || run.buf,
             stopped: (p.status ?? '') === 'stopped',

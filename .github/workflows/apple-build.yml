@@ -1,0 +1,59 @@
+name: Build Iris for Apple platforms
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  macos:
+    name: macOS ${{ matrix.arch }}
+    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            rust_target: aarch64-apple-darwin
+          - arch: x64
+            rust_target: x86_64-apple-darwin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+      - name: Install frontend dependencies
+        run: npm ci
+      - name: Prepare bundled Pi engine
+        env:
+          NODE_VERSION: 22.17.0
+        run: |
+          rm -rf engine-pi /tmp/iris-pi
+          mkdir -p engine-pi/pi /tmp/iris-pi
+          curl -fsSLo /tmp/node.tar.gz "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-darwin-${{ matrix.arch }}.tar.gz"
+          tar -xzf /tmp/node.tar.gz -C /tmp
+          cp "/tmp/node-v${NODE_VERSION}-darwin-${{ matrix.arch }}/bin/node" engine-pi/node
+          chmod 755 engine-pi/node
+          npm install --prefix /tmp/iris-pi @earendil-works/pi-coding-agent
+          cp -R /tmp/iris-pi/node_modules/@earendil-works/pi-coding-agent/. engine-pi/pi/
+          cp -R /tmp/iris-pi/node_modules engine-pi/pi/node_modules
+      - name: Build app and DMG
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npm run tauri -- build --target ${{ matrix.rust_target }} --config src-tauri/tauri.macos.conf.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Iris-0.14.0-macOS-${{ matrix.arch }}
+          path: |
+            src-tauri/target/${{ matrix.rust_target }}/release/bundle/dmg/*.dmg
+            src-tauri/target/${{ matrix.rust_target }}/release/bundle/macos/*.app

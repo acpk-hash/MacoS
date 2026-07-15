@@ -228,6 +228,30 @@ pub(crate) async fn chat_send(
     state: State<'_, crate::AppState>,
     app: AppHandle,
 ) -> Result<String, String> {
+    chat_send_impl(
+        session_id,
+        user_content,
+        attachments,
+        model,
+        provider_id,
+        &state,
+        app,
+    )
+    .await
+}
+
+/// Shared chat path used by both the local Tauri UI and authenticated mobile
+/// sync commands. Keeping one implementation preserves model fallback and
+/// multi-turn history behavior across platforms.
+pub(crate) async fn chat_send_impl(
+    session_id: String,
+    user_content: String,
+    attachments: Vec<Attachment>,
+    model: String,
+    provider_id: Option<String>,
+    state: &crate::AppState,
+    app: AppHandle,
+) -> Result<String, String> {
     let db = state.db.clone();
 
     // 老会话可能记着已下架的幽灵模型（如 gpt-5.6，调用即 400）——派发前

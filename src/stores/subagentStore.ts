@@ -75,8 +75,14 @@ export const useSubagentStore = create<SubagentState>((set, get) => ({
           const list = prev ? [...prev, p] : [p]
           return { eventsById: { ...s.eventsById, [p.id]: list } }
         })
-        // 完成/出错时刷新列表，更新状态徽章。
-        if (p.kind === 'done' || p.kind === 'error') void get().refresh()
+        // 完成/出错或后端显式携带状态时刷新列表，更新状态徽章。
+        if (
+          p.kind === 'done' ||
+          p.kind === 'error' ||
+          typeof p.status === 'string'
+        ) {
+          void get().refresh()
+        }
       })
     } catch (err) {
       set({ listening: false })

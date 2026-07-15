@@ -6,6 +6,12 @@
 // 事件通道 'pi-event'：payload { sessionId, event:<pi 原始 JSON> }。
 import { create } from 'zustand'
 import { useTaskRegistry } from './taskRegistryStore'
+import {
+  decryptRemoteJson,
+  encryptRemoteJson,
+  initializeRemoteRootKey,
+  type EncryptedEnvelope,
+} from '../lib/e2ee'
 
 // 注意：workspaceStore（→ monacoSetup → monaco-editor）只在 openFileInPanel
 // 里动态引入，避免把 monaco 拖进主 chunk（PiShell 是首屏页面）。
@@ -22,6 +28,13 @@ async function tauriInvoke<T>(
 ): Promise<T> {
   const { invoke } = await import('@tauri-apps/api/core')
   return invoke<T>(command, args)
+}
+
+function pushRemoteNotification(kind: 'approval' | 'completion' | 'failure' | 'input', sessionId: string): void {
+  if (!isTauri) return
+  void tauriInvoke<void>('sync_push_notify', { kind, sessionId }).catch((error) => {
+    console.warn('[piStore] push notification failed:', error)
+  })
 }
 
 function uuid(): string {
@@ -64,7 +77,7 @@ export interface PiUsage {
 
 export type PiTimelineItem =
   | { id: string; kind: 'user'; text: string }
-  | { id: string; kind: 'assistant'; text: string; streaming: boolean }
+  | { id: string; kind: 'assistant'; text: string; streaming: boolean; thinking?: boolean }
   | {
       id: string
       kind: 'tool'
@@ -76,6 +89,15 @@ export type PiTimelineItem =
       /** tool_execution_end 尚未到达。 */
       running: boolean
       collapsed: boolean
+    }
+  | {
+      id: string
+      kind: 'approval'
+      requestId: string
+      title: string
+      detail: string
+      expiresAt: number
+      status: 'pending' | 'approved' | 'rejected' | 'expired'
     }
   | { id: string; kind: 'system'; text: string }
 
@@ -97,7 +119,8 @@ function clipTitle(text: string): string {
   return one.length > 32 ? one.slice(0, 32) + '…' : one
 }
 
-const RESULT_CLIP = 20_000
+// Durable command/tool output cap required by the remote protocol (1 MiB).
+const RESULT_CLIP = 1024 * 1024
 
 function clip(s: string): string {
   return s.length > RESULT_CLIP ? s.slice(0, RESULT_CLIP) + '\n……（输出过长，已截断）' : s
@@ -173,6 +196,18 @@ function joinTextParts(content: unknown): string {
         ? str((p as RawEvent).text) ?? ''
         : '',
     )
+    .join('')
+}
+
+/** message.content 中的 thinking 部分拼接。 */
+function joinThinkingParts(content: unknown): string {
+  if (!Array.isArray(content)) return ''
+  return content
+    .map((p) => {
+      if (!p || typeof p !== 'object' || (p as RawEvent).type !== 'thinking') return ''
+      const part = p as RawEvent
+      return str(part.thinking) ?? str(part.text) ?? ''
+    })
     .join('')
 }
 
@@ -263,6 +298,7 @@ interface PiStore {
   newSession: (cwd: string, model?: string, providerId?: string | null) => Promise<void>
   send: (text: string) => Promise<void>
   abort: () => Promise<void>
+  decideApproval: (sessionId: string, requestId: string, approved: boolean, expired?: boolean) => Promise<void>
   closeSession: (id: string) => Promise<void>
   select: (id: string) => void
   /** 拉取已安装 skills（缓存进 store；force 才强制刷新）。 */
@@ -280,6 +316,7 @@ interface PiStore {
 // pendingDeltas: rAF 合帧缓冲，避免每个 text_delta 都触发一次全量 set。
 
 const streamingIds = new Map<string, string>()
+const thinkingStreamingIds = new Map<string, string>()
 const pendingDeltas = new Map<string, Map<string, string>>()
 let rafHandle: number | null = null
 
@@ -321,12 +358,15 @@ function bufferDelta(sessionId: string, itemId: string, text: string) {
 /** 收尾某会话的流式 assistant 条目（若有）。 */
 function finalizeStream(sessionId: string) {
   flushNow()
-  const id = streamingIds.get(sessionId)
-  if (!id) return
+  const ids = [streamingIds.get(sessionId), thinkingStreamingIds.get(sessionId)]
+    .filter((id): id is string => !!id)
+  if (ids.length === 0) return
   streamingIds.delete(sessionId)
+  thinkingStreamingIds.delete(sessionId)
+  const idSet = new Set(ids)
   usePiStore.setState((s) => patchTimeline(s, sessionId, (items) =>
     items.map((it) =>
-      it.id === id && it.kind === 'assistant' ? { ...it, streaming: false } : it,
+      idSet.has(it.id) && it.kind === 'assistant' ? { ...it, streaming: false } : it,
     ),
   ))
 }
@@ -353,17 +393,82 @@ function withStatus(
 // ── Store ─────────────────────────────────────────────────────────────────────
 
 let listenerStarted = false
+let codingSyncTimer: ReturnType<typeof setTimeout> | null = null
+const handledRemoteCommands = new Set<string>()
+const LOCAL_HISTORY_KEY = 'iris.pi.coding-history.v1'
+
+function loadLocalCodingHistory(): Pick<PiStore, 'sessions' | 'activeSessionId' | 'timelineById' | 'composerQueue' | 'usageById'> | null {
+  if (typeof localStorage === 'undefined') return null
+  try {
+    const parsed = JSON.parse(localStorage.getItem(LOCAL_HISTORY_KEY) || 'null') as Partial<PiStore> | null
+    if (!parsed || !Array.isArray(parsed.sessions) || !parsed.timelineById) return null
+    const sessions = parsed.sessions.map((session) => ({
+      ...session,
+      // Child processes cannot survive an explicit Iris exit/reboot. Preserve
+      // their durable history and mark the unavailable live stream as legacy.
+      status: session.status === 'running' ? 'done' as const : session.status,
+    }))
+    return {
+      sessions,
+      activeSessionId: sessions.some((s) => s.id === parsed.activeSessionId)
+        ? parsed.activeSessionId ?? null
+        : sessions[sessions.length - 1]?.id ?? null,
+      timelineById: parsed.timelineById as Record<string, PiTimelineItem[]>,
+      composerQueue: (parsed.composerQueue ?? {}) as Record<string, string[]>,
+      usageById: (parsed.usageById ?? {}) as Record<string, PiUsage>,
+    }
+  } catch {
+    return null
+  }
+}
+
+const restoredCoding = loadLocalCodingHistory()
+
+/** Debounced Happy-style E2EE snapshot. The only payload crossing the Rust/WS
+ * boundary is an authenticated ciphertext envelope. */
+function scheduleCodingSync(): void {
+  if (!isTauri) return
+  // Throttle rather than pure debounce: long token streams must remain visible
+  // remotely instead of postponing every snapshot until the turn becomes quiet.
+  if (codingSyncTimer) return
+  codingSyncTimer = setTimeout(() => {
+    codingSyncTimer = null
+    const s = usePiStore.getState()
+    const plaintext = {
+      version: 1,
+      updatedAt: Date.now(),
+      sessions: s.sessions,
+      activeSessionId: s.activeSessionId,
+      timelineById: s.timelineById,
+      composerQueue: s.composerQueue,
+      usageById: s.usageById,
+      projects: Array.from(
+        new Set([s.cwd, ...s.sessions.map((session) => session.cwd)].filter((p): p is string => !!p)),
+      ).map((path) => ({ path, name: path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || path })),
+    }
+    try {
+      localStorage.setItem(LOCAL_HISTORY_KEY, JSON.stringify(plaintext))
+    } catch (error) {
+      console.warn('[piStore] local coding history persistence failed:', error)
+    }
+    const data = encryptRemoteJson(plaintext)
+    void tauriInvoke<void>('sync_publish_encrypted_snapshot', {
+      kind: 'coding',
+      data,
+    }).catch((error) => console.warn('[piStore] encrypted coding sync failed:', error))
+  }, 350)
+}
 
 export const usePiStore = create<PiStore>((set, get) => ({
   cwd: null,
   selProviderId: null,
   selModel: '',
 
-  sessions: [],
-  activeSessionId: null,
-  timelineById: {},
-  composerQueue: {},
-  usageById: {},
+  sessions: restoredCoding?.sessions ?? [],
+  activeSessionId: restoredCoding?.activeSessionId ?? null,
+  timelineById: restoredCoding?.timelineById ?? {},
+  composerQueue: restoredCoding?.composerQueue ?? {},
+  usageById: restoredCoding?.usageById ?? {},
   listening: false,
   error: null,
   installedSkills: [],
@@ -483,6 +588,7 @@ export const usePiStore = create<PiStore>((set, get) => ({
     if (!isTauri || listenerStarted) return
     listenerStarted = true
     try {
+      await initializeRemoteRootKey()
       const { listen } = await import('@tauri-apps/api/event')
       await listen<PiEnvelope>('pi-event', (evt) => {
         const payload = evt.payload
@@ -491,14 +597,66 @@ export const usePiStore = create<PiStore>((set, get) => ({
         if (!sessionId || !event || typeof event !== 'object') return
         usePiStore.getState()._onPiEvent(sessionId, event)
       })
+      await listen<EncryptedEnvelope>('sync-encrypted-command', (evt) => {
+        try {
+          const command = decryptRemoteJson<{
+            type: 'prompt' | 'abort' | 'new_session' | 'approval'
+            commandId?: string
+            sessionId?: string
+            cwd?: string
+            message?: string
+            requestId?: string
+            approved?: boolean
+          }>(evt.payload)
+          if (command.commandId) {
+            if (handledRemoteCommands.has(command.commandId)) return
+            handledRemoteCommands.add(command.commandId)
+            if (handledRemoteCommands.size > 1000) {
+              const oldest = handledRemoteCommands.values().next().value
+              if (oldest) handledRemoteCommands.delete(oldest)
+            }
+          }
+          const state = usePiStore.getState()
+          if (command.type === 'approval') {
+            if (!command.sessionId || !command.requestId || typeof command.approved !== 'boolean') return
+            void state.decideApproval(command.sessionId, command.requestId, command.approved)
+            return
+          }
+          if (command.type === 'new_session') {
+            const cwd = command.cwd?.trim()
+            const allowed = new Set(
+              [state.cwd, ...state.sessions.map((session) => session.cwd)]
+                .filter((p): p is string => !!p),
+            )
+            if (!cwd || !allowed.has(cwd)) return
+            void state.newSession(cwd).then(() => {
+              if (command.message?.trim()) void usePiStore.getState().send(command.message)
+            })
+            return
+          }
+          if (!command.sessionId || !state.sessions.some((session) => session.id === command.sessionId)) return
+          state.select(command.sessionId)
+          if (command.type === 'prompt' && command.message?.trim()) {
+            void usePiStore.getState().send(command.message)
+          } else if (command.type === 'abort') {
+            void usePiStore.getState().abort()
+          }
+        } catch (error) {
+          console.warn('[piStore] rejected encrypted remote command:', error)
+        }
+      })
       set({ listening: true })
+      scheduleCodingSync()
     } catch (e) {
       listenerStarted = false
       console.warn('[piStore] failed to register pi-event listener:', e)
     }
   },
 
-  setCwd: (cwd) => set({ cwd }),
+  setCwd: (cwd) => {
+    set({ cwd })
+    scheduleCodingSync()
+  },
 
   setModelSel: (providerId, modelId) =>
     set({ selProviderId: providerId, selModel: modelId }),
@@ -530,6 +688,7 @@ export const usePiStore = create<PiStore>((set, get) => ({
         usageById: { ...s.usageById, [sessionId]: { ...EMPTY_USAGE } },
         error: null,
       }))
+      scheduleCodingSync()
     } catch (e) {
       set({ error: `新建会话失败：${String(e)}` })
     }
@@ -553,6 +712,7 @@ export const usePiStore = create<PiStore>((set, get) => ({
       ),
       error: null,
     }))
+    scheduleCodingSync()
     if (!isTauri) return
     if (sess.status === 'running') {
       // 运行中：入队 + 尝试 steer 即时插话。送达确认（user message_end 匹配队首）
@@ -570,47 +730,36 @@ export const usePiStore = create<PiStore>((set, get) => ({
       }
       return
     }
-    // done → 先尝试 follow_up 续聊；若 pi 进程已退出则自动重建会话并用 prompt。
-    // idle/error → prompt（error 会话按新一轮提问重试）。
+    // 空闲会话的每一轮都必须用 prompt 触发。follow_up 只是在 agent 仍运行时
+    // 排队，空闲时不会启动新一轮，会导致第二条消息永久停在 running。
     set((s) => ({ sessions: withStatus(s.sessions, id, 'running') }))
     try {
-      if (sess.status === 'done') {
-        try {
-          await tauriInvoke<void>('pi_follow_up', { sessionId: id, message: body })
-        } catch {
-          // follow_up 失败(进程已退出)→ 重建会话,用 prompt 重新开始。
-          get()._pushSystem(id, '会话进程已结束，正在重建…')
-          const newId = await tauriInvoke<string>('pi_open', {
-            cwd: sess.cwd,
-            model: sess.model,
-            providerId: get().selProviderId,
-          })
-          // 把旧会话的 timeline 迁移到新会话(视觉上连续)。
-          set((s) => {
-            const oldTimeline = s.timelineById[id] ?? []
-            return {
-              sessions: s.sessions.map((x) =>
-                x.id === id ? { ...x, id: newId } : x,
-              ),
-              activeSessionId: s.activeSessionId === id ? newId : s.activeSessionId,
-              timelineById: {
-                ...s.timelineById,
-                [newId]: oldTimeline,
-              },
-              composerQueue: {
-                ...s.composerQueue,
-                [newId]: s.composerQueue[id] ?? [],
-              },
-              usageById: {
-                ...s.usageById,
-                [newId]: s.usageById[id],
-              },
-            }
-          })
-          await tauriInvoke<void>('pi_prompt', { sessionId: newId, message: body })
-        }
-      } else {
+      try {
         await tauriInvoke<void>('pi_prompt', { sessionId: id, message: body })
+      } catch {
+        // 进程已退出时重建底层会话；时间线继续保留，避免用户感知断裂。
+        get()._pushSystem(id, '会话进程已结束，正在重建…')
+        const newId = await tauriInvoke<string>('pi_open', {
+          cwd: sess.cwd,
+          model: sess.model,
+          providerId: get().selProviderId,
+        })
+        set((s) => {
+          const oldTimeline = s.timelineById[id] ?? []
+          return {
+            sessions: s.sessions.map((x) =>
+              x.id === id ? { ...x, id: newId, status: 'running' } : x,
+            ),
+            activeSessionId: s.activeSessionId === id ? newId : s.activeSessionId,
+            timelineById: { ...s.timelineById, [newId]: oldTimeline },
+            composerQueue: {
+              ...s.composerQueue,
+              [newId]: s.composerQueue[id] ?? [],
+            },
+            usageById: { ...s.usageById, [newId]: s.usageById[id] },
+          }
+        })
+        await tauriInvoke<void>('pi_prompt', { sessionId: newId, message: body })
       }
     } catch (e) {
       get()._pushSystem(id, `发送失败：${String(e)}`)
@@ -628,6 +777,29 @@ export const usePiStore = create<PiStore>((set, get) => ({
     }
   },
 
+  decideApproval: async (sessionId, requestId, approved, expired = false) => {
+    const item = (get().timelineById[sessionId] ?? []).find(
+      (entry) => entry.kind === 'approval' && entry.requestId === requestId,
+    )
+    if (!item || item.kind !== 'approval' || item.status !== 'pending') return
+    set((s) => patchTimeline(s, sessionId, (items) =>
+      items.map((entry) => entry.kind === 'approval' && entry.requestId === requestId
+        ? { ...entry, status: expired ? 'expired' : approved ? 'approved' : 'rejected' }
+        : entry),
+    ))
+    scheduleCodingSync()
+    if (!isTauri) return
+    try {
+      await tauriInvoke<void>('pi_extension_ui_response', {
+        sessionId,
+        requestId,
+        approved: expired ? false : approved,
+      })
+    } catch (e) {
+      console.warn('[piStore] approval response failed:', e)
+    }
+  },
+
   closeSession: async (id) => {
     if (isTauri) {
       try {
@@ -637,6 +809,7 @@ export const usePiStore = create<PiStore>((set, get) => ({
       }
     }
     streamingIds.delete(id)
+    thinkingStreamingIds.delete(id)
     pendingDeltas.delete(id)
     set((s) => {
       const sessions = s.sessions.filter((x) => x.id !== id)
@@ -657,9 +830,13 @@ export const usePiStore = create<PiStore>((set, get) => ({
             : s.activeSessionId,
       }
     })
+    scheduleCodingSync()
   },
 
-  select: (id) => set({ activeSessionId: id }),
+  select: (id) => {
+    set({ activeSessionId: id })
+    scheduleCodingSync()
+  },
 
   loadInstalledSkills: async (force) => {
     if (!isTauri) return
@@ -714,6 +891,9 @@ export const usePiStore = create<PiStore>((set, get) => ({
   _onPiEvent: (sessionId, ev) => {
     // 会话可能已被关闭：丢弃迟到事件。
     if (!get().sessions.some((x) => x.id === sessionId)) return
+    // Timer fires after the synchronous reducer below, so the encrypted
+    // snapshot contains the just-applied event rather than the previous state.
+    scheduleCodingSync()
     const type = String(ev.type ?? '')
     switch (type) {
       case 'agent_start':
@@ -734,19 +914,23 @@ export const usePiStore = create<PiStore>((set, get) => ({
       }
 
       case 'message_update': {
-        // 只消费 text_delta；追加到当前流式 assistant 条目（没有就建一条）。
+        // Text and reasoning are separate timeline blocks. Reasoning is synced
+        // end-to-end but collapsed by default by both Iris clients.
         const ame = ev.assistantMessageEvent as RawEvent | undefined
-        if (!ame || str(ame.type) !== 'text_delta') break
+        const deltaType = ame ? str(ame.type) : undefined
+        if (!ame || (deltaType !== 'text_delta' && deltaType !== 'thinking_delta')) break
+        const thinking = deltaType === 'thinking_delta'
         const delta = str(ame.delta) ?? ''
-        let itemId = streamingIds.get(sessionId)
+        const idMap = thinking ? thinkingStreamingIds : streamingIds
+        let itemId = idMap.get(sessionId)
         if (!itemId) {
           itemId = uuid()
-          streamingIds.set(sessionId, itemId)
+          idMap.set(sessionId, itemId)
           const created = itemId
           set((s) =>
             patchTimeline(s, sessionId, (items) => [
               ...items,
-              { id: created, kind: 'assistant', text: '', streaming: true },
+              { id: created, kind: 'assistant', text: '', streaming: true, thinking },
             ]),
           )
         }
@@ -764,8 +948,11 @@ export const usePiStore = create<PiStore>((set, get) => ({
             ? (msg.content as RawEvent[])
             : []
           const finalText = joinTextParts(content)
+          const finalThinking = joinThinkingParts(content)
           const streamId = streamingIds.get(sessionId)
+          const thinkingStreamId = thinkingStreamingIds.get(sessionId)
           streamingIds.delete(sessionId)
+          thinkingStreamingIds.delete(sessionId)
           const usage =
             msg.usage && typeof msg.usage === 'object'
               ? (msg.usage as Record<string, unknown>)
@@ -774,6 +961,18 @@ export const usePiStore = create<PiStore>((set, get) => ({
             const patch = patchTimeline(s, sessionId, (items) => {
               let next = items
               // 定稿：有流式条目则以 message_end 文本为准；否则（无任何 delta）补一条。
+              if (thinkingStreamId) {
+                next = next.map((it) =>
+                  it.id === thinkingStreamId && it.kind === 'assistant'
+                    ? { ...it, text: finalThinking || it.text, streaming: false, thinking: true }
+                    : it,
+                )
+              } else if (finalThinking.trim()) {
+                next = [
+                  ...next,
+                  { id: uuid(), kind: 'assistant', text: finalThinking, streaming: false, thinking: true },
+                ]
+              }
               if (streamId) {
                 next = next.map((it) =>
                   it.id === streamId && it.kind === 'assistant'
@@ -837,6 +1036,38 @@ export const usePiStore = create<PiStore>((set, get) => ({
         break
       }
 
+      case 'extension_ui_request': {
+        const method = str(ev.method)
+        if (method !== 'confirm') {
+          if (method === 'input' || method === 'editor' || method === 'select') {
+            pushRemoteNotification('input', sessionId)
+            get()._pushSystem(sessionId, str(ev.title) ?? 'Iris 正在等待用户输入')
+          }
+          break
+        }
+        const requestId = str(ev.id)
+        if (!requestId) break
+        const timeout = typeof ev.timeout === 'number' ? Math.min(ev.timeout, 300_000) : 300_000
+        const expiresAt = Date.now() + timeout
+        set((s) => patchTimeline(s, sessionId, (items) => [
+          ...items,
+          {
+            id: uuid(),
+            kind: 'approval',
+            requestId,
+            title: str(ev.title) ?? 'Iris 安全审批',
+            detail: str(ev.message) ?? '',
+            expiresAt,
+            status: 'pending',
+          },
+        ]))
+        pushRemoteNotification('approval', sessionId)
+        setTimeout(() => {
+          void usePiStore.getState().decideApproval(sessionId, requestId, false, true)
+        }, timeout + 50)
+        break
+      }
+
       case 'tool_execution_start': {
         const tcId = str(ev.toolCallId)
         if (!tcId) break
@@ -872,10 +1103,12 @@ export const usePiStore = create<PiStore>((set, get) => ({
       }
 
       case 'tool_execution_update': {
-        // 契约未细化 update 载荷；有 result 就当进行中预览，否则忽略。
+        // Pi RPC calls this `partialResult`; retain `result` for compatibility
+        // with older engines. The payload is accumulated output, not a delta.
         const tcId = str(ev.toolCallId)
-        if (!tcId || ev.result === undefined) break
-        const preview = stringifyResult(ev.result)
+        const partial = ev.partialResult ?? ev.result
+        if (!tcId || partial === undefined) break
+        const preview = stringifyResult(partial)
         set((s) =>
           patchTimeline(s, sessionId, (items) =>
             items.map((it) =>
@@ -924,7 +1157,7 @@ export const usePiStore = create<PiStore>((set, get) => ({
         finalizeStream(sessionId)
         const q = get().composerQueue[sessionId] ?? []
         if (q.length > 0) {
-          // 消费队首：steer 没送达的消息自动转 follow_up 续跑。
+          // 消费队首：steer 未送达时，agent 已空闲，必须用 prompt 开新轮。
           const head = q[0]
           set((s) => ({
             composerQueue: {
@@ -933,7 +1166,7 @@ export const usePiStore = create<PiStore>((set, get) => ({
             },
             sessions: withStatus(s.sessions, sessionId, 'running'),
           }))
-          void tauriInvoke<void>('pi_follow_up', {
+          void tauriInvoke<void>('pi_prompt', {
             sessionId,
             message: head,
           }).catch((e) => {
@@ -942,9 +1175,10 @@ export const usePiStore = create<PiStore>((set, get) => ({
           })
         } else {
           set((s) => ({ sessions: withStatus(s.sessions, sessionId, 'done') }))
+          pushRemoteNotification('completion', sessionId)
+          // 全局任务条：编码任务标记完成。
+          useTaskRegistry.getState().updateTask('coding-' + sessionId, { status: 'done' })
         }
-        // 全局任务条：编码任务标记完成。
-        useTaskRegistry.getState().updateTask('coding-' + sessionId, { status: 'done' })
         // 存档钩子：会话在此定稿，把快照推给 AgentHub 工作流存档
         // （动态引入避免环依赖；同会话多轮 agent_end 会 upsert 同一条）。
         const st = get()
@@ -973,6 +1207,7 @@ export const usePiStore = create<PiStore>((set, get) => ({
           ]),
           sessions: withStatus(s.sessions, sessionId, 'error'),
         }))
+        pushRemoteNotification('failure', sessionId)
         // 全局任务条：编码任务标记错误。
         useTaskRegistry.getState().updateTask('coding-' + sessionId, { status: 'error', detail: text })
         break
@@ -991,6 +1226,7 @@ export const usePiStore = create<PiStore>((set, get) => ({
           ]),
           sessions: withStatus(s.sessions, sessionId, 'error'),
         }))
+        pushRemoteNotification('failure', sessionId)
         // 全局任务条：编码任务标记错误。
         useTaskRegistry.getState().updateTask('coding-' + sessionId, { status: 'error', detail: text })
         break

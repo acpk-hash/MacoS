@@ -25,7 +25,7 @@ function NavIcon({ children }: { children: ReactNode }) {
 
 type NavItem = { to: string; label: string; title?: string; end?: boolean; icon: ReactNode }
 
-// 大类导航：编码 / 办公 / 图像 / 视频 / 科研 / Auto / Skills / MCP / Hooks / Agent / 知识库 / 画布 / 电商 / 用量，设置固定末位。
+// 大类导航：编码 / 办公 / 图像 / 视频 / 科研 / Auto / Skills / MCP / Hooks / Agent / 知识库 / 画布 / 电商 / 热点 / 用量，设置固定末位。
 const navItems: NavItem[] = [
   {
     to: '/',
@@ -179,6 +179,17 @@ const navItems: NavItem[] = [
         <circle cx="8" cy="21" r="1" />
         <circle cx="19" cy="21" r="1" />
         <path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" />
+      </NavIcon>
+    ),
+  },
+  {
+    to: '/trends',
+    label: '热点',
+    title: '热点推送 · TrendRadar 热榜 / RSS / 关键词监控',
+    icon: (
+      <NavIcon>
+        <path d="M3 12h4l3-8 4 16 3-8h4" />
+        <path d="M4 21h16" />
       </NavIcon>
     ),
   },

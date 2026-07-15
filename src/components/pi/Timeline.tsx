@@ -249,6 +249,8 @@ function TimelineRow({
   sessionId: string
 }) {
   const toggleToolCollapse = usePiStore((s) => s.toggleToolCollapse)
+  const decideApproval = usePiStore((s) => s.decideApproval)
+  const [thinkingOpen, setThinkingOpen] = useState(false)
   switch (item.kind) {
     case 'user':
       return (
@@ -259,10 +261,45 @@ function TimelineRow({
         </div>
       )
     case 'assistant':
+      if (item.thinking) {
+        return (
+          <div className="my-2 rounded-card border border-lavender/25 bg-lavender/5 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setThinkingOpen((v) => !v)}
+              className="w-full flex items-center gap-2 px-3 py-2 text-left text-[12px] text-lavender hover:bg-lavender/10"
+            >
+              <span>{thinkingOpen ? '▾' : '▸'}</span>
+              <span className="font-medium">思考过程</span>
+              {item.streaming && <Blink />}
+            </button>
+            {thinkingOpen && (
+              <div className="px-3 pb-3 text-[12px] text-ink-dim whitespace-pre-wrap break-words leading-5">
+                {item.text}
+              </div>
+            )}
+          </div>
+        )
+      }
       return <AssistantBody text={item.text} streaming={item.streaming} />
     case 'tool':
       return (
         <ToolRow item={item} onToggle={() => toggleToolCollapse(sessionId, item.id)} />
+      )
+    case 'approval':
+      return (
+        <div className="my-3 rounded-card border border-gold/50 bg-gold/10 px-3 py-3">
+          <div className="text-[13px] font-semibold text-gold">⚠ {item.title}</div>
+          <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-[11px] text-ink-dim font-mono">{item.detail}</pre>
+          {item.status === 'pending' ? (
+            <div className="mt-3 flex gap-2">
+              <button type="button" onClick={() => void decideApproval(sessionId, item.requestId, true)} className="rounded-md bg-mint px-3 py-1.5 text-[12px] font-semibold text-bg">允许</button>
+              <button type="button" onClick={() => void decideApproval(sessionId, item.requestId, false)} className="rounded-md border border-coral/60 px-3 py-1.5 text-[12px] text-coral">拒绝</button>
+            </div>
+          ) : (
+            <div className="mt-2 text-[11px] text-ink-dim">{item.status === 'approved' ? '已允许' : item.status === 'expired' ? '已超时自动拒绝' : '已拒绝'}</div>
+          )}
+        </div>
       )
     case 'system':
       return (

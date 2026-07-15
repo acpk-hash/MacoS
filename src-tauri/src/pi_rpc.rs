@@ -38,7 +38,7 @@ use serde_json::{json, Value};
 use tauri::path::BaseDirectory;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::sync::{mpsc, watch, Mutex};
+use tokio::sync::{mpsc, oneshot, watch, Mutex};
 
 use crate::db::Db;
 use crate::procext::NoWindowExt;
@@ -56,6 +56,51 @@ const DEFAULT_MODEL: &str = "gpt-5.5";
 const PI_PROVIDER_NAME: &str = "agentboard";
 /// stderr 环形缓冲行数（进程退出时随 process_exit 事件带给前端）。
 const STDERR_TAIL_LINES: usize = 40;
+/// Loaded explicitly even with `--no-extensions`. It blocks only high-risk
+/// operations and uses RPC extension UI so Windows and paired Android clients
+/// can race to decide; Pi's matching request id makes the first response win.
+const IRIS_APPROVAL_EXTENSION: &str = r#"
+import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
+import path from 'node:path';
+
+export default function (pi: ExtensionAPI) {
+  const riskyShell = [
+    /(^|[;&|]\s*)(rm|rmdir|del|erase|remove-item)\b/i,
+    /\b(sudo|runas|start-process\s+[^\n]*-verb\s+runas)\b/i,
+    /\b(chmod|chown|takeown|icacls)\b/i,
+    /\b(winget|choco|scoop|apt|apt-get|dnf|yum|pacman|brew)\s+(install|remove|uninstall|upgrade)\b/i,
+    /\b(npm|pnpm|yarn|pip|pip3|cargo|gem)\s+(publish|install|uninstall|add|remove)\b/i,
+    /\b(git\s+push|docker\s+push|twine\s+upload)\b/i,
+    /\b(curl|wget|invoke-webrequest|invoke-restmethod|ssh|scp|sftp|rsync)\b/i,
+    /\b(shutdown|reboot|restart-computer|stop-computer|format|diskpart|bcdedit|reg\s+(add|delete))\b/i,
+  ];
+
+  pi.on('tool_call', async (event, ctx) => {
+    let reason: string | undefined;
+    let detail = '';
+    const input = (event.input || {}) as Record<string, unknown>;
+    if (event.toolName === 'bash') {
+      detail = String(input.command || '');
+      if (riskyShell.some((pattern) => pattern.test(detail))) reason = '高风险命令';
+    } else if (event.toolName === 'write' || event.toolName === 'edit') {
+      detail = String(input.path || input.file_path || '');
+      if (detail && path.isAbsolute(detail)) {
+        const root = path.resolve(ctx.cwd).toLowerCase();
+        const target = path.resolve(detail).toLowerCase();
+        if (target !== root && !target.startsWith(root + path.sep)) reason = '写入项目目录之外';
+      }
+    }
+    if (!reason) return undefined;
+    const approved = await ctx.ui.confirm(
+      `Iris 安全审批 · ${reason}`,
+      detail.slice(0, 4000),
+      { timeout: 300000 },
+    );
+    if (!approved) return { block: true, reason: 'Iris approval rejected or timed out' };
+    return undefined;
+  });
+}
+"#;
 
 // ── Session handle + engine (tauri managed state) ───────────────────────────
 
@@ -66,6 +111,8 @@ struct PiSession {
     cmd_tx: mpsc::UnboundedSender<Value>,
     /// 通知 supervisor 杀进程树（taskkill /F /T + kill）。
     stop_tx: watch::Sender<bool>,
+    /// 等待 pi RPC response 的请求表；避免“写入 stdin 就当成功”造成静默卡死。
+    pending: Arc<Mutex<HashMap<String, oneshot::Sender<Value>>>>,
     /// 会话工作目录（诊断用）。
     #[allow(dead_code)]
     cwd: String,
@@ -90,15 +137,55 @@ impl Default for PiEngine {
 }
 
 impl PiEngine {
-    /// 向指定会话 stdin 写一条命令（一行 JSON）。
-    async fn send(&self, session_id: &str, cmd: Value) -> Result<(), String> {
-        let g = self.inner.lock().await;
-        let s = g
-            .get(session_id)
-            .ok_or_else(|| format!("pi 会话不存在: {session_id}"))?;
-        s.cmd_tx
-            .send(cmd)
-            .map_err(|_| "pi 进程已退出".to_string())
+    /// 发送 RPC 命令并等待同 id 的 response。只有 pi 明确 success=true 才返回成功。
+    async fn send_raw(&self, session_id: &str, cmd: Value) -> Result<(), String> {
+        let cmd_tx = {
+            let g = self.inner.lock().await;
+            g.get(session_id)
+                .ok_or_else(|| format!("pi 会话不存在: {session_id}"))?
+                .cmd_tx
+                .clone()
+        };
+        cmd_tx.send(cmd).map_err(|_| "pi 进程已退出".to_string())
+    }
+
+    async fn request(&self, session_id: &str, mut cmd: Value) -> Result<(), String> {
+        let id = cmd
+            .get("id")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .unwrap_or_else(req_id);
+        cmd["id"] = Value::String(id.clone());
+        let (cmd_tx, pending) = {
+            let g = self.inner.lock().await;
+            let s = g
+                .get(session_id)
+                .ok_or_else(|| format!("pi 会话不存在: {session_id}"))?;
+            (s.cmd_tx.clone(), s.pending.clone())
+        };
+        let (tx, rx) = oneshot::channel();
+        pending.lock().await.insert(id.clone(), tx);
+        if cmd_tx.send(cmd).is_err() {
+            pending.lock().await.remove(&id);
+            return Err("pi 进程已退出".to_string());
+        }
+        let response = match tokio::time::timeout(Duration::from_secs(15), rx).await {
+            Ok(Ok(v)) => v,
+            Ok(Err(_)) => return Err("pi 响应通道已关闭".to_string()),
+            Err(_) => {
+                pending.lock().await.remove(&id);
+                return Err("pi 命令响应超时（15s）".to_string());
+            }
+        };
+        if response.get("success").and_then(Value::as_bool) == Some(true) {
+            Ok(())
+        } else {
+            Err(response
+                .get("error")
+                .and_then(Value::as_str)
+                .unwrap_or("pi 拒绝了命令")
+                .to_string())
+        }
     }
 }
 
@@ -163,6 +250,10 @@ pub(crate) async fn pi_open(
     tokio::fs::write(agent_dir.join("settings.json"), build_settings_json(&model))
         .await
         .map_err(|e| format!("写入 pi settings.json 失败: {e}"))?;
+    let approval_extension = agent_dir.join("iris-approval.ts");
+    tokio::fs::write(&approval_extension, IRIS_APPROVAL_EXTENSION)
+        .await
+        .map_err(|e| format!("写入 Iris 审批扩展失败: {e}"))?;
     let agents_md_content = {
         let data_dir = app
             .path()
@@ -195,6 +286,8 @@ pub(crate) async fn pi_open(
     .iter()
     .map(Into::into)
     .collect();
+    pi_args.push("--extension".into());
+    pi_args.push(approval_extension.as_os_str().to_os_string());
     if let Some(dir) = &skills_arg {
         pi_args.push("--skill".into());
         pi_args.push(dir.as_os_str().to_os_string());
@@ -256,6 +349,8 @@ pub(crate) async fn pi_open(
         // channel 关闭 → drop stdin → pi 优雅退出。
     });
 
+    let pending = Arc::new(Mutex::new(HashMap::<String, oneshot::Sender<Value>>::new()));
+
     // -- reader 任务：stdout 逐行 JSON → pi-event；顺带用量落库（持久化） --
     {
         let app = app.clone();
@@ -263,6 +358,7 @@ pub(crate) async fn pi_open(
         let db = db.clone();
         let model = model.clone();
         let provider = provider_id.clone();
+        let response_waiters = pending.clone();
         tokio::spawn(async move {
             let mut lines = BufReader::new(stdout).lines();
             while let Ok(Some(line)) = lines.next_line().await {
@@ -272,6 +368,14 @@ pub(crate) async fn pi_open(
                 }
                 match serde_json::from_str::<Value>(line) {
                     Ok(ev) => {
+                        if ev.get("type").and_then(Value::as_str) == Some("response") {
+                            if let Some(id) = ev.get("id").and_then(Value::as_str) {
+                                if let Some(tx) = response_waiters.lock().await.remove(id) {
+                                    let _ = tx.send(ev);
+                                    continue;
+                                }
+                            }
+                        }
                         // message_end（assistant + usage）→ SQLite pi_usage 一行，
                         // 并 emit `pi-usage-updated` 轻事件供用量页实时刷新。
                         record_usage_if_any(&app, &db, &sid, &model, &provider, &ev);
@@ -319,6 +423,7 @@ pub(crate) async fn pi_open(
         PiSession {
             cmd_tx,
             stop_tx,
+            pending,
             cwd,
             model,
             agent_dir,
@@ -336,7 +441,7 @@ pub async fn pi_prompt(
     message: String,
 ) -> Result<(), String> {
     engine
-        .send(
+        .request(
             &session_id,
             json!({ "type": "prompt", "message": message, "id": req_id() }),
         )
@@ -351,14 +456,14 @@ pub async fn pi_steer(
     message: String,
 ) -> Result<(), String> {
     engine
-        .send(
+        .request(
             &session_id,
             json!({ "type": "steer", "message": message, "id": req_id() }),
         )
         .await
 }
 
-/// 追加 follow-up。
+/// 追加 follow-up，仅用于 agent 仍在运行时排队；空闲续聊应调用 pi_prompt。
 #[tauri::command]
 pub async fn pi_follow_up(
     engine: State<'_, PiEngine>,
@@ -366,7 +471,7 @@ pub async fn pi_follow_up(
     message: String,
 ) -> Result<(), String> {
     engine
-        .send(
+        .request(
             &session_id,
             json!({ "type": "follow_up", "message": message, "id": req_id() }),
         )
@@ -377,7 +482,28 @@ pub async fn pi_follow_up(
 #[tauri::command]
 pub async fn pi_abort(engine: State<'_, PiEngine>, session_id: String) -> Result<(), String> {
     engine
-        .send(&session_id, json!({ "type": "abort", "id": req_id() }))
+        .request(&session_id, json!({ "type": "abort", "id": req_id() }))
+        .await
+}
+
+/// Resolve an extension confirmation. Pi accepts only the first matching
+/// response; later desktop/mobile decisions are harmlessly ignored.
+#[tauri::command]
+pub async fn pi_extension_ui_response(
+    engine: State<'_, PiEngine>,
+    session_id: String,
+    request_id: String,
+    approved: bool,
+) -> Result<(), String> {
+    engine
+        .send_raw(
+            &session_id,
+            json!({
+                "type": "extension_ui_response",
+                "id": request_id,
+                "confirmed": approved
+            }),
+        )
         .await
 }
 
@@ -760,7 +886,7 @@ fn resolve_provider_creds(db: &Db, provider_id: &str) -> Result<(String, String,
 
 /// node 定位（三级 fallback）：
 /// 1. settings `pi_node_path` 覆盖（存在才生效）
-/// 2. Tauri resource `engine-pi/node.exe`（打包自带，离线自包含）
+/// 2. Tauri resource `engine-pi/node.exe`（Windows）或 `engine-pi/node`（macOS）
 /// 3. PATH 里的 `node`（dev 默认）
 fn resolve_node(db: &Db, app: Option<&AppHandle>) -> String {
     if let Ok(Some(p)) = db.settings_get("pi_node_path") {
@@ -770,7 +896,11 @@ fn resolve_node(db: &Db, app: Option<&AppHandle>) -> String {
         }
     }
     if let Some(app) = app {
-        if let Ok(res) = app.path().resolve("engine-pi/node.exe", BaseDirectory::Resource) {
+        #[cfg(windows)]
+        let bundled_node = "engine-pi/node.exe";
+        #[cfg(not(windows))]
+        let bundled_node = "engine-pi/node";
+        if let Ok(res) = app.path().resolve(bundled_node, BaseDirectory::Resource) {
             if res.exists() {
                 return normalize_spawn_path(&res).to_string_lossy().to_string();
             }
@@ -825,12 +955,27 @@ fn npm_global_pi_cli() -> Option<PathBuf> {
     #[cfg(windows)]
     let root = std::env::var("APPDATA").ok().map(|a| PathBuf::from(a).join("npm"))?;
     #[cfg(not(windows))]
-    let root = PathBuf::from("/usr/local/lib");
-    let mut p = root;
-    for seg in REL {
-        p = p.join(seg);
+    {
+        for root in [PathBuf::from("/opt/homebrew/lib"), PathBuf::from("/usr/local/lib")] {
+            let mut p = root;
+            for seg in REL {
+                p = p.join(seg);
+            }
+            let cli = p.join("dist").join("cli.js");
+            if cli.exists() {
+                return Some(cli);
+            }
+        }
+        None
     }
-    Some(p.join("dist").join("cli.js"))
+    #[cfg(windows)]
+    {
+        let mut p = root;
+        for seg in REL {
+            p = p.join(seg);
+        }
+        Some(p.join("dist").join("cli.js"))
+    }
 }
 
 // ── 杂项 ─────────────────────────────────────────────────────────────────────
@@ -1035,6 +1180,8 @@ mod tests {
         )
         .unwrap();
         std::fs::write(agent_dir.join("settings.json"), build_settings_json("gpt-5.5")).unwrap();
+        let approval_extension = agent_dir.join("iris-approval.ts");
+        std::fs::write(&approval_extension, IRIS_APPROVAL_EXTENSION).unwrap();
 
         let work = std::env::temp_dir().join(format!("ab-pi-work-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&work).unwrap();
@@ -1049,6 +1196,8 @@ mod tests {
                 "--no-extensions",
                 "--no-skills",
             ])
+            .arg("--extension")
+            .arg(&approval_extension)
             .current_dir(&work)
             .env(PI_AGENT_DIR_ENV, &agent_dir)
             .env(PI_KEY_ENV, "smoke-dummy-key")
@@ -1108,7 +1257,7 @@ mod tests {
         assert_eq!(v["data"]["model"]["id"], "gpt-5.5");
     }
 
-    /// LIVE 端到端冒烟（真网络 + 真 key）：完整一轮 agent turn。
+    /// LIVE 端到端冒烟（真网络 + 真 key）：连续两轮 agent turn。
     /// 证明产品链路的最终判据：pi_open 同构生成的环境（models.json/
     /// settings.json 复用生产函数）→ 真实 prompt → agent 真调工具在
     /// 工作目录写出 hello.txt → agent_end，事件顺序与落盘产物都验证。
@@ -1123,12 +1272,17 @@ mod tests {
     async fn live_rpc_full_turn() {
         use tokio::process::Command;
 
-        // -- 真 key：用户级 env（aiboys relay）。缺失直接失败，不许假通过。--
+        // 与产品一致，从应用默认 provider 读取凭据；环境变量可覆盖用于 CI。
+        let db = Db::open().expect("open app db");
+        let provider_id = resolve_provider_id(&db, None).expect("default provider");
+        let (base_url, stored_key, wire_api) =
+            resolve_provider_creds(&db, &provider_id).expect("provider creds");
         let key = std::env::var("OPENAI_API_KEY")
             .ok()
             .map(|k| k.trim().to_string())
             .filter(|k| !k.is_empty())
-            .expect("live_rpc_full_turn 需要环境变量 OPENAI_API_KEY（真实 key）");
+            .unwrap_or(stored_key);
+        let model = "gpt-5.6-luna";
 
         let cli = npm_global_pi_cli().expect("npm global path");
         assert!(cli.exists(), "pi cli.js not found: {}", cli.display());
@@ -1139,10 +1293,12 @@ mod tests {
         std::fs::create_dir_all(&agent_dir).unwrap();
         std::fs::write(
             agent_dir.join("models.json"),
-            build_models_json("https://sub.aiboys.xyz/v1", "responses", "gpt-5.5"),
+            build_models_json(&base_url, &wire_api, model),
         )
         .unwrap();
-        std::fs::write(agent_dir.join("settings.json"), build_settings_json("gpt-5.5")).unwrap();
+        std::fs::write(agent_dir.join("settings.json"), build_settings_json(model)).unwrap();
+        let approval_extension = agent_dir.join("iris-approval.ts");
+        std::fs::write(&approval_extension, IRIS_APPROVAL_EXTENSION).unwrap();
 
         // -- 临时工作目录：agent 要在这里写 hello.txt --
         let work = std::env::temp_dir().join(format!("pi-e2e-{}", uuid::Uuid::new_v4()));
@@ -1158,6 +1314,8 @@ mod tests {
                 "--no-extensions",
                 "--no-skills",
             ])
+            .arg("--extension")
+            .arg(&approval_extension)
             .current_dir(&work)
             .env(PI_AGENT_DIR_ENV, &agent_dir)
             .env(PI_KEY_ENV, &key)
@@ -1258,6 +1416,55 @@ mod tests {
                 _ => {}
             }
         }
+        // 第一轮结束后必须用 prompt 开启正常第二轮；这是编码窗口续聊的产品路径。
+        let second = json!({
+            "type": "prompt",
+            "message": "只回复 second-ok，不要调用工具。",
+            "id": "e2e2"
+        });
+        stdin
+            .write_all(format!("{second}\n").as_bytes())
+            .await
+            .unwrap();
+        stdin.flush().await.unwrap();
+
+        let second_deadline = tokio::time::Instant::now() + Duration::from_secs(120);
+        let mut saw_second_start = false;
+        let mut saw_second_message = false;
+        let mut saw_second_end = false;
+        let mut second_text = String::new();
+        loop {
+            let remaining = second_deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            let l = match tokio::time::timeout(remaining, lines.next_line()).await {
+                Ok(Ok(Some(l))) => l,
+                _ => break,
+            };
+            events.push(l.clone());
+            let Ok(v) = serde_json::from_str::<Value>(l.trim()) else {
+                continue;
+            };
+            match v["type"].as_str().unwrap_or("") {
+                "agent_start" => saw_second_start = true,
+                "message_end" if v["message"]["role"] == "assistant" => {
+                    saw_second_message = true;
+                    if let Some(parts) = v["message"]["content"].as_array() {
+                        for part in parts {
+                            if part["type"] == "text" {
+                                second_text.push_str(part["text"].as_str().unwrap_or(""));
+                            }
+                        }
+                    }
+                }
+                "agent_end" if v["willRetry"] != true => {
+                    saw_second_end = true;
+                    break;
+                }
+                _ => {}
+            }
+        }
         let elapsed = started.elapsed();
 
         // -- 落盘产物验证（在杀进程前后都不受影响，先读再清理）--
@@ -1275,8 +1482,15 @@ mod tests {
             .as_deref()
             .map(|c| c.contains("pivot-ok"))
             .unwrap_or(false);
-        let pass =
-            saw_agent_start && saw_tool_start && saw_agent_end && order_ok && content_ok;
+        let pass = saw_agent_start
+            && saw_tool_start
+            && saw_agent_end
+            && order_ok
+            && content_ok
+            && saw_second_start
+            && saw_second_message
+            && saw_second_end
+            && second_text.to_lowercase().contains("second-ok");
         if !pass {
             eprintln!("---- last {} events ----", events.len().min(30));
             for e in events.iter().rev().take(30).collect::<Vec<_>>().into_iter().rev() {
@@ -1288,12 +1502,19 @@ mod tests {
             }
         }
         println!(
-            "[e2e] elapsed={elapsed:?} tools={tool_names:?} hello.txt={hello_content:?}"
+            "[e2e] elapsed={elapsed:?} tools={tool_names:?} hello.txt={hello_content:?} second={second_text:?}"
         );
 
         assert!(saw_agent_start, "未观察到 agent_start");
         assert!(saw_tool_start, "未观察到 tool_execution_start");
-        assert!(saw_agent_end, "未观察到 agent_end");
+        assert!(saw_agent_end, "未观察到第一轮 agent_end");
+        assert!(saw_second_start, "第二轮 prompt 未触发 agent_start");
+        assert!(saw_second_message, "第二轮未收到 assistant message_end");
+        assert!(saw_second_end, "第二轮未收到 agent_end");
+        assert!(
+            second_text.to_lowercase().contains("second-ok"),
+            "第二轮回答异常: {second_text:?}"
+        );
         assert!(order_ok, "事件顺序不对（应为 agent_start → tool → agent_end）");
         let c = hello_content.expect("hello.txt 未生成");
         assert!(c.contains("pivot-ok"), "hello.txt 内容不含 pivot-ok: {c:?}");

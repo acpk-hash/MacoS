@@ -90,6 +90,7 @@ function CanvasBoard({
   const [editingNode, setEditingNode] = useState<string | null>(null)
   const [editText, setEditText] = useState('')
   const [connecting, setConnecting] = useState<string | null>(null)
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
 
   // Pan state
   const [isPanning, setIsPanning] = useState(false)
@@ -103,6 +104,7 @@ function CanvasBoard({
 
   // Node map for quick lookup
   const nodeMap = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes])
+  const selectedNode = selectedNodeId ? nodeMap.get(selectedNodeId) ?? null : null
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent, nodeId?: string) => {
@@ -113,6 +115,7 @@ function CanvasBoard({
           setConnecting(null)
           return
         }
+        setSelectedNodeId(nodeId)
         const node = nodeMap.get(nodeId)
         if (!node) return
         const svg = svgRef.current
@@ -122,6 +125,7 @@ function CanvasBoard({
         const svgP = pt.matrixTransform(svg.getScreenCTM()?.inverse())
         setDragging({ nodeId, offsetX: svgP.x - node.x, offsetY: svgP.y - node.y })
       } else if (e.button === 0 && !e.shiftKey) {
+        setSelectedNodeId(null)
         // Pan
         setIsPanning(true)
         setPanStart({ x: e.clientX - panX, y: e.clientY - panY })
@@ -181,6 +185,7 @@ function CanvasBoard({
           color: '#6366f1',
         }
         store.addNode(newNode)
+        setSelectedNodeId(newNode.id)
       }
     },
     [nodeMap, project.mode, store],
@@ -226,6 +231,75 @@ function CanvasBoard({
     [nodeMap, store],
   )
 
+  const updateSelectedNode = useCallback((patch: Partial<CanvasNode>) => {
+    if (!selectedNodeId) return
+    store.updateNode(selectedNodeId, patch)
+  }, [selectedNodeId, store])
+
+  const duplicateSelectedNode = useCallback(() => {
+    if (!selectedNode) return
+    const copy: CanvasNode = {
+      ...selectedNode,
+      id: uid(),
+      x: selectedNode.x + 32,
+      y: selectedNode.y + 32,
+      text: selectedNode.text + ' copy',
+      parentId: null,
+    }
+    store.addNode(copy)
+    setSelectedNodeId(copy.id)
+  }, [selectedNode, store])
+
+  const fitView = useCallback(() => {
+    if (nodes.length === 0) return
+    const minX = Math.min(...nodes.map((n) => n.x))
+    const minY = Math.min(...nodes.map((n) => n.y))
+    const maxX = Math.max(...nodes.map((n) => n.x + n.width))
+    const maxY = Math.max(...nodes.map((n) => n.y + n.height))
+    const w = Math.max(1, maxX - minX)
+    const h = Math.max(1, maxY - minY)
+    const svg = svgRef.current
+    const box = svg?.getBoundingClientRect()
+    const z = Math.max(0.25, Math.min(2, Math.min((box?.width ?? 1200) / (w + 180), (box?.height ?? 700) / (h + 160))))
+    store.setZoom(z)
+    store.setPan(80 - minX * z, 80 - minY * z)
+  }, [nodes, store])
+
+  const arrangeMindMap = useCallback(() => {
+    if (nodes.length === 0) return
+    const root = nodes.find((n) => n.parentId == null) ?? nodes[0]
+    const children = new Map<string, CanvasNode[]>()
+    for (const n of nodes) {
+      if (!n.parentId) continue
+      children.set(n.parentId, [...(children.get(n.parentId) ?? []), n])
+    }
+    const next = new Map<string, Partial<CanvasNode>>()
+    next.set(root.id, { x: 420, y: 300 })
+    const place = (node: CanvasNode, depth: number, top: number, bottom: number) => {
+      const kids = children.get(node.id) ?? []
+      if (kids.length === 0) return
+      const span = Math.max(80, bottom - top)
+      kids.forEach((child, i) => {
+        const y = top + ((i + 0.5) / kids.length) * span
+        next.set(child.id, { x: 420 + depth * 210, y })
+        const childTop = y - span / Math.max(2, kids.length)
+        const childBottom = y + span / Math.max(2, kids.length)
+        place(child, depth + 1, childTop, childBottom)
+      })
+    }
+    place(root, 1, 80, 620)
+    for (const [id, patch] of next) store.updateNode(id, patch)
+    requestAnimationFrame(fitView)
+  }, [fitView, nodes, store])
+
+  const exportJSON = useCallback(() => {
+    const blob = new Blob([JSON.stringify(project, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = `${project.name}.json`; a.click()
+    URL.revokeObjectURL(url)
+  }, [project])
+
   // Export SVG
   const exportSVG = useCallback(() => {
     const svg = svgRef.current
@@ -268,6 +342,33 @@ function CanvasBoard({
         <span className="font-semibold text-ink">{project.name}</span>
         <span className="text-ink-faint">({project.mode === 'mindmap' ? '思维导图' : '自由画布'})</span>
         <span className="flex-1" />
+        {selectedNode && (
+          <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-editor border border-line">
+            <input
+              value={selectedNode.text}
+              onChange={(e) => updateSelectedNode({ text: e.target.value })}
+              className="w-28 bg-transparent text-ink outline-none"
+              title="节点文本"
+            />
+            <input
+              type="color"
+              value={selectedNode.color}
+              onChange={(e) => updateSelectedNode({ color: e.target.value })}
+              className="h-5 w-7 bg-transparent"
+              title="节点颜色"
+            />
+            <select
+              value={selectedNode.shape}
+              onChange={(e) => updateSelectedNode({ shape: e.target.value as CanvasNode['shape'] })}
+              className="bg-surface-2 text-ink border border-line rounded px-1 py-0.5"
+              title="形状"
+            >
+              <option value="rect">矩形</option>
+              <option value="ellipse">椭圆</option>
+            </select>
+            <button className="px-1.5 rounded bg-surface-2 hover:bg-primary-tint" onClick={duplicateSelectedNode}>复制</button>
+          </div>
+        )}
         {project.mode === 'freeform' && (
           <button
             className={['px-2 py-0.5 rounded transition-colors', connecting ? 'bg-primary text-white' : 'bg-surface-2 text-ink hover:bg-primary-tint'].join(' ')}
@@ -277,8 +378,11 @@ function CanvasBoard({
             {connecting ? '连线中...' : '连线'}
           </button>
         )}
+        {project.mode === 'mindmap' && <button className="px-2 py-0.5 rounded bg-surface-2 text-ink hover:bg-primary-tint transition-colors" onClick={arrangeMindMap}>自动布局</button>}
+        <button className="px-2 py-0.5 rounded bg-surface-2 text-ink hover:bg-primary-tint transition-colors" onClick={fitView}>适配视图</button>
         <button className="px-2 py-0.5 rounded bg-surface-2 text-ink hover:bg-primary-tint transition-colors" onClick={exportSVG}>导出 SVG</button>
         <button className="px-2 py-0.5 rounded bg-surface-2 text-ink hover:bg-primary-tint transition-colors" onClick={exportPNG}>导出 PNG</button>
+        <button className="px-2 py-0.5 rounded bg-surface-2 text-ink hover:bg-primary-tint transition-colors" onClick={exportJSON}>JSON</button>
         <span className="text-ink-faint">{Math.round(zoom * 100)}%</span>
       </div>
 
@@ -334,7 +438,7 @@ function CanvasBoard({
               ) : (
                 <rect
                   x={n.x} y={n.y} width={n.width} height={n.height}
-                  rx={6} fill={n.color + '33'} stroke={n.color} strokeWidth={1.5}
+                  rx={6} fill={n.color + '33'} stroke={selectedNodeId === n.id ? 'var(--color-primary, #6366f1)' : n.color} strokeWidth={selectedNodeId === n.id ? 3 : 1.5}
                 />
               )}
               {editingNode === n.id ? (

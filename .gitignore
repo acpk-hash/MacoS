@@ -34,3 +34,16 @@ engine-codex/
 # Self-contained pi runtime staged by scripts/prepare-engine-pi.ps1
 # (node.exe + pi/dist + pi/node_modules)
 engine-pi/
+
+# Rust build output (root-level target/ if present)
+target/
+
+# Companion PWA build artifacts
+companion/node_modules/
+companion/dist/
+
+# Windows executables
+*.exe
+
+# Windows null device artifact (never commit)
+NUL

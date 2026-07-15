@@ -4,7 +4,7 @@
 //! - 服务器为自签证书。REST（reqwest）与 WSS（tokio-tungstenite）都只信任内嵌的
 //!   `SERVER_CERT_PEM` 这一个锚点（`tls_built_in_root_certs(false)` /
 //!   仅含该证书的 rustls `RootCertStore`）——即证书锁定，绝不使用
-//!   `danger_accept_invalid_certs`。证书带 `SAN = IP:107.174.70.15`，主机名校验对 IP 成立。
+//!   `danger_accept_invalid_certs`。证书带 `SAN = IP:192.210.231.152`，主机名校验对 IP 成立。
 //! - access token 仅存内存；refresh token 存 settings 表（key `sync_refresh_token`）。
 //!   注：桌面端设置表为本地 SQLite，后续版本可迁移到 Windows 凭据管理器
 //!   （Credential Manager）以获得 DPAPI 级别的静态加密。
@@ -38,29 +38,35 @@ use crate::db::{ChatMessageRow, ChatSessionRow, Db};
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 /// 官方同步服务器（当前不可改地址；后续版本再开放自建）。
-pub const SYNC_BASE_URL: &str = "https://107.174.70.15:8443";
-pub const SYNC_WS_URL: &str = "wss://107.174.70.15:8443/ws";
+pub const SYNC_BASE_URL: &str = "https://192.210.231.152:8443";
+pub const SYNC_WS_URL: &str = "wss://192.210.231.152:8443/ws";
 
 /// 内嵌的服务器自签证书（唯一信任锚）。指纹：
-/// `A5:A3:31:44:E9:11:74:09:D5:5F:1F:D0:7A:37:B6:81:15:83:4C:15:E4:F4:43:60:D8:B3:5F:9F:74:93:79:51`
+/// `A7:61:DC:CA:0E:5A:B6:C3:27:91:D0:A3:00:65:2C:A6:8A:AE:BB:EA:04:63:7B:86:4D:AD:87:3D:26:6E:DD:FB`
 const SERVER_CERT_PEM: &str = "-----BEGIN CERTIFICATE-----
-MIIDIjCCAgqgAwIBAgIUVcRSTGoTbAZybZJRR3GHWxF5x48wDQYJKoZIhvcNAQEL
-BQAwGDEWMBQGA1UEAwwNMTA3LjE3NC43MC4xNTAeFw0yNjA3MDcwODU0MjRaFw0z
-NjA3MDQwODU0MjRaMBgxFjAUBgNVBAMMDTEwNy4xNzQuNzAuMTUwggEiMA0GCSqG
-SIb3DQEBAQUAA4IBDwAwggEKAoIBAQCkigYIRWTfVwO3Xtn2IfwxEBuPWxVuhO61
-MBXcF1qKF9ahEms7mN2C9zmw56DFNXl24Va36WcvIK18dANVDQFhNAM2bTIZKxxT
-SuESoRn4UJpGOa/c68tpUpoXVjO/8swLgRCdp0GRygLDUI9yIilTohGw7eSb9dgY
-qz7Ml5hbl/bn6U6i6LFKF6OYEvvQyn0LW4puwcgue5upKAb+d/oL6dLgwsovszN+
-ORvKbx2YQkJEBpwoe+r5BXWzG9vgO9j03uHHptpQT2UqmD4dDjCzx26491HLnZFP
-Hl5oenxkImzBp0k4kuNZ2r/qvNYwpgTB3rqAW1oo/Pk/u+32CTZBAgMBAAGjZDBi
-MB0GA1UdDgQWBBRb5Yd0Vdm3Gqen+fYltPT9vecIpjAfBgNVHSMEGDAWgBRb5Yd0
-Vdm3Gqen+fYltPT9vecIpjAPBgNVHRMBAf8EBTADAQH/MA8GA1UdEQQIMAaHBGuu
-Rg8wDQYJKoZIhvcNAQELBQADggEBABWXxtERGfgXEesE04mZRihQdzFlxjJLjgxz
-8U1rcPCsboah/IhIcmz4EzNSC80P3YPdExMI8q6ra+gSVg6B66HkiAHivZnWwM1/
-rXzd1XK+drsja68vHzyuiuPJNHAqSxOSB/SvgCjbEnGZNYhkiT9fM8BT4bn0NXLP
-ueD37s3Dmjkt5IgbzhBfhXzE7keMqtpVubJXKtFCVrsHxoSIH0RRjoqeiIO0EGRH
-ij2UR4mOxr/5Wv2EznAxU3CnhL/n1sl/hepa3013vYd6o4sLTVtAjbn5oZslOYl+
-pTgR+xhZWcuWCPNTipB56Ku7L0gqOqEYqJeoxVdirHC9XVOJZuA=
+MIIEJjCCAo6gAwIBAgIUEy7k6RSHZYROEUB3hsCAj95XcnIwDQYJKoZIhvcNAQEL
+BQAwGjEYMBYGA1UEAwwPMTkyLjIxMC4yMzEuMTUyMB4XDTI2MDcxNDEyMjQ0OFoX
+DTM2MDcxMTEyMjQ0OFowGjEYMBYGA1UEAwwPMTkyLjIxMC4yMzEuMTUyMIIBojAN
+BgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEA1PXdVqU7Hs8+WPUxF4cLCXKYN2y6
+t9UsWXYrK8sXjJOyoEzROF8xUADjxuGS9Vjrjr8RzKWRO2CXHnVwKBhUos9hmV2W
+ehfaD3RZGtNZYL8rz7IDFd6vKEVWxKL5GtxzXMM2uXTPWLsCp8iFPaEDZmYBJLZH
+88KXy0lPe2zJb//azg194+WY1JKMjANtZAM3hYF6kgHaphkSNMPUVQ2B2AZCud1S
+uH/FL+QfX4pn3HJP1imNqtCTaxRHbSLP0otjyTLuVAGK1KKuRx4KQ+M1EuktMniR
+VACsnjMEvNoADnMjJjQqWGirNeG4zzDMJ04+zBKjMWoKZ9guopo2ZIkhvmLnAcFW
+gRw80e/+xrN6TN9a0G/Hz/syypzIMyWhPJwfmhUFU9b+6K2tmO2gzM8/Qnratw5I
+bX+H/fLyMdhRx1XEhLZf9IU8T8xE8/kiqaWbD1oziYt6JiwcJ2Sw9is9SQLC9UAM
+DCzUoNvl9iKyI0xDb9wozaBTAzy205pC9s9RAgMBAAGjZDBiMB0GA1UdDgQWBBSD
+NK1nS0VoEb2pkyX9TRQPI1OBcDAfBgNVHSMEGDAWgBSDNK1nS0VoEb2pkyX9TRQP
+I1OBcDAPBgNVHRMBAf8EBTADAQH/MA8GA1UdEQQIMAaHBMDS55gwDQYJKoZIhvcN
+AQELBQADggGBABEpKSVr1WPx4v9101bgNZhhATeZyQqfW4Vv/5x0EQ3V46RMWhPM
+B1PQiQUlGk2Nem+KVZgMOEqjAnC107T+cnA4DURVYaUdIc6F7Sq/nJT03oOhIuYi
+00KSNgYs7QvnONmbB8++eDLx+syR/g82A9zxIwm8cPaipB/IL+uWrmQ1PAFXAqyK
+a9zrQuBRR7+WhWPosDYTi+DnrCL61gmExApraQ5mbLHIjp+REM7WWXbT+yZeC/V3
+JFs7x2FnGrL5nSE8zzgJPCaS8tf5eeOTI2uJ5c7evp1vFskzOHPZcifNGRYq3qWw
+tRiVIysEtDNbPrYcJe8Plj2Gi9jVwqYFnsSEgskb6bj3L18J5fUcihCc8vyynvEG
+eYOmBGKVGs+7jhbkEAcMfBthYtswEMa5gVvprgQKmB0UrklGsi61jg8Vk9nBwbOe
+OeXgJla2uabf839jCqt557ghXEXgbpDACat6fviSs5dMxUxPt8fl5SVi4p6aBq7o
+iJ0GaLYO2xF/BQ==
 -----END CERTIFICATE-----
 ";
 
@@ -70,6 +76,8 @@ const MAX_BACKOFF_SECS: u64 = 60;
 const ASSISTANT_SUMMARY_MAX: usize = 200;
 /// Max chat messages (across all sessions) carried in one `chat` snapshot.
 const CHAT_MESSAGE_SYNC_LIMIT: i64 = 2000;
+const E2EE_KEYRING_SERVICE: &str = "com.agentboard.app.iris-remote";
+const E2EE_KEYRING_USER: &str = "root-key-v1";
 
 // ── Public status / device types ──────────────────────────────────────────────
 
@@ -140,6 +148,9 @@ enum Signal {
     SnapshotDirty,
     /// A key agent event to relay immediately.
     Event(EventAppend),
+    /// Client-encrypted snapshot. The Rust bridge and server treat `data` as
+    /// opaque and never inspect the plaintext coding timeline.
+    OpaqueSnapshot { kind: String, data: Value },
 }
 
 // ── Shared inner state ────────────────────────────────────────────────────────
@@ -202,6 +213,15 @@ impl SyncManager {
     /// Cheap, non-blocking: relay a key agent event.
     pub fn notify_event(&self, ea: EventAppend) {
         let _ = self.sig_tx.send(Signal::Event(ea));
+    }
+
+    pub fn publish_opaque_snapshot(&self, kind: String, data: Value) -> Result<(), String> {
+        if !matches!(kind.as_str(), "coding" | "machines" | "crypto") {
+            return Err("不允许的加密快照类型".to_string());
+        }
+        self.sig_tx
+            .send(Signal::OpaqueSnapshot { kind, data })
+            .map_err(|_| "同步后台未运行".to_string())
     }
 
     fn bump(&self) {
@@ -797,6 +817,7 @@ enum CommandAction {
     CreateTask { title: String },
     DispatchTask { task_id: String },
     AcceptTask { task_id: String },
+    ChatPrompt { session_id: String, message: String },
     Unknown(String),
 }
 
@@ -806,6 +827,10 @@ fn parse_command(command: &str, data: &Value) -> CommandAction {
         "create_task" => CommandAction::CreateTask { title: s("title") },
         "dispatch_task" => CommandAction::DispatchTask { task_id: s("task_id") },
         "accept_task" => CommandAction::AcceptTask { task_id: s("task_id") },
+        "chat_prompt" => CommandAction::ChatPrompt {
+            session_id: s("session_id"),
+            message: s("message"),
+        },
         other => CommandAction::Unknown(other.to_string()),
     }
 }
@@ -850,7 +875,36 @@ async fn apply_command(action: CommandAction, app: &AppHandle) -> Result<(), Str
             st.sync.notify_snapshot();
             Ok(())
         }
-        CommandAction::Unknown(c) => Err(format!("未知命令：{c}")),
+        CommandAction::ChatPrompt { session_id, message } => {
+            if session_id.trim().is_empty() || message.trim().is_empty() {
+                return Err("chat_prompt 缺少 session_id 或 message".to_string());
+            }
+            let session = st
+                .db
+                .chat_session_get(&session_id)
+                .map_err(|e| e.to_string())?
+                .ok_or_else(|| "聊天会话不存在".to_string())?;
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                let state = app.state::<crate::AppState>();
+                let result = crate::studio::chat_send_impl(
+                    session_id,
+                    message,
+                    Vec::new(),
+                    session.model,
+                    None,
+                    &state,
+                    app.clone(),
+                )
+                .await;
+                if let Err(error) = result {
+                    eprintln!("[sync] mobile chat_prompt failed: {error}");
+                    state.sync.notify_snapshot();
+                }
+            });
+            Ok(())
+        }
+        CommandAction::Unknown(c) => Err(format!("未知命令：{c}")), 
     }
 }
 
@@ -1102,6 +1156,13 @@ async fn run_session(
                             return SessionEnd::Disconnected;
                         }
                     }
+                    Some(Signal::OpaqueSnapshot { kind, data }) => {
+                        let frame = snapshot_frame(&kind, data);
+                        if write.send(Message::Text(frame.to_string())).await.is_err() {
+                            set_err(inner, "WS 发送加密快照失败".to_string()).await;
+                            return SessionEnd::Disconnected;
+                        }
+                    }
                 }
             }
 
@@ -1169,6 +1230,12 @@ async fn handle_inbound(msg: Message, app: &AppHandle) {
             let p = v.get("payload").cloned().unwrap_or(Value::Null);
             let command = p.get("command").and_then(|x| x.as_str()).unwrap_or("");
             let data = p.get("data").cloned().unwrap_or(Value::Null);
+            if command == "e2ee" {
+                // Opaque ciphertext: only the paired WebView has the root key.
+                // Rust and the relay server deliberately never inspect it.
+                let _ = app.emit("sync-encrypted-command", data);
+                return;
+            }
             let action = parse_command(command, &data);
             if let CommandAction::Unknown(c) = &action {
                 eprintln!("[sync] 忽略未知命令：{c}");
@@ -1188,6 +1255,43 @@ async fn handle_inbound(msg: Message, app: &AppHandle) {
 }
 
 // ── Tauri commands ────────────────────────────────────────────────────────────
+
+/// Load the Iris E2EE root key from Windows Credential Manager, migrating a
+/// frontend-provided legacy key only when no credential exists yet.
+#[tauri::command]
+pub(crate) async fn sync_e2ee_key_get_or_create(candidate: String) -> Result<String, String> {
+    let entry = keyring::Entry::new(E2EE_KEYRING_SERVICE, E2EE_KEYRING_USER)
+        .map_err(|e| format!("无法打开 Iris 加密凭据: {e}"))?;
+    match entry.get_password() {
+        Ok(key) if !key.trim().is_empty() => Ok(key),
+        Ok(_) | Err(keyring::Error::NoEntry) => {
+            if candidate.trim().is_empty() {
+                return Err("Iris 加密密钥候选值为空".to_string());
+            }
+            entry
+                .set_password(candidate.trim())
+                .map_err(|e| format!("无法保存 Iris 加密凭据: {e}"))?;
+            Ok(candidate.trim().to_string())
+        }
+        Err(e) => Err(format!("无法读取 Iris 加密凭据: {e}")),
+    }
+}
+
+#[tauri::command]
+pub(crate) async fn sync_push_notify(
+    kind: String,
+    session_id: Option<String>,
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<(), String> {
+    if !matches!(kind.as_str(), "approval" | "completion" | "failure" | "input") {
+        return Err("不支持的推送通知类型".to_string());
+    }
+    state.sync.notify_event(EventAppend {
+        event_type: "push_notification".to_string(),
+        data: json!({ "kind": kind, "session_id": session_id.unwrap_or_default() }),
+    });
+    Ok(())
+}
 
 #[tauri::command]
 pub(crate) async fn sync_status(
@@ -1229,6 +1333,15 @@ pub(crate) async fn sync_set_enabled(
     Ok(())
 }
 
+#[tauri::command]
+pub(crate) async fn sync_publish_encrypted_snapshot(
+    kind: String,
+    data: Value,
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<(), String> {
+    state.sync.publish_opaque_snapshot(kind, data)
+}
+
 // ── Unit tests ────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -1267,6 +1380,13 @@ mod tests {
         assert_eq!(
             parse_command("accept_task", &json!({"task_id": "y"})),
             CommandAction::AcceptTask { task_id: "y".to_string() }
+        );
+        assert_eq!(
+            parse_command("chat_prompt", &json!({"session_id": "s", "message": "next"})),
+            CommandAction::ChatPrompt {
+                session_id: "s".to_string(),
+                message: "next".to_string(),
+            }
         );
         match parse_command("bogus", &json!({})) {
             CommandAction::Unknown(c) => assert_eq!(c, "bogus"),

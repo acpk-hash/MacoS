@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useCallback, useState, useRef } from 'react'
+import type { InputHTMLAttributes } from 'react'
 import { useKnowledgeStore } from '../stores/knowledgeStore'
 import type { KBDocument, KBTab, DocFormat, DocSortBy, GraphNode, GraphEdge } from '../stores/knowledgeStore'
 import { MarkdownLite } from '../components/ui/MarkdownLite'
@@ -131,12 +132,25 @@ function buildGraph(docs: KBDocument[]): { nodes: GraphNode[]; edges: GraphEdge[
   }))
 
   const edges: GraphEdge[] = []
+  const byTitle = new Map(docs.map((d) => [d.title.toLowerCase(), d]))
+  const seen = new Set<string>()
+  const addEdge = (source: string, target: string, relation: string) => {
+    if (source === target) return
+    const key = source < target ? source + '::' + target + '::' + relation : target + '::' + source + '::' + relation
+    if (seen.has(key)) return
+    seen.add(key)
+    edges.push({ source, target, relation })
+  }
   for (let i = 0; i < nodes.length; i++) {
     for (let j = i + 1; j < nodes.length; j++) {
       const shared = nodes[i].tags.filter((t) => nodes[j].tags.includes(t))
-      if (shared.length > 0) {
-        edges.push({ source: nodes[i].id, target: nodes[j].id, relation: shared.join(', ') })
-      }
+      if (shared.length > 0) addEdge(nodes[i].id, nodes[j].id, shared.slice(0, 3).join(', '))
+    }
+  }
+  for (const doc of docs) {
+    for (const link of doc.links ?? []) {
+      const target = byTitle.get(link.toLowerCase())
+      if (target) addEdge(doc.id, target.id, 'link')
     }
   }
   return { nodes, edges }
@@ -229,9 +243,10 @@ function IOPanel() {
       const entries: { name: string; content: string }[] = []
       for (let i = 0; i < files.length; i++) {
         const f = files[i]
+        const rel = (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name
         if (f.name.endsWith('.md') || f.name.endsWith('.html') || f.name.endsWith('.txt')) {
           const content = await f.text()
-          entries.push({ name: f.name, content })
+          entries.push({ name: rel, content })
         }
       }
       if (importMode === 'obsidian') importObsidianVault(entries)
@@ -254,8 +269,16 @@ function IOPanel() {
             导入 Notion 导出
           </button>
         </div>
-        <input ref={fileRef} type="file" multiple accept=".md,.html,.txt" className="hidden" onChange={handleFileChange} />
-        <p className="text-xs text-ink-faint mt-2">Obsidian: 选择 vault 目录下的 .md 文件。Notion: 选择导出的 .md/.html 文件。</p>
+        <input
+          ref={fileRef}
+          type="file"
+          multiple
+          accept=".md,.html,.txt"
+          className="hidden"
+          onChange={handleFileChange}
+          {...(importMode === 'obsidian' ? { webkitdirectory: '', directory: '' } as InputHTMLAttributes<HTMLInputElement> : {})}
+        />
+        <p className="text-xs text-ink-faint mt-2">Obsidian: 选择 vault 文件夹，保留相对路径并提取 #tag / [[双链]] 生成图谱。Notion: 选择导出的 .md/.html 文件。</p>
       </div>
       <div>
         <h3 className="text-sm font-semibold text-ink mb-3">导出</h3>

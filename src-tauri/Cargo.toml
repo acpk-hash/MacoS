@@ -11,7 +11,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["protocol-asset"] }
+tauri = { version = "2", features = ["protocol-asset", "tray-icon"] }
 tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -27,7 +27,7 @@ tokio-util = "0.7"
 base64 = "0.22"
 # Secure secret storage: API keys live in the OS credential store (Windows
 # Credential Manager), never in SQLite/logs. windows-native avoids extra deps.
-keyring = { version = "3", features = ["windows-native"] }
+keyring = { version = "3", features = ["windows-native", "apple-native"] }
 # Sync client (A3): pinned-TLS WebSocket to the sync server.
 # rustls pinned to the `ring` provider to match reqwest's provider in the lockfile
 # and avoid pulling the aws-lc-rs C/asm toolchain on Windows.

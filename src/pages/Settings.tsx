@@ -6,6 +6,8 @@ import {
   type ProviderTestResult,
 } from '../stores/providerStore'
 import { useAuthStore } from '../stores/authStore'
+import { QRCodeSVG } from 'qrcode.react'
+import { createPairingPayload, encodePairingPayload, initializeRemoteRootKey } from '../lib/e2ee'
 
 // ── Tauri invoke helper ───────────────────────────────────────────────────────
 
@@ -2127,6 +2129,13 @@ function SyncSection() {
   const [submitting, setSubmitting] = useState(false)
   const [toggling, setToggling] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [pairingUri, setPairingUri] = useState('')
+
+  useEffect(() => {
+    void initializeRemoteRootKey()
+      .then(() => setPairingUri(encodePairingPayload(createPairingPayload('https://192-210-231-152.nip.io:8443'))))
+      .catch((error) => setActionError(`初始化端到端加密失败：${String(error)}`))
+  }, [])
 
   // 账号状态由 authStore 统一维护（与门户/侧栏一致）；这里加快轮询以便
   // 设备列表与连接状态及时刷新。
@@ -2263,6 +2272,26 @@ function SyncSection() {
                 ))}
               </div>
             )}
+          </div>
+
+          {/* Happy-style E2EE device pairing. The root key exists only inside
+              this QR and paired clients; it is never uploaded to the server. */}
+          <div className="bg-surface border border-line rounded-lg p-4">
+            <p className="text-sm font-medium text-ink">端到端加密配对</p>
+            <p className="text-xs text-ink-dim mt-1 leading-relaxed">
+              在 Android Iris 的设置中扫描二维码。编码会话、工具输出和 diff
+              会在本机加密，中转服务器只能保存密文。
+            </p>
+            <div className="mt-3 inline-flex rounded-xl bg-white p-3">
+              {pairingUri ? (
+                <QRCodeSVG value={pairingUri} size={184} level="M" />
+              ) : (
+                <div className="w-[184px] h-[184px] grid place-items-center text-xs text-gray-500">正在加载安全密钥…</div>
+              )}
+            </div>
+            <p className="mt-2 text-[11px] text-ink-dim">
+              二维码包含解密密钥，请勿截图或发送给他人。
+            </p>
           </div>
 
           {/* 绑定占位（手机号 / 微信 / QQ） */}

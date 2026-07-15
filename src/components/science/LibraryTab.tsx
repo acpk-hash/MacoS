@@ -13,7 +13,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import * as pdfjs from 'pdfjs-dist'
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist'
-import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import MarkdownLite from '../ui/MarkdownLite'
 import {
   useKbStore,
@@ -26,8 +25,19 @@ import {
 } from '../../stores/kbStore'
 import { useScienceStore } from '../../stores/scienceStore'
 
-pdfjs.GlobalWorkerOptions.workerSrc = workerUrl
 
+/** Lazy-init pdfjs worker (avoids module-level side-effect crash -> white screen). */
+let _workerReady = false
+async function ensurePdfjsWorker(): Promise<void> {
+  if (_workerReady) return
+  try {
+    const mod = await import('pdfjs-dist/build/pdf.worker.min.mjs?url')
+    pdfjs.GlobalWorkerOptions.workerSrc = mod.default
+  } catch (e) {
+    console.warn('[LibraryTab] pdfjs worker setup failed:', e)
+  }
+  _workerReady = true
+}
 // -- Tauri guard --------------------------------------------------------------
 
 const isTauri =
@@ -118,6 +128,7 @@ function KbPdfPreview({ paperId }: { paperId: string }) {
         const data = new Uint8Array(bin.length)
         for (let i = 0; i < bin.length; i++) data[i] = bin.charCodeAt(i)
         if (!alive) return
+        await ensurePdfjsWorker()
         loaded = await pdfjs.getDocument({ data }).promise
         if (!alive) { void loaded.loadingTask.destroy(); return }
         const p1 = await loaded.getPage(1)

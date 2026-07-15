@@ -26,6 +26,7 @@ import {
   type SciHighlight,
 } from '../../stores/scienceStore'
 import { saveExport } from '../../lib/exportChat'
+import { pickPreferredChatModel } from '../../lib/modelPreference'
 
 /** Lazy-init pdfjs worker (avoids module-level side-effect crash -> white screen). */
 let _workerReady = false
@@ -443,6 +444,8 @@ function AbstractCard({ paper }: { paper: SciPaperRef }) {
 function HighlightList({ paperKey }: { paperKey: string }) {
   const highlights = useScienceStore((s) => s.highlights[paperKey] ?? [])
   const removeHighlight = useScienceStore((s) => s.removeHighlight)
+  const ask = useScienceStore((s) => s.ask)
+  const streaming = useScienceStore((s) => s.chats[paperKey]?.streaming ?? false)
   const [open, setOpen] = useState(true)
   if (highlights.length === 0) return null
   return (
@@ -464,6 +467,14 @@ function HighlightList({ paperKey }: { paperKey: string }) {
               />
               <span className="text-ink-dim flex-shrink-0">P{h.page}</span>
               <span className="flex-1 text-ink-muted leading-5 break-words">{h.text}</span>
+              <button
+                onClick={() => void ask(paperKey, '我不理解第 ' + h.page + ' 页这段内容，请结合论文上下文解释它的含义、它在方法或结论中的作用，并指出需要注意的前提。\n\n选中片段：\n' + h.text)}
+                disabled={streaming}
+                className="text-primary hover:text-primary-hover disabled:opacity-40 flex-shrink-0 opacity-0 group-hover:opacity-100"
+                title="围绕这段高亮继续提问"
+              >
+                提问
+              </button>
               <button
                 onClick={() => removeHighlight(paperKey, h.id)}
                 className="text-ink-dim hover:text-failed opacity-0 group-hover:opacity-100 flex-shrink-0"
@@ -611,8 +622,7 @@ function ChatPane({ paper }: { paper: SciPaperRef }) {
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-3 py-2 space-y-2.5">
         {messages.length === 0 && !streaming && (
           <p className="text-[11.5px] text-ink-dim leading-5 pt-2">
-            针对当前论文自由提问(多轮,上下文保留)。首轮会把论文资料
-            (本地 PDF 提取全文或元数据/摘要)交给模型。
+            针对当前论文自由提问(多轮,上下文保留)。在 PDF 中选中文本后点「添加高亮」，再在高亮笔记中点「提问」，会把页码与片段一起送入对话。
           </p>
         )}
         {messages.map((m, i) =>
@@ -755,7 +765,7 @@ export default function AnalysisTab() {
 
   useEffect(() => {
     if (!modelKey && chatModels.length > 0) {
-      const preferred = chatModels.find((m) => m.modelId === 'gpt-5.5') ?? chatModels[0]
+      const preferred = pickPreferredChatModel(chatModels) ?? chatModels[0]
       setModelKey(preferred.providerId + '|' + preferred.modelId)
     }
   }, [chatModels, modelKey, setModelKey])

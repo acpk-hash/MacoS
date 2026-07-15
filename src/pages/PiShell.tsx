@@ -11,6 +11,7 @@ import PiTimeline from '../components/pi/Timeline'
 import PiComposer from '../components/pi/Composer'
 import RightPanel from '../components/pi/RightPanel'
 import BottomBar from '../components/pi/BottomBar'
+import { pickPreferredChatModel } from '../lib/modelPreference'
 
 function baseName(p: string): string {
   const parts = p.split(/[\\/]/)
@@ -83,10 +84,10 @@ export default function PiShell() {
     if (!modelsLoaded) void useWorkbenchStore.getState().loadModels()
   }, [modelsLoaded])
 
-  // 默认模型：优先 gpt-5.5，否则第一个（与工作台一致）。
+  // 默认模型：优先可用 gpt-5.6 变体，其次 gpt-5.5，否则第一个 chat 模型。
   useEffect(() => {
     if (!modelsLoaded || selModel || aggModels.length === 0) return
-    const first = aggModels.find((m) => m.modelId === 'gpt-5.5') ?? aggModels[0]
+    const first = pickPreferredChatModel(aggModels) ?? aggModels[0]
     setModelSel(first.providerId, first.modelId)
   }, [modelsLoaded, selModel, aggModels, setModelSel])
 

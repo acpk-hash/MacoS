@@ -326,14 +326,20 @@ fn agg_from_status(status: &[ProviderModels]) -> Vec<AggModel> {
 }
 
 /// Preferred fallback model when a persisted/requested model turns out to be
-/// unusable (ghost id, media model, ...). gpt-5.5 is the most reliable chat
-/// model on the user's relay (2026-07 实测).
+/// unusable (ghost id, media model, ...). Bare `gpt-5.6` is intentionally not
+/// used; only the live chat variants are preferred.
 pub(crate) const FALLBACK_CHAT_MODEL: &str = "gpt-5.5";
+const PREFERRED_GPT56_CHAT_MODELS: [&str; 3] = ["gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra"];
 
-/// Pick the best chat model out of an aggregated list: exact `gpt-5.5` first,
-/// then any `gpt-5.5*` variant, then the first chat model.
+/// Pick the best chat model out of an aggregated list: usable `gpt-5.6-*`
+/// variants first, then exact `gpt-5.5`, then any `gpt-5.5*`, then first chat.
 pub(crate) fn pick_chat_fallback(agg: &[AggModel]) -> Option<String> {
     let chat: Vec<&AggModel> = agg.iter().filter(|m| m.kind == "chat").collect();
+    for preferred in PREFERRED_GPT56_CHAT_MODELS {
+        if let Some(m) = chat.iter().find(|m| m.model_id == preferred) {
+            return Some(m.model_id.clone());
+        }
+    }
     if let Some(m) = chat.iter().find(|m| m.model_id == FALLBACK_CHAT_MODEL) {
         return Some(m.model_id.clone());
     }
@@ -347,9 +353,10 @@ pub(crate) fn pick_chat_fallback(agg: &[AggModel]) -> Option<String> {
 }
 
 /// Validate a requested/persisted chat model; replace ghost / non-chat ids
-/// with a usable fallback (prefer `gpt-5.5`). Old sessions may have recorded
-/// broken models like `gpt-5.6` — dispatching those would 400 and kill the
-/// whole page, so every dispatch path funnels through this.
+/// with a usable fallback (prefer live `gpt-5.6-*`, then `gpt-5.5`). Old
+/// sessions may have recorded broken models like bare `gpt-5.6` — dispatching
+/// those would 400 and kill the whole page, so every dispatch path funnels
+/// through this.
 pub(crate) async fn sanitize_chat_model(state: &crate::AppState, model: &str) -> String {
     let m = model.trim();
     if !m.is_empty() && classify_model(m) == "chat" {
@@ -697,17 +704,20 @@ mod tests {
     }
 
     #[test]
-    fn pick_chat_fallback_prefers_gpt55() {
+    fn pick_chat_fallback_prefers_gpt56_variants_then_gpt55() {
         let mk = |id: &str, kind: &str| AggModel {
             provider_id: "p".into(),
             provider_label: "P".into(),
             model_id: id.into(),
             kind: kind.into(),
         };
-        // Exact gpt-5.5 wins even when listed later.
+        // Usable gpt-5.6 variants win over gpt-5.5.
+        let agg = vec![mk("gpt-5.5", "chat"), mk("gpt-5.6-sol", "chat")];
+        assert_eq!(pick_chat_fallback(&agg).as_deref(), Some("gpt-5.6-sol"));
+        // Exact gpt-5.5 wins when no live gpt-5.6 variant exists.
         let agg = vec![mk("gpt-5.2", "chat"), mk("gpt-5.5", "chat")];
         assert_eq!(pick_chat_fallback(&agg).as_deref(), Some("gpt-5.5"));
-        // No gpt-5.5 → first chat model; image models never picked.
+        // No preferred model → first chat model; image models never picked.
         let agg = vec![mk("gpt-image-2", "image"), mk("gpt-5.4", "chat")];
         assert_eq!(pick_chat_fallback(&agg).as_deref(), Some("gpt-5.4"));
         // Nothing usable → None.
@@ -820,8 +830,8 @@ mod tests {
     }
 
     /// LIVE (real user DB + credential store): the chat page's exact dispatch
-    /// path — default provider creds, ghost filtering, fallback = gpt-5.5,
-    /// then a streaming chat round-trip on gpt-5.5.
+    /// path — default provider creds, ghost filtering, fallback = live gpt-5.6
+    /// variant if present, otherwise gpt-5.5, then a streaming chat round-trip.
     /// Run with:
     /// `cargo test -p agentboard --lib providers::tests::live_default_provider_gpt55_chat_stream -- --ignored --nocapture`
     #[tokio::test]
@@ -830,7 +840,7 @@ mod tests {
         let db = Db::open().expect("open real app db");
         let creds = resolve_creds(&db, None).expect("default provider creds");
 
-        // Model list: ghosts must classify as other; fallback must be gpt-5.5.
+        // Model list: ghosts must classify as other; fallback must be a usable chat model.
         let status = collect_providers_models(&db).await.expect("status");
         let s = status.iter().find(|s| s.ok).expect("an ok provider");
         let ghosts: Vec<&ProviderModelEntry> = s
@@ -851,15 +861,15 @@ mod tests {
         let agg = agg_from_status(&status);
         let fallback = pick_chat_fallback(&agg).expect("chat fallback");
         println!("[live-chat] ghosts filtered: {} 个; fallback={fallback}", ghosts.len());
-        assert_eq!(fallback, FALLBACK_CHAT_MODEL);
+        assert!(fallback == FALLBACK_CHAT_MODEL || PREFERRED_GPT56_CHAT_MODELS.contains(&fallback.as_str()));
 
-        // Streaming round-trip on gpt-5.5 (the chat page default).
+        // Streaming round-trip on the selected chat page default.
         let cancel = tokio_util::sync::CancellationToken::new();
         let deltas = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let d2 = deltas.clone();
         let outcome = relay::chat_stream(
             &creds,
-            FALLBACK_CHAT_MODEL,
+            &fallback,
             vec![serde_json::json!({ "role": "user", "content": "用一句话介绍你自己" })],
             cancel,
             move |_| {
@@ -867,7 +877,7 @@ mod tests {
             },
         )
         .await
-        .expect("gpt-5.5 chat_stream must succeed");
+        .expect("fallback chat_stream must succeed");
         let n = deltas.load(std::sync::atomic::Ordering::Relaxed);
         println!("[live-chat] deltas={n} reply={:?}", outcome.text);
         assert!(n > 0, "must stream at least one delta");

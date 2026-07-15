@@ -26,6 +26,8 @@ mod subagents;
 pub mod sync;
 pub mod wecom;
 pub mod workbench;
+mod trends;
+mod integrations;
 pub mod workspace_fs;
 
 use std::sync::Arc;
@@ -33,8 +35,10 @@ use std::sync::Arc;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use tauri::menu::{Menu, MenuItem};
 use tauri::path::BaseDirectory;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::tray::TrayIconBuilder;
+use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
 
 use agent::{
     codex::{AgentAdapter, CodexAdapter, TrackerMap, new_tracker_map},
@@ -1073,6 +1077,28 @@ pub fn run() {
         .manage(openscience::OsEngine::default())
         .manage(kb_watch::KbWatcher::default())
         .setup(|app| {
+            // Keep Iris remotely available when its window is closed/hidden.
+            // Only the explicit tray “退出 Iris” action terminates the process.
+            let show_item = MenuItem::with_id(app, "show", "打开 Iris", true, None::<&str>)?;
+            let quit_item = MenuItem::with_id(app, "quit", "退出 Iris", true, None::<&str>)?;
+            let tray_menu = Menu::with_items(app, &[&show_item, &quit_item])?;
+            let mut tray = TrayIconBuilder::new().menu(&tray_menu).tooltip("Iris Remote");
+            if let Some(icon) = app.default_window_icon() {
+                tray = tray.icon(icon.clone());
+            }
+            tray.on_menu_event(|app, event| match event.id.as_ref() {
+                "show" => {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.unminimize();
+                        let _ = window.set_focus();
+                    }
+                }
+                "quit" => app.exit(0),
+                _ => {}
+            })
+            .build(app)?;
+
             // NOTE: no provider seeding from ~/.codex here. The providers table
             // is user-managed only — auto-seeding a relay snapshot used to
             // plant a dead default provider that shadowed later user config.
@@ -1113,6 +1139,12 @@ pub fn run() {
             });
 
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+            }
         })
         .invoke_handler(tauri::generate_handler![
             ping,
@@ -1158,6 +1190,9 @@ pub fn run() {
             sync::sync_login,
             sync::sync_logout,
             sync::sync_set_enabled,
+            sync::sync_publish_encrypted_snapshot,
+            sync::sync_e2ee_key_get_or_create,
+            sync::sync_push_notify,
             studio::studio_models,
             studio::studio_capabilities,
             studio::chat_sessions_list,
@@ -1200,6 +1235,7 @@ pub fn run() {
             pi_rpc::pi_steer,
             pi_rpc::pi_follow_up,
             pi_rpc::pi_abort,
+            pi_rpc::pi_extension_ui_response,
             pi_rpc::pi_close,
             pi_rpc::pi_usage_overview,
             pi_rpc::pi_usage_series,
@@ -1303,6 +1339,11 @@ pub fn run() {
             kb::kb_rename_undo,
             kb_watch::kb_watch_start,
             kb_watch::kb_watch_stop,
+            trends::trends_fetch,
+            integrations::integrations_list,
+            integrations::integration_install,
+            integrations::integration_launch,
+            integrations::integration_open_dir,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

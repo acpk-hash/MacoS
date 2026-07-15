@@ -19,6 +19,8 @@ export interface KBDocument {
   updatedAt: number
   /** Optional markdown preview content (cached). */
   preview?: string
+  /** Outgoing document links, e.g. Obsidian [[Wiki Links]]. */
+  links?: string[]
   /** Size in bytes, if known. */
   size?: number
 }
@@ -97,6 +99,28 @@ const LS_KEY = 'iris.knowledge.v1'
 
 function uid(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
+}
+
+function uniq(xs: string[]): string[] {
+  return Array.from(new Set(xs.map((x) => x.trim()).filter(Boolean)))
+}
+
+function parseMarkdownSignals(content: string): { tags: string[]; links: string[] } {
+  const tags: string[] = []
+  const links: string[] = []
+  const frontmatter = /^---\s*\n([\s\S]*?)\n---/.exec(content)
+  if (frontmatter) {
+    const body = frontmatter[1]
+    const tagLine = /^tags:\s*(.+)$/im.exec(body)
+    if (tagLine) {
+      const raw = tagLine[1].replace(/[\[\]"]/g, '')
+      tags.push(...raw.split(/[,#]/).map((x) => x.trim()).filter(Boolean))
+    }
+  }
+  for (const m of content.matchAll(/(^|\s)#([\p{L}\p{N}_/-]+)/gu)) tags.push(m[2])
+  for (const m of content.matchAll(/\[\[([^\]|#]+)(?:[#|][^\]]*)?\]\]/g)) links.push(m[1].trim())
+  for (const m of content.matchAll(/\[[^\]]+\]\(([^)]+\.md)(?:#[^)]+)?\)/gi)) links.push(m[1].split('/').pop()!.replace(/\.md$/i, ''))
+  return { tags: uniq(tags), links: uniq(links) }
 }
 
 export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
@@ -243,22 +267,27 @@ export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
   },
 
   importObsidianVault: (files) => {
-    const existing = new Set(get().documents.map((d) => d.title))
+    const existing = new Set(get().documents.map((d) => d.path))
     const docs: KBDocument[] = []
     for (const f of files) {
-      if (existing.has(f.name)) continue
+      const rel = f.name.replace(/\\/g, '/')
+      const path = `obsidian://${rel}`
+      if (existing.has(path)) continue
+      const signals = parseMarkdownSignals(f.content)
       docs.push({
         id: uid(),
-        title: f.name.replace(/\.md$/i, ''),
+        title: rel.split('/').pop()!.replace(/\.md$/i, ''),
         source: 'import',
         format: 'md',
-        path: `obsidian://${f.name}`,
-        tags: ['obsidian'],
+        path,
+        tags: uniq(['obsidian', ...signals.tags]),
+        links: signals.links,
         createdAt: Date.now(),
         updatedAt: Date.now(),
         preview: f.content,
         size: new Blob([f.content]).size,
       })
+      existing.add(path)
     }
     if (docs.length > 0) {
       set((s) => ({ documents: [...docs, ...s.documents] }))

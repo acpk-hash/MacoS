@@ -70,6 +70,8 @@ function loadRecords(): WorkflowRecord[] {
         !!r &&
         typeof r === 'object' &&
         typeof (r as WorkflowRecord).id === 'string' &&
+        typeof (r as WorkflowRecord).title === 'string' &&
+        typeof (r as WorkflowRecord).cwd === 'string' &&
         Array.isArray((r as WorkflowRecord).steps) &&
         Array.isArray((r as WorkflowRecord).fullPromptChain),
     )
