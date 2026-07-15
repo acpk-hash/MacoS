@@ -21,7 +21,7 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          java-version: 21
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
       - name: Install dependencies
@@ -64,23 +64,22 @@ jobs:
       - name: Build iOS app (unsigned)
         run: |
           cd ios/App
-          xcodebuild -workspace App.xcworkspace \
+          xcodebuild -project App.xcodeproj \
             -scheme App \
             -configuration Release \
             -sdk iphoneos \
-            -archivePath build/Iris.xcarchive \
-            archive \
+            -derivedDataPath build \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_ALLOWED=NO \
+            build
       - name: Package IPA
         run: |
-          cd ios/App/build/Iris.xcarchive/Products/Applications
+          cd ios/App/build/Build/Products/Release-iphoneos
           mkdir -p Payload
           cp -R App.app Payload/
-          cd ..
-          zip -r Iris-Remote-0.14.0-ios.ipa Applications/Payload
-          mv Iris-Remote-0.14.0-ios.ipa ../../../../../
+          zip -r Iris-Remote-0.14.0-ios.ipa Payload
+          mv Iris-Remote-0.14.0-ios.ipa ../../../../
       - uses: actions/upload-artifact@v4
         with:
           name: Iris-Remote-0.14.0-ios
