@@ -16,6 +16,11 @@ import Commerce from './pages/Commerce'
 import Usage from './pages/Usage'
 import Trends from './pages/Trends'
 import Settings from './pages/Settings'
+import DeepResearch from './pages/DeepResearch'
+import ScheduledTasks from './pages/ScheduledTasks'
+import ModelCompare from './pages/ModelCompare'
+import VectorSearch from './pages/VectorSearch'
+import Webhooks from './pages/Webhooks'
 import Login from './pages/Login'
 import { useAuthStore } from './stores/authStore'
 
@@ -53,6 +58,11 @@ export default function App() {
           <Route path="commerce" element={<Commerce />} />
           <Route path="usage" element={<Usage />} />
           <Route path="trends" element={<Trends />} />
+          <Route path="research" element={<DeepResearch />} />
+          <Route path="schedule" element={<ScheduledTasks />} />
+          <Route path="compare" element={<ModelCompare />} />
+          <Route path="vector" element={<VectorSearch />} />
+          <Route path="webhooks" element={<Webhooks />} />
           <Route path="settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

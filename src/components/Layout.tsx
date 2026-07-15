@@ -207,6 +207,65 @@ const navItems: NavItem[] = [
     ),
   },
   {
+    to: '/research',
+    label: '研究',
+    title: '深度研究 · 多阶段 AI 自动化调研',
+    icon: (
+      <NavIcon>
+        <circle cx="11" cy="11" r="8" />
+        <path d="m21 21-4.3-4.3" />
+        <path d="M11 8v6" />
+        <path d="M8 11h6" />
+      </NavIcon>
+    ),
+  },
+  {
+    to: '/schedule',
+    label: '定时',
+    title: '定时任务 · Cron 计划执行',
+    icon: (
+      <NavIcon>
+        <circle cx="12" cy="12" r="10" />
+        <polyline points="12 6 12 12 16 14" />
+      </NavIcon>
+    ),
+  },
+  {
+    to: '/compare',
+    label: '盲测',
+    title: '模型盲测 · 多模型 A/B 对比',
+    icon: (
+      <NavIcon>
+        <rect x="3" y="3" width="7" height="18" rx="1" />
+        <rect x="14" y="3" width="7" height="18" rx="1" />
+      </NavIcon>
+    ),
+  },
+  {
+    to: '/vector',
+    label: '检索',
+    title: '向量检索 · RAG 语义搜索知识库',
+    icon: (
+      <NavIcon>
+        <path d="M12 2a4 4 0 0 0-4 4c0 2 1 3 2 4l2 2 2-2c1-1 2-2 2-4a4 4 0 0 0-4-4Z" />
+        <path d="M12 12v6" />
+        <path d="M8 18h8" />
+        <path d="M6 22h12" />
+      </NavIcon>
+    ),
+  },
+  {
+    to: '/webhooks',
+    label: 'Webhook',
+    title: 'Webhook · 事件推送与集成',
+    icon: (
+      <NavIcon>
+        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+        <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+      </NavIcon>
+    ),
+  },
+  {
     to: '/settings',
     label: '设置',
     title: '设置 · 服务商 / Key / 账号',
