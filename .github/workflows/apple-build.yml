@@ -44,12 +44,7 @@ jobs:
           cp -R /tmp/iris-pi/node_modules engine-pi/pi/node_modules
       - name: Build app and DMG
         env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY || '-' }}
         run: npm run tauri -- build --target ${{ matrix.rust_target }} --config src-tauri/tauri.macos.conf.json
       - uses: actions/upload-artifact@v4
         with:
