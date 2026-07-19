@@ -1099,9 +1099,9 @@ pub fn run() {
             })
             .build(app)?;
 
-            // NOTE: no provider seeding from ~/.codex here. The providers table
-            // is user-managed only — auto-seeding a relay snapshot used to
-            // plant a dead default provider that shadowed later user config.
+            // Seed built-in free provider (Agnes) on first launch. Idempotent —
+            // existing rows are never overwritten so user edits are preserved.
+            providers::seed_builtin_providers(&app.state::<AppState>().db);
 
             // Start the sync client task (loads persisted account/switch state;
             // connects only if enabled && logged in).
@@ -1193,6 +1193,9 @@ pub fn run() {
             sync::sync_publish_encrypted_snapshot,
             sync::sync_e2ee_key_get_or_create,
             sync::sync_push_notify,
+            sync::sync_generate_bind_code,
+            sync::sync_list_chat_bindings,
+            sync::sync_delete_chat_binding,
             studio::studio_models,
             studio::studio_capabilities,
             studio::chat_sessions_list,

@@ -246,8 +246,8 @@ function ProvidersSection() {
       {/* First-run guide */}
       {loaded && providers.length === 0 && (
         <div className="bg-surface-2/60 border border-line rounded-lg px-3 py-2.5 text-xs text-ink-muted leading-relaxed">
-          还没有配置模型服务——添加一个 OpenAI 兼容服务商（Base URL + API
-          Key）即可开始，下方表单已为你展开。
+          内置免费模型 (Agnes) 会在首次启动时自动配置。如需使用 GPT / Gemini / Claude
+          等更强模型，请添加自己的 OpenAI 兼容服务商（Base URL + API Key）。
         </div>
       )}
 
@@ -275,6 +275,14 @@ function ProvidersSection() {
                     <span className="text-[10px] text-ink-dim bg-elevated/60 px-1.5 py-0.5 rounded">
                       {p.wire_api}
                     </span>
+                    {p.id === 'builtin-agnes' && (
+                      <span
+                        className="text-[10px] text-done bg-done/15 px-1.5 py-0.5 rounded font-medium"
+                        title="内置免费模型，开箱即用"
+                      >
+                        免费
+                      </span>
+                    )}
                     {p.id === 'hermes-remote' && (
                       <span
                         className="text-[10px] text-sky bg-elevated/60 px-1.5 py-0.5 rounded"
@@ -1276,431 +1284,140 @@ function McpSection() {
   )
 }
 
-// ── Bridge status type ────────────────────────────────────────────────────────
+// ── Chat Binding Section (replaces Feishu + WeChat Work) ─────────────────────
 
-interface BridgeStatusInfo {
-  state: 'running' | 'stopped' | 'error'
-  message: string
-  port: number
-  logs: string[]
-}
+function ChatBindingSection() {
+  const [code, setCode] = useState<string | null>(null)
+  const [expiresAt, setExpiresAt] = useState(0)
+  const [countdown, setCountdown] = useState('')
+  const [generating, setGenerating] = useState(false)
+  const [bindings, setBindings] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
 
-// ── Feishu Section ────────────────────────────────────────────────────────────
-
-function FeishuSection() {
-  const [settings, setSettings] = useState<Record<string, string>>({})
-  const [testResult, setTestResult] = useState<string | null>(null)
-  const [testing, setTesting] = useState(false)
-  const [showLogs, setShowLogs] = useState(false)
-  const [logs, setLogs] = useState<string[]>([])
-  const [showGuide, setShowGuide] = useState(false)
-
-  // Bridge sub-block state
-  const [bridgeStatus, setBridgeStatus] = useState<BridgeStatusInfo>({
-    state: 'stopped',
-    message: '',
-    port: 0,
-    logs: [],
-  })
-  const [bridgeStarting, setBridgeStarting] = useState(false)
-  const [bridgeStopping, setBridgeStopping] = useState(false)
-  const [showBridgeLogs, setShowBridgeLogs] = useState(false)
-  const [nodeVersion, setNodeVersion] = useState<string | null | undefined>(undefined) // undefined=loading
-
-  const loadSettings = useCallback(async () => {
-    try {
-      const all = await tauriInvoke<Record<string, string>>('settings_get_all')
-      setSettings(all)
-    } catch (e) {
-      console.error('Failed to load settings:', e)
-    }
-  }, [])
-
-  const loadBridgeStatus = useCallback(async () => {
-    try {
-      const info = await tauriInvoke<BridgeStatusInfo>('bridge_status')
-      setBridgeStatus(info)
-    } catch (e) {
-      console.error('bridge_status failed:', e)
-    }
-  }, [])
-
+  // Load bindings on mount
   useEffect(() => {
-    loadSettings()
-    loadBridgeStatus()
-    tauriInvoke<string | null>('bridge_node_version').then(setNodeVersion).catch(() => setNodeVersion(null))
-    // Poll bridge status every 5 seconds.
-    const timer = setInterval(loadBridgeStatus, 5000)
+    loadBindings()
+  }, [])
+
+  // Countdown timer for the code
+  useEffect(() => {
+    if (!expiresAt) return
+    const timer = setInterval(() => {
+      const remaining = Math.max(0, expiresAt - Date.now())
+      if (remaining <= 0) {
+        setCode(null)
+        setCountdown('')
+        clearInterval(timer)
+        return
+      }
+      const min = Math.floor(remaining / 60000)
+      const sec = Math.floor((remaining % 60000) / 1000)
+      setCountdown(`${min}:${String(sec).padStart(2, '0')}`)
+    }, 1000)
     return () => clearInterval(timer)
-  }, [loadSettings, loadBridgeStatus])
+  }, [expiresAt])
 
-  const saveSetting = async (key: string, value: string) => {
+  async function loadBindings() {
     try {
-      await tauriInvoke('settings_set', { key, value })
-      setSettings((s) => ({ ...s, [key]: value }))
+      const result = await tauriInvoke<any[]>('sync_list_chat_bindings')
+      setBindings(result)
+    } catch {
+      setBindings([])
+    }
+    setLoading(false)
+  }
+
+  async function generateCode() {
+    setGenerating(true)
+    try {
+      const result = await tauriInvoke<{ code: string; expires_at: number }>('sync_generate_bind_code')
+      setCode(result.code)
+      setExpiresAt(result.expires_at)
     } catch (e) {
-      console.error('settings_set failed:', e)
+      alert(String(e))
+    }
+    setGenerating(false)
+  }
+
+  async function unbind(id: string) {
+    try {
+      await tauriInvoke('sync_delete_chat_binding', { id })
+      setBindings(prev => prev.filter(b => b.id !== id))
+    } catch (e) {
+      alert(String(e))
     }
   }
 
-  const sendTest = async () => {
-    setTesting(true)
-    setTestResult(null)
-    try {
-      const msg = await tauriInvoke<string>('feishu_test')
-      setTestResult(`成功：${msg}`)
-    } catch (e) {
-      setTestResult(`失败：${String(e)}`)
-    } finally {
-      setTesting(false)
-    }
-  }
-
-  const loadLogs = async () => {
-    try {
-      const ls = await tauriInvoke<string[]>('feishu_recent_logs')
-      setLogs(ls)
-    } catch (e) {
-      console.error('feishu_recent_logs failed:', e)
-    }
-    setShowLogs(true)
-  }
-
-  const handleBridgeStart = async () => {
-    setBridgeStarting(true)
-    try {
-      await tauriInvoke('bridge_start')
-      await loadBridgeStatus()
-    } catch (e) {
-      console.error('bridge_start failed:', e)
-    } finally {
-      setBridgeStarting(false)
-    }
-  }
-
-  const handleBridgeStop = async () => {
-    setBridgeStopping(true)
-    try {
-      await tauriInvoke('bridge_stop')
-      await loadBridgeStatus()
-    } catch (e) {
-      console.error('bridge_stop failed:', e)
-    } finally {
-      setBridgeStopping(false)
-    }
-  }
-
-  const enabled = settings['feishu_enabled'] === 'true'
-  const bridgeAutostart = settings['bridge_autostart'] === 'true'
+  const platformLabel = (p: string) => p === 'feishu' ? '飞书' : p === 'wecom' ? '企业微信' : p
 
   return (
-    <div className="space-y-5">
-      {/* 开关 */}
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium text-ink">启用飞书推送</p>
-          <p className="text-xs text-ink-dim mt-0.5">
-            任务完成或失败时向指定用户发送交互卡片
-          </p>
-        </div>
-        <button
-          onClick={() => saveSetting('feishu_enabled', enabled ? 'false' : 'true')}
-          className={`relative w-11 h-6 rounded-full transition-colors focus:outline-none ${
-            enabled ? 'bg-sakura' : 'bg-elevated'
-          }`}
-          aria-label="Toggle Feishu notifications"
-        >
-          <span
-            className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-              enabled ? 'translate-x-6' : 'translate-x-1'
-            }`}
-          />
-        </button>
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <h3 className="text-base font-semibold text-ink mb-1">聊天平台绑定</h3>
+        <p className="text-sm text-ink-dim">通过飞书或企业微信远程控制桌面端 Iris</p>
       </div>
 
-      {/* Config fields */}
-      <div className="space-y-3">
-        <div>
-          <label className="block text-xs text-ink-dim mb-1">App ID</label>
-          <input
-            type="text"
-            value={settings['feishu_app_id'] ?? ''}
-            onChange={(e) =>
-              setSettings((s) => ({ ...s, feishu_app_id: e.target.value }))
-            }
-            onBlur={(e) => saveSetting('feishu_app_id', e.target.value)}
-            placeholder="cli_xxxxxxxxxxxxxxxx"
-            className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm
-                       text-ink placeholder-ink-dim focus:outline-none focus:border-lavender
-                       transition-colors"
-          />
-        </div>
-
-        <div>
-          <label className="block text-xs text-ink-dim mb-1">App Secret</label>
-          <input
-            type="password"
-            value={settings['feishu_app_secret'] ?? ''}
-            onChange={(e) =>
-              setSettings((s) => ({ ...s, feishu_app_secret: e.target.value }))
-            }
-            onBlur={(e) => saveSetting('feishu_app_secret', e.target.value)}
-            placeholder="••••••••••••••••"
-            className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm
-                       text-ink placeholder-ink-dim focus:outline-none focus:border-lavender
-                       transition-colors"
-          />
-        </div>
-
-        <div>
-          <label className="block text-xs text-ink-dim mb-1">接收者 ID 类型</label>
-          <select
-            value={settings['feishu_receive_id_type'] ?? 'open_id'}
-            onChange={(e) => saveSetting('feishu_receive_id_type', e.target.value)}
-            className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm
-                       text-ink focus:outline-none focus:border-lavender transition-colors"
-          >
-            <option value="open_id">open_id（个人）</option>
-            <option value="chat_id">chat_id（群组）</option>
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-xs text-ink-dim mb-1">接收者 ID</label>
-          <input
-            type="text"
-            value={settings['feishu_receive_id'] ?? ''}
-            onChange={(e) =>
-              setSettings((s) => ({ ...s, feishu_receive_id: e.target.value }))
-            }
-            onBlur={(e) => saveSetting('feishu_receive_id', e.target.value)}
-            placeholder="ou_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-            className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm
-                       text-ink placeholder-ink-dim focus:outline-none focus:border-lavender
-                       transition-colors"
-          />
-        </div>
+      {/* Instructions */}
+      <div className="bg-surface rounded-lg p-4 text-sm text-ink-dim space-y-2">
+        <p className="font-medium text-ink">使用步骤：</p>
+        <ol className="list-decimal list-inside space-y-1">
+          <li>在飞书或企业微信中添加 Iris 机器人到群聊或私聊</li>
+          <li>点击下方按钮生成 6 位绑定码</li>
+          <li>在聊天中发送「绑定 XXXXXX」完成绑定</li>
+          <li>绑定后，直接在聊天中发消息即可命令桌面端</li>
+        </ol>
       </div>
 
-      {/* Test button */}
+      {/* Generate button */}
       <div>
         <button
-          onClick={sendTest}
-          disabled={testing}
-          className="px-4 py-2 bg-sakura hover:bg-sakura disabled:opacity-40 text-white
-                     text-sm rounded-lg transition-colors"
+          onClick={generateCode}
+          disabled={generating}
+          className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
         >
-          {testing ? '发送中…' : '发送测试卡片'}
+          {generating ? '生成中...' : '生成绑定码'}
         </button>
-        {testResult && (
-          <p
-            className={`text-xs mt-2 ${
-              testResult.startsWith('成功') ? 'text-done' : 'text-failed'
-            }`}
-          >
-            {testResult}
-          </p>
-        )}
       </div>
 
-      {/* Recent logs */}
+      {/* Bind code display */}
+      {code && (
+        <div className="bg-primary/10 border border-primary/20 rounded-lg p-4">
+          <div className="flex items-center gap-3">
+            <span className="text-3xl font-mono font-bold tracking-[0.3em] text-primary">{code}</span>
+            <span className="text-sm text-ink-dim">剩余 {countdown}</span>
+          </div>
+          <p className="text-sm text-ink-dim mt-2">
+            在飞书或企业微信中发送「<span className="text-ink font-medium">绑定 {code}</span>」
+          </p>
+        </div>
+      )}
+
+      {/* Bindings list */}
       <div>
-        <button
-          onClick={showLogs ? () => setShowLogs(false) : loadLogs}
-          className="text-xs text-sky hover:text-sky transition-colors"
-        >
-          {showLogs ? '收起推送日志 ▲' : '最近推送日志 ▼'}
-        </button>
-        {showLogs && (
-          <div className="mt-2 bg-surface rounded-lg p-3 space-y-1 max-h-48 overflow-y-auto">
-            {logs.length === 0 ? (
-              <p className="text-xs text-ink-dim italic">暂无日志</p>
-            ) : (
-              logs.map((entry, i) => (
-                <p
-                  key={i}
-                  className={`text-xs font-mono ${
-                    entry.includes('ERR') ? 'text-failed' : 'text-done'
-                  }`}
+        <h4 className="text-sm font-medium text-ink mb-3">已绑定的聊天</h4>
+        {loading ? (
+          <p className="text-sm text-ink-muted">加载中...</p>
+        ) : bindings.length === 0 ? (
+          <p className="text-sm text-ink-muted">暂无已绑定的聊天</p>
+        ) : (
+          <div className="space-y-2">
+            {bindings.map(b => (
+              <div key={b.id} className="flex items-center justify-between bg-surface rounded-lg px-4 py-3">
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-primary">●</span>
+                  <span className="font-medium text-ink">{platformLabel(b.platform)}</span>
+                  {b.chat_type && <span className="text-ink-muted">· {b.chat_type}</span>}
+                  <span className="text-ink-faint">· {new Date(b.bound_at).toLocaleDateString()}</span>
+                </div>
+                <button
+                  onClick={() => unbind(b.id)}
+                  className="text-xs text-ink-muted hover:text-red-400 transition-colors"
                 >
-                  {entry}
-                </p>
-              ))
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* ── 指派通道（长连接）sub-block ─────────────────────────────────── */}
-      <div className="glass rounded-card p-4 space-y-4">
-        <h3 className="text-xs font-semibold text-ink-muted uppercase tracking-wider">
-          指派通道（长连接）
-        </h3>
-        <p className="text-xs text-ink-dim -mt-2 leading-relaxed">
-          手机给飞书机器人发一句话 → 桌面端自动建 todo 任务卡并回复确认卡片。
-          需本机安装 Node.js；飞书应用需订阅{' '}
-          <code className="text-ink-muted">im.message.receive_v1</code> 并启用长连接模式。
-        </p>
-
-        {/* Node detection */}
-        <div className="flex items-center gap-2">
-          <span
-            className={`w-2 h-2 rounded-full flex-shrink-0 ${
-              nodeVersion ? 'bg-done' : nodeVersion === null ? 'bg-failed' : 'bg-elevated'
-            }`}
-          />
-          <span className="text-xs text-ink-muted">
-            {nodeVersion === undefined
-              ? 'Node 检测中…'
-              : nodeVersion
-                ? `Node ${nodeVersion}`
-                : 'Node 未安装 — 请先安装 Node.js'}
-          </span>
-        </div>
-
-        {/* Auto-start toggle */}
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs font-medium text-ink-muted">应用启动时自动开启</p>
-            <p className="text-xs text-ink-dim mt-0.5">需同时启用飞书推送且已配置凭据</p>
-          </div>
-          <button
-            onClick={() => saveSetting('bridge_autostart', bridgeAutostart ? 'false' : 'true')}
-            className={`relative w-9 h-5 rounded-full transition-colors focus:outline-none ${
-              bridgeAutostart ? 'bg-sakura' : 'bg-elevated'
-            }`}
-            aria-label="Toggle bridge autostart"
-          >
-            <span
-              className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                bridgeAutostart ? 'translate-x-4' : 'translate-x-0.5'
-              }`}
-            />
-          </button>
-        </div>
-
-        {/* Status badge */}
-        <div className="flex items-center gap-2">
-          <span
-            className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium ${
-              bridgeStatus.state === 'running'
-                ? 'bg-green-900/40 text-done'
-                : bridgeStatus.state === 'error'
-                  ? 'bg-red-900/40 text-failed'
-                  : 'bg-surface-2 text-ink-dim'
-            }`}
-          >
-            <span
-              className={`w-1.5 h-1.5 rounded-full ${
-                bridgeStatus.state === 'running'
-                  ? 'bg-done'
-                  : bridgeStatus.state === 'error'
-                    ? 'bg-failed'
-                    : 'bg-elevated'
-              }`}
-            />
-            {bridgeStatus.state === 'running'
-              ? `运行中 (端口 ${bridgeStatus.port})`
-              : bridgeStatus.state === 'error'
-                ? '错误'
-                : '已停止'}
-          </span>
-          {bridgeStatus.state === 'error' && bridgeStatus.message && (
-            <span className="text-xs text-failed truncate">{bridgeStatus.message}</span>
-          )}
-        </div>
-
-        {/* Start / Stop buttons */}
-        <div className="flex gap-2">
-          <button
-            onClick={handleBridgeStart}
-            disabled={bridgeStarting || bridgeStopping || !nodeVersion}
-            className="px-3 py-1.5 bg-sakura hover:bg-sakura disabled:opacity-40
-                       disabled:text-ink-dim text-white text-xs rounded-lg transition-colors"
-            title={!nodeVersion ? '需要先安装 Node.js' : undefined}
-          >
-            {bridgeStarting ? '启动中…' : '启动'}
-          </button>
-          <button
-            onClick={handleBridgeStop}
-            disabled={bridgeStopping || bridgeStarting || bridgeStatus.state === 'stopped'}
-            className="px-3 py-1.5 bg-elevated hover:bg-elevated disabled:bg-surface-2
-                       disabled:text-ink-dim text-ink text-xs rounded-lg transition-colors"
-          >
-            {bridgeStopping ? '停止中…' : '停止'}
-          </button>
-          <button
-            onClick={loadBridgeStatus}
-            className="px-3 py-1.5 text-xs text-ink-dim hover:text-ink-muted transition-colors"
-          >
-            刷新
-          </button>
-        </div>
-
-        {/* Sidecar log (collapsible) */}
-        <div>
-          <button
-            onClick={() => setShowBridgeLogs((v) => !v)}
-            className="text-xs text-sky hover:text-sky transition-colors"
-          >
-            {showBridgeLogs ? 'Sidecar 日志 ▲' : 'Sidecar 日志 ▼'}
-          </button>
-          {showBridgeLogs && (
-            <div className="mt-2 bg-bg rounded-lg p-3 space-y-0.5 max-h-40 overflow-y-auto">
-              {bridgeStatus.logs.length === 0 ? (
-                <p className="text-xs text-ink-dim italic">暂无日志</p>
-              ) : (
-                bridgeStatus.logs.map((entry, i) => (
-                  <p
-                    key={i}
-                    className={`text-xs font-mono leading-relaxed ${
-                      entry.includes('[ERR]') || entry.includes('[err]')
-                        ? 'text-failed'
-                        : entry.includes('[WARN]')
-                          ? 'text-yellow-400'
-                          : 'text-ink-muted'
-                    }`}
-                  >
-                    {entry}
-                  </p>
-                ))
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Setup guide (collapsible) */}
-      <div>
-        <button
-          onClick={() => setShowGuide(!showGuide)}
-          className="text-xs text-ink-dim hover:text-ink-muted transition-colors"
-        >
-          {showGuide ? '收起配置指引 ▲' : '如何配置 ▼'}
-        </button>
-        {showGuide && (
-          <div className="mt-2 bg-surface rounded-lg p-3 text-xs text-ink-muted space-y-2 leading-relaxed">
-            <p>
-              1. 打开{' '}
-              <code className="text-ink-muted">open.feishu.cn</code> →
-              开发者后台 → 创建企业自建应用
-            </p>
-            <p>2. 应用能力里开启「机器人」</p>
-            <p>
-              3. 权限管理开通{' '}
-              <code className="text-ink-muted">im:message</code>
-              （获取与发送单聊、群组消息）并发布版本
-            </p>
-            <p>
-              4. 凭证与基础信息页复制 App ID 和 App Secret 填到这里
-            </p>
-            <p>
-              5. receive_id 填你自己的 open_id（可在飞书管理后台或通过给机器人发消息后从事件日志获取），类型选 open_id
-            </p>
-            <p>
-              6. 指派通道：开发者后台 → 事件与回调 → 长连接模式：启用；
-              订阅 <code className="text-ink-muted">im.message.receive_v1</code> 事件
-            </p>
+                  解绑
+                </button>
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -1778,283 +1495,6 @@ function AgentMarketSection() {
   )
 }
 
-// ── WeChat Work Section ───────────────────────────────────────────────────────
-
-function WecomSection() {
-  const [settings, setSettings] = useState<Record<string, string>>({})
-  const [testResult, setTestResult] = useState<string | null>(null)
-  const [testing, setTesting] = useState(false)
-  const [showLogs, setShowLogs] = useState(false)
-  const [logs, setLogs] = useState<string[]>([])
-  const [showGuide, setShowGuide] = useState(false)
-
-  const loadSettings = useCallback(async () => {
-    try {
-      const all = await tauriInvoke<Record<string, string>>('settings_get_all')
-      setSettings(all)
-    } catch (e) {
-      console.error('Failed to load settings:', e)
-    }
-  }, [])
-
-  useEffect(() => {
-    loadSettings()
-  }, [loadSettings])
-
-  const saveSetting = async (key: string, value: string) => {
-    try {
-      await tauriInvoke('settings_set', { key, value })
-      setSettings((s) => ({ ...s, [key]: value }))
-    } catch (e) {
-      console.error('settings_set failed:', e)
-    }
-  }
-
-  const sendTest = async () => {
-    setTesting(true)
-    setTestResult(null)
-    try {
-      const msg = await tauriInvoke<string>('wecom_test')
-      setTestResult(`成功：${msg}`)
-    } catch (e) {
-      setTestResult(`失败：${String(e)}`)
-    } finally {
-      setTesting(false)
-    }
-  }
-
-  const loadLogs = async () => {
-    try {
-      const ls = await tauriInvoke<string[]>('wecom_recent_logs')
-      setLogs(ls)
-    } catch (e) {
-      console.error('wecom_recent_logs failed:', e)
-    }
-    setShowLogs(true)
-  }
-
-  const enabled = settings['wecom_enabled'] === 'true'
-  const qrUrl = settings['wecom_qr_url']?.trim() ?? ''
-
-  return (
-    <div className="space-y-5">
-      {/* 开关 */}
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium text-ink">启用企业微信推送</p>
-          <p className="text-xs text-ink-dim mt-0.5">
-            任务完成或失败时向个人微信发送通知（需先扫码关注）
-          </p>
-        </div>
-        <button
-          onClick={() => saveSetting('wecom_enabled', enabled ? 'false' : 'true')}
-          className={`relative w-11 h-6 rounded-full transition-colors focus:outline-none ${
-            enabled ? 'bg-sakura' : 'bg-elevated'
-          }`}
-          aria-label="Toggle WeChat Work notifications"
-        >
-          <span
-            className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-              enabled ? 'translate-x-6' : 'translate-x-1'
-            }`}
-          />
-        </button>
-      </div>
-
-      {/* Config fields */}
-      <div className="space-y-3">
-        <div>
-          <label className="block text-xs text-ink-dim mb-1">企业ID (corpid)</label>
-          <input
-            type="text"
-            value={settings['wecom_corpid'] ?? ''}
-            onChange={(e) =>
-              setSettings((s) => ({ ...s, wecom_corpid: e.target.value }))
-            }
-            onBlur={(e) => saveSetting('wecom_corpid', e.target.value)}
-            placeholder="ww_xxxxxxxxxxxxxxxx"
-            className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm
-                       text-ink placeholder-ink-dim focus:outline-none focus:border-lavender
-                       transition-colors"
-          />
-        </div>
-
-        <div>
-          <label className="block text-xs text-ink-dim mb-1">应用 Secret (corpsecret)</label>
-          <input
-            type="password"
-            value={settings['wecom_corpsecret'] ?? ''}
-            onChange={(e) =>
-              setSettings((s) => ({ ...s, wecom_corpsecret: e.target.value }))
-            }
-            onBlur={(e) => saveSetting('wecom_corpsecret', e.target.value)}
-            placeholder="••••••••••••••••"
-            className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm
-                       text-ink placeholder-ink-dim focus:outline-none focus:border-lavender
-                       transition-colors"
-          />
-        </div>
-
-        <div>
-          <label className="block text-xs text-ink-dim mb-1">AgentId</label>
-          <input
-            type="text"
-            value={settings['wecom_agentid'] ?? ''}
-            onChange={(e) =>
-              setSettings((s) => ({ ...s, wecom_agentid: e.target.value }))
-            }
-            onBlur={(e) => saveSetting('wecom_agentid', e.target.value)}
-            placeholder="1000002"
-            className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm
-                       text-ink placeholder-ink-dim focus:outline-none focus:border-lavender
-                       transition-colors"
-          />
-        </div>
-
-        <div>
-          <label className="block text-xs text-ink-dim mb-1">
-            接收者 (touser)
-            <span className="ml-1 text-ink-dim">— 默认 @all</span>
-          </label>
-          <input
-            type="text"
-            value={settings['wecom_touser'] ?? ''}
-            onChange={(e) =>
-              setSettings((s) => ({ ...s, wecom_touser: e.target.value }))
-            }
-            onBlur={(e) => saveSetting('wecom_touser', e.target.value)}
-            placeholder="@all 或成员账号"
-            className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm
-                       text-ink placeholder-ink-dim focus:outline-none focus:border-lavender
-                       transition-colors"
-          />
-        </div>
-
-        <div>
-          <label className="block text-xs text-ink-dim mb-1">
-            微信插件二维码链接 (wecom_qr_url)
-            <span className="ml-1 text-ink-dim">— 可选</span>
-          </label>
-          <input
-            type="text"
-            value={settings['wecom_qr_url'] ?? ''}
-            onChange={(e) =>
-              setSettings((s) => ({ ...s, wecom_qr_url: e.target.value }))
-            }
-            onBlur={(e) => saveSetting('wecom_qr_url', e.target.value)}
-            placeholder="https://..."
-            className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm
-                       text-ink placeholder-ink-dim focus:outline-none focus:border-lavender
-                       transition-colors"
-          />
-        </div>
-      </div>
-
-      {/* QR code display */}
-      <div className="bg-surface border border-line rounded-lg p-4">
-        <p className="text-xs text-ink-dim mb-3">
-          微信插件二维码 — 成员扫码后应用消息直达个人微信
-        </p>
-        {qrUrl ? (
-          <img
-            src={qrUrl}
-            alt="企业微信微信插件二维码"
-            className="w-40 h-40 object-contain rounded-lg border border-line"
-          />
-        ) : (
-          <p className="text-xs text-ink-dim italic leading-relaxed">
-            在企业微信管理后台 → 我的企业 → 微信插件 页面获取邀请二维码链接，填入上方字段后此处将显示二维码。
-          </p>
-        )}
-      </div>
-
-      {/* Test button */}
-      <div>
-        <button
-          onClick={sendTest}
-          disabled={testing}
-          className="px-4 py-2 bg-sakura hover:bg-sakura disabled:opacity-40 text-white
-                     text-sm rounded-lg transition-colors"
-        >
-          {testing ? '发送中…' : '发送测试消息'}
-        </button>
-        {testResult && (
-          <p
-            className={`text-xs mt-2 ${
-              testResult.startsWith('成功') ? 'text-done' : 'text-failed'
-            }`}
-          >
-            {testResult}
-          </p>
-        )}
-      </div>
-
-      {/* Recent logs */}
-      <div>
-        <button
-          onClick={showLogs ? () => setShowLogs(false) : loadLogs}
-          className="text-xs text-sky hover:text-sky transition-colors"
-        >
-          {showLogs ? '收起推送日志 ▲' : '最近推送日志 ▼'}
-        </button>
-        {showLogs && (
-          <div className="mt-2 bg-surface rounded-lg p-3 space-y-1 max-h-48 overflow-y-auto">
-            {logs.length === 0 ? (
-              <p className="text-xs text-ink-dim italic">暂无日志</p>
-            ) : (
-              logs.map((entry, i) => (
-                <p
-                  key={i}
-                  className={`text-xs font-mono ${
-                    entry.includes('ERR') ? 'text-failed' : 'text-done'
-                  }`}
-                >
-                  {entry}
-                </p>
-              ))
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Setup guide (collapsible) */}
-      <div>
-        <button
-          onClick={() => setShowGuide(!showGuide)}
-          className="text-xs text-ink-dim hover:text-ink-muted transition-colors"
-        >
-          {showGuide ? '收起配置指引 ▲' : '如何配置 ▼'}
-        </button>
-        {showGuide && (
-          <div className="mt-2 bg-surface rounded-lg p-3 text-xs text-ink-muted space-y-2 leading-relaxed">
-            <p>
-              1. 前往{' '}
-              <code className="text-ink-muted">qy.weixin.qq.com</code>{' '}
-              注册企业微信（个人也可注册，免认证）
-            </p>
-            <p>
-              2. 管理后台 → 应用管理 → 创建自建应用，记下{' '}
-              <code className="text-ink-muted">AgentId</code> 和{' '}
-              <code className="text-ink-muted">Secret</code>
-            </p>
-            <p>
-              3. 管理后台 → 我的企业，记下{' '}
-              <code className="text-ink-muted">企业ID (corpid)</code>，填入上方
-            </p>
-            <p>
-              4. 管理后台 → 我的企业 → 微信插件：开启后让成员用个人微信扫码关注，
-              之后应用消息可直达个人微信。将二维码图片链接填入上方"二维码链接"字段
-            </p>
-            <p>
-              5. 应用详情页 → 企业可信IP：添加本机的公网出口 IP（企业微信 API 要求）；
-              发送报错 60020 时按提示添加
-            </p>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
 
 // ── 账号与同步 Section（A3 长连接 + v0.8 账号门户） ───────────────────────────
 
@@ -2600,8 +2040,7 @@ type SectionId =
   | 'hermes'
   | 'mcp'
   | 'sync'
-  | 'feishu'
-  | 'wecom'
+  | 'chat'
   | 'skills'
   | 'market'
 
@@ -2634,14 +2073,9 @@ const SECTIONS: Section[] = [
     description: '登录/注册、账号绑定与跨端同步：同一账号下手机与电脑实时同步任务、进度与对话。',
   },
   {
-    id: 'feishu',
-    title: '手机通知（飞书）',
-    description: '任务完成或失败时向飞书账号推送交互卡片通知。',
-  },
-  {
-    id: 'wecom',
-    title: '微信通知（企业微信）',
-    description: '任务完成或失败时通过企业微信应用消息直达个人微信，需先扫码关注微信插件。',
+    id: 'chat',
+    title: '聊天绑定',
+    description: '飞书 / 企业微信远程控制桌面端 Iris，通过绑定码一键关联。',
   },
   {
     id: 'skills',
@@ -2716,8 +2150,7 @@ export default function Settings() {
             {activeSection === 'hermes' && <HermesSection />}
             {activeSection === 'mcp' && <McpSection />}
             {activeSection === 'sync' && <SyncSection />}
-            {activeSection === 'feishu' && <FeishuSection />}
-            {activeSection === 'wecom' && <WecomSection />}
+            {activeSection === 'chat' && <ChatBindingSection />}
             {activeSection === 'skills' && <SkillsSection />}
             {activeSection === 'market' && <AgentMarketSection />}
           </div>

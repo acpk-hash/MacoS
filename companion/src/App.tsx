@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import MobileLayout from './components/MobileLayout'
 import { useAuthStore } from './stores/authStore'
 import { useSyncStore } from './stores/syncStore'
+import { seedBuiltinProviders } from './lib/api'
 
 import Login from './pages/Login'
 import Chat from './pages/Chat'
@@ -35,6 +36,7 @@ export default function App() {
   const initSync = useSyncStore(s => s.init)
 
   useEffect(() => {
+    seedBuiltinProviders()
     useAuthStore.getState().hydrate()
   }, [])
 

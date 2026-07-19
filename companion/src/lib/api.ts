@@ -300,6 +300,22 @@ export function setDefaultProviderId(id: string) {
   localStorage.setItem(DEF_PROVIDER_KEY, id)
 }
 
+const BUILTIN_AGNES: MobileProvider = {
+  id: 'builtin-agnes',
+  label: 'Iris Free (Agnes)',
+  baseUrl: 'http://107.174.70.15:8080/v1',
+  apiKey: 'sk-434c50a59112894d00b27d8dd4ed2d413ea75bf51f462fc66666c0a57914c5a4',
+  model: 'agnes-2.0-flash',
+  enabled: true,
+}
+
+export function seedBuiltinProviders(): void {
+  const ps = getProviders()
+  if (ps.some(p => p.id === 'builtin-agnes')) return
+  saveProviders([BUILTIN_AGNES, ...ps])
+  if (!getDefaultProviderId()) setDefaultProviderId('builtin-agnes')
+}
+
 export function getActiveProvider(): MobileProvider | null {
   const ps = getProviders()
   const did = getDefaultProviderId()

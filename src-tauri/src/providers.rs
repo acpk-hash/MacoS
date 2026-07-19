@@ -39,6 +39,15 @@ const MODELS_TTL: std::time::Duration = std::time::Duration::from_secs(300);
 const NO_PROVIDER_HINT: &str =
     "未配置可用的服务商：请在 设置 → 服务商 中添加服务并填写 API Key";
 
+// -- Built-in free provider (Agnes via Sub2API panel) --------------------------
+
+/// Well-known id for the built-in Agnes provider (never collides with UUIDs).
+const BUILTIN_AGNES_ID: &str = "builtin-agnes";
+const BUILTIN_AGNES_LABEL: &str = "Iris Free (Agnes)";
+const BUILTIN_AGNES_BASE_URL: &str = "http://107.174.70.15:8080/v1";
+const BUILTIN_AGNES_KEY: &str =
+    "sk-434c50a59112894d00b27d8dd4ed2d413ea75bf51f462fc66666c0a57914c5a4";
+
 // -- Frontend-facing types ---------------------------------------------------
 
 /// A provider as shown in Settings — metadata + key *status* only (no plaintext).
@@ -199,6 +208,35 @@ fn ensure_default(db: &Db, candidate: &str) {
     }
 }
 
+/// Seed the built-in Agnes free provider on first launch. Idempotent: if the
+/// row already exists it is left as-is (the user may have changed its config).
+/// The key is written to the OS credential store so it never appears in SQLite.
+pub fn seed_builtin_providers(db: &Db) {
+    if db.provider_get(BUILTIN_AGNES_ID).ok().flatten().is_some() {
+        return;
+    }
+    if let Err(e) = db.provider_upsert(
+        BUILTIN_AGNES_ID,
+        BUILTIN_AGNES_LABEL,
+        BUILTIN_AGNES_BASE_URL,
+        "chat",
+        true,
+    ) {
+        eprintln!("[providers] 内置 Agnes 服务商创建失败: {e}");
+        return;
+    }
+    if let Err(e) = key_set(BUILTIN_AGNES_ID, BUILTIN_AGNES_KEY) {
+        eprintln!("[providers] 内置 Agnes Key 写入凭据管理器失败: {e}");
+        return;
+    }
+    if let Err(e) = db.provider_set_has_key(BUILTIN_AGNES_ID, true) {
+        eprintln!("[providers] 内置 Agnes has_key 更新失败: {e}");
+        return;
+    }
+    ensure_default(db, BUILTIN_AGNES_ID);
+    eprintln!("[providers] 已植入内置免费服务商 Iris Free (Agnes)");
+}
+
 // -- Model classification ------------------------------------------------------
 
 /// Classify a model id by usage. Conservative denylist: only ids that are
@@ -235,15 +273,20 @@ pub(crate) fn classify_model(id: &str) -> &'static str {
     if NON_CHAT.iter().any(|m| l.contains(m)) {
         return "other";
     }
-    if l.contains("sora") || l.contains("video") || l.contains("veo-") {
+    if l.contains("sora") || l.contains("veo-") || l == "agnes-video-v2.0" {
         return "video";
     }
-    if l.contains("image")
-        || l.contains("dall-e")
+    if l.contains("dall-e")
         || l.contains("dalle")
         || l.contains("flux")
         || l.contains("midjourney")
+        || l.starts_with("agnes-image-")
     {
+        return "image";
+    }
+    // Generic "image" substring check AFTER agnes-image was already caught,
+    // so agnes-2.0-flash (no "image" substring) stays chat.
+    if l.contains("image") {
         return "image";
     }
     "chat"
