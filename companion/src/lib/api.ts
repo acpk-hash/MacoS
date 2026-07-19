@@ -1,3 +1,9 @@
+/**
+ * Iris Mobile — API layer for sync server + AI chat relay.
+ * Auth endpoints match the sync.rs protocol; chat relay calls the user's
+ * configured provider directly from the browser.
+ */
+
 const LS_BASE = 'iris.remote.'
 
 export function getBaseUrl(): string {
@@ -6,7 +12,7 @@ export function getBaseUrl(): string {
   if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
     return window.location.origin
   }
-  return 'https://192.210.231.152:8443'
+  return 'https://192-210-231-152.nip.io'
 }
 
 export function setBaseUrl(url: string): void {
@@ -45,7 +51,11 @@ export function clearAuth(): void {
   localStorage.removeItem(LS_BASE + 'username')
 }
 
-// ── Types (matching sync.rs protocol) ───────────────────────────────────────
+export function isLoggedIn(): boolean {
+  return !!getRefreshToken()
+}
+
+// ── Types ────────────────────────────────────────────────────────────────────
 
 export interface AuthResponse {
   ok: boolean
@@ -62,7 +72,7 @@ export interface DeviceInfo {
   name: string
 }
 
-// ── Friendly error mapping (matching sync.rs) ───────────────────────────────
+// ── Error mapping ────────────────────────────────────────────────────────────
 
 function friendlyError(code: string, msg: string): string {
   switch (code) {
@@ -76,7 +86,7 @@ function friendlyError(code: string, msg: string): string {
   }
 }
 
-// ── Core fetch helper ────────────────────────────────────────────────────────
+// ── Core fetch ───────────────────────────────────────────────────────────────
 
 async function apiFetch(
   path: string,
@@ -131,13 +141,11 @@ async function expectOk(res: Response): Promise<Record<string, unknown>> {
     const msg = (body.message as string) ?? ''
     throw new Error(friendlyError(code, msg))
   }
-  if (!res.ok) {
-    throw new Error(`HTTP ${res.status}`)
-  }
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
   return body
 }
 
-// ── Public API (paths match sync.rs) ────────────────────────────────────────
+// ── Auth API ─────────────────────────────────────────────────────────────────
 
 export async function register(username: string, password: string): Promise<string> {
   const res = await apiFetch('/api/register', {
@@ -183,7 +191,7 @@ export async function registerDevice(kind: string, name: string): Promise<string
   return id
 }
 
-export async function logout(): Promise<void> {
+export async function apiLogout(): Promise<void> {
   const rt = getRefreshToken()
   const token = getAccessToken()
   try {
@@ -196,8 +204,105 @@ export async function logout(): Promise<void> {
       },
       body: JSON.stringify({ refresh_token: rt ?? '' }),
     })
-  } catch {
-    // best-effort
-  }
+  } catch { /* best-effort */ }
   clearAuth()
+}
+
+// ── AI Chat Relay (direct to provider) ───────────────────────────────────────
+
+export interface ChatStreamOpts {
+  messages: Array<{ role: string; content: string }>
+  model: string
+  baseUrl: string
+  apiKey: string
+  onToken: (t: string) => void
+  onDone: () => void
+  onError: (e: string) => void
+  signal?: AbortSignal
+}
+
+export async function chatStream(opts: ChatStreamOpts) {
+  const { messages, model, baseUrl, apiKey, onToken, onDone, onError, signal } = opts
+  const base = baseUrl.replace(/\/+$/, '')
+  const url = base + (base.endsWith('/v1') ? '/chat/completions' : '/v1/chat/completions')
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify({ model, messages, stream: true }),
+      signal,
+    })
+    if (!res.ok) {
+      const e = await res.text()
+      onError(`API ${res.status}: ${e.slice(0, 200)}`)
+      return
+    }
+    const reader = res.body?.getReader()
+    if (!reader) { onError('无法读取流'); return }
+    const decoder = new TextDecoder()
+    let buf = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += decoder.decode(value, { stream: true })
+      const lines = buf.split('\n')
+      buf = lines.pop() || ''
+      for (const l of lines) {
+        const t = l.trim()
+        if (!t || !t.startsWith('data: ')) continue
+        const d = t.slice(6)
+        if (d === '[DONE]') { onDone(); return }
+        try {
+          const p = JSON.parse(d)
+          const c = p.choices?.[0]?.delta?.content
+          if (c) onToken(c)
+        } catch { /* skip */ }
+      }
+    }
+    onDone()
+  } catch (e) {
+    if ((e as Error).name === 'AbortError') return
+    onError(String(e))
+  }
+}
+
+// ── Provider settings (local storage) ────────────────────────────────────────
+
+export interface MobileProvider {
+  id: string
+  label: string
+  baseUrl: string
+  apiKey: string
+  model: string
+  enabled: boolean
+}
+
+const PROVIDERS_KEY = 'iris.providers'
+const DEF_PROVIDER_KEY = 'iris.default_provider'
+
+export function getProviders(): MobileProvider[] {
+  try {
+    const raw = localStorage.getItem(PROVIDERS_KEY)
+    return raw ? JSON.parse(raw) : []
+  } catch { return [] }
+}
+
+export function saveProviders(ps: MobileProvider[]) {
+  localStorage.setItem(PROVIDERS_KEY, JSON.stringify(ps))
+}
+
+export function getDefaultProviderId(): string | null {
+  return localStorage.getItem(DEF_PROVIDER_KEY)
+}
+
+export function setDefaultProviderId(id: string) {
+  localStorage.setItem(DEF_PROVIDER_KEY, id)
+}
+
+export function getActiveProvider(): MobileProvider | null {
+  const ps = getProviders()
+  const did = getDefaultProviderId()
+  if (did) { const p = ps.find(x => x.id === did && x.enabled); if (p) return p }
+  return ps.find(x => x.enabled) || null
 }

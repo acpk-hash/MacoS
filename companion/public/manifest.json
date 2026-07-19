@@ -1,8 +1,10 @@
 {
-  "name": "Iris Remote",
+  "name": "Iris",
   "short_name": "Iris",
+  "description": "AI 智能工作台 — 编码 · 办公 · 图像 · 科研",
   "start_url": "/app/",
   "display": "standalone",
+  "orientation": "portrait",
   "theme_color": "#f7f7f5",
   "background_color": "#f7f7f5",
   "icons": []
