@@ -661,10 +661,6 @@ header {
   border-color: var(--accent);
   box-shadow: 0 18px 40px rgba(255,77,141,0.16), inset 0 1px 0 rgba(255,255,255,.75);
 }
-.download-grid .dl-card:nth-child(1) .platform { color: var(--c-blue); }
-.download-grid .dl-card:nth-child(2) .platform { color: var(--c-green); }
-.download-grid .dl-card:nth-child(1):hover { border-color: var(--c-blue);  box-shadow: 0 18px 40px rgba(77,124,255,0.16); }
-.download-grid .dl-card:nth-child(2):hover { border-color: var(--c-green); box-shadow: 0 18px 40px rgba(46,206,143,0.16); }
 .dl-card .platform {
   font-family: var(--mono);
   font-size: 12px;
@@ -1222,9 +1218,10 @@ header {
     <div class="section-head">
       <div class="eyebrow">Download</div>
       <h2>下载安装包</h2>
-      <p>桌面 v0.14.0 · 安卓 v0.14.0 · Beta · 免费使用。</p>
+      <p>桌面 v0.14.0 · 移动端 v0.14.0 · 全平台 · Beta · 免费使用。</p>
     </div>
-    <div class="download-grid">
+    <div class="download-grid" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+      <!-- Desktop row -->
       <div class="dl-card">
         <div class="platform">Windows</div>
         <div class="dl-title">Iris for Windows</div>
@@ -1244,20 +1241,81 @@ header {
         </a>
       </div>
       <div class="dl-card">
-        <div class="platform">Android</div>
-        <div class="dl-title">Iris for Android</div>
+        <div class="platform" style="color:var(--c-purple)">macOS</div>
+        <div class="dl-title">Iris for macOS</div>
+        <div class="dl-specs">
+          <span class="spec">v0.14.0</span>
+          <span class="spec">Apple Silicon</span>
+          <span class="spec">.dmg</span>
+          <span class="spec">内置运行时</span>
+        </div>
+        <div class="dl-meta">
+          macOS 12.0+ 支持 Apple Silicon (M1/M2/M3/M4) 原生运行。<br>
+          <span class="sha">SHA256</span> 校验值见同目录 <a class="sha" href="/downloads/Iris_0.14.0_macos_arm64.dmg.sha256">.sha256 文件</a>
+        </div>
+        <a class="btn btn-primary" href="/downloads/Iris_0.14.0_macos_arm64.dmg">
+          <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M7.5 2v8m0 0L4.5 7m3 3 3-3M2 12h11" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          下载 macOS 版
+        </a>
+        <div style="margin-top:8px">
+          <a class="btn btn-secondary" style="font-size:12px;min-height:34px;padding:0 14px" href="/downloads/Iris_0.14.0_macos_x64.dmg">Intel (x64) 版本</a>
+        </div>
+      </div>
+    </div>
+    <!-- Mobile row -->
+    <h3 style="margin:28px 0 12px;font-size:16px;color:var(--fg-2);font-weight:600">移动端 · 远程同步伴侣</h3>
+    <div class="download-grid" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+      <div class="dl-card">
+        <div class="platform" style="color:var(--c-green)">Android</div>
+        <div class="dl-title">Iris Remote for Android</div>
         <div class="dl-specs">
           <span class="spec">v0.14.0</span>
           <span class="spec">Android 7.0+</span>
-          <span class="spec">签名 APK</span>
+          <span class="spec">.apk</span>
+          <span class="spec">同步伴侣</span>
         </div>
         <div class="dl-meta">
-          与桌面端登录同一账号即可实时同步，并从手机继续多轮对话。<br>
+          与桌面端登录同一账号即可实时同步，远程控制任务与浏览文件。<br>
           <a class="sha" href="/downloads/Iris_0.14.0_android.apk.sha256">SHA256</a> 校验值见同目录 .sha256 文件
         </div>
         <a class="btn btn-primary" href="/downloads/Iris_0.14.0_android.apk">
           <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M7.5 2v8m0 0L4.5 7m3 3 3-3M2 12h11" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
           下载 Android 版
+        </a>
+      </div>
+      <div class="dl-card">
+        <div class="platform" style="color:var(--c-orange)">HarmonyOS</div>
+        <div class="dl-title">Iris Remote for HarmonyOS</div>
+        <div class="dl-specs">
+          <span class="spec">v0.14.0</span>
+          <span class="spec">HarmonyOS 4.0+</span>
+          <span class="spec">.apk</span>
+          <span class="spec">同步伴侣</span>
+        </div>
+        <div class="dl-meta">
+          鸿蒙系统兼容版，与 Android 版同源构建。华为手机请启用「允许安装外部应用」后安装。
+        </div>
+        <a class="btn btn-primary" href="/downloads/Iris_0.14.0_android.apk">
+          <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M7.5 2v8m0 0L4.5 7m3 3 3-3M2 12h11" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          下载鸿蒙版
+        </a>
+      </div>
+      <div class="dl-card">
+        <div class="platform" style="color:var(--c-cyan)">iOS</div>
+        <div class="dl-title">Iris Remote for iOS</div>
+        <div class="dl-specs">
+          <span class="spec">v0.14.0</span>
+          <span class="spec">iOS 16+</span>
+          <span class="spec">.ipa</span>
+          <span class="spec">同步伴侣</span>
+        </div>
+        <div class="dl-meta">
+          iPhone / iPad 伴侣应用，登录同一账号即可跨设备同步。<br>
+          未签名 IPA，需通过 AltStore / Sideloadly 等工具自签安装。
+        </div>
+        <a class="btn btn-primary" href="/downloads/Iris_0.14.0_ios.ipa">
+          <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M7.5 2v8m0 0L4.5 7m3 3 3-3M2 12h11" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          下载 iOS 版
         </a>
       </div>
     </div>
@@ -1313,8 +1371,8 @@ header {
         <div class="answer"><div><p>1. 进入「设置」→「聊天绑定」页面。2. 选择飞书或企业微信，点击「生成绑定码」。3. 在飞书 / 企业微信中找到 Iris 机器人，发送「绑定 XXXXXX」（替换为你的绑定码）。4. 绑定成功后，你可以直接在聊天中向 Iris 发送指令，桌面端会同步执行并返回结果。支持文字指令、查看任务状态、接收完成通知。</p></div></div>
       </details>
       <details>
-        <summary>手机同步<span class="sign"></span></summary>
-        <div class="answer"><div><p>1. 从下载页获取 Android 版 APK 并安装。2. 使用与桌面端相同的账号登录。3. 登录后，桌面端与手机端的会话、消息、任务状态实时同步。4. 跨设备同步采用端到端加密（E2EE），确保数据安全。你可以在手机上继续多轮对话、查看任务进度、接收通知。</p></div></div>
+        <summary>手机同步与远程控制<span class="sign"></span></summary>
+        <div class="answer"><div><p>1. 从下载页获取移动版安装包（Android / HarmonyOS / iOS 均可）。2. 使用与桌面端相同的账号登录，登录即自动连接，无需手动绑定。3. 在「远程控制」页面可以：实时查看任务进度与执行过程、远程创建/分派/接受任务、浏览桌面端工作目录文件、发送查看文件请求、继续多轮对话。4. 所有数据通过 WebSocket 实时同步，确保移动端与桌面端状态一致。</p></div></div>
       </details>
     </div>
   </div>
@@ -1359,7 +1417,7 @@ header {
       </details>
       <details>
         <summary>系统要求是什么？<span class="sign"></span></summary>
-        <div class="answer"><div><p>桌面端为 Windows x64（v0.14.0），移动端支持 Android 7.0 及以上版本。应用本身在本地运行；Agent 调用模型时需要联网访问你自己配置的 API 服务商。</p></div></div>
+        <div class="answer"><div><p>桌面端支持 Windows x64 与 macOS（v0.14.0）。移动端支持 Android 7.0+、HarmonyOS (鸿蒙) 4.0+ 与 iOS 16+。鸿蒙版与 Android 版同源构建，APK 通用。应用本身在本地运行；Agent 调用模型时需要联网访问你自己配置的 API 服务商。</p></div></div>
       </details>
     </div>
   </div>
@@ -1382,10 +1440,11 @@ header {
     <div class="footer-col">
       <h4>下载</h4>
       <a href="/downloads/Iris_0.14.0_x64-setup.exe">Windows v0.14.0</a>
+      <a href="/downloads/Iris_0.14.0_macos_arm64.dmg">macOS v0.14.0</a>
       <a href="/downloads/Iris_0.14.0_android.apk">Android v0.14.0</a>
-      <a href="/downloads/Iris_0.14.0_x64-setup.exe.sha256">Windows SHA256</a>
-      <a href="/downloads/Iris_0.14.0_android.apk.sha256">Android SHA256</a>
-      <a href="/downloads/">安装包目录</a>
+      <a href="/downloads/Iris_0.14.0_android.apk">HarmonyOS v0.14.0</a>
+      <a href="/downloads/Iris_0.14.0_ios.ipa">iOS v0.14.0</a>
+      <a href="/downloads/">安装包目录 · SHA256</a>
     </div>
     <div class="footer-col">
       <h4>功能</h4>
@@ -1404,7 +1463,7 @@ header {
   </div>
   <div class="footer-bottom">
     <span>© 2025-2026 Iris · 本地运行的编码 Agent</span>
-    <span>桌面 / Android v0.14.0 · Beta</span>
+    <span>桌面 / Android / HarmonyOS / iOS v0.14.0 · Beta</span>
   </div>
 </footer>
 

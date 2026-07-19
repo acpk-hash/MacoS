@@ -104,6 +104,22 @@ pub struct SyncStatusInfo {
     pub last_error: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct BindCodeResult {
+    pub code: String,
+    pub expires_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatBinding {
+    pub id: String,
+    pub platform: String,
+    pub chat_id: String,
+    pub chat_type: Option<String>,
+    pub sender_id: Option<String>,
+    pub bound_at: i64,
+}
+
 // ── Connection state ──────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -151,6 +167,8 @@ enum Signal {
     /// Client-encrypted snapshot. The Rust bridge and server treat `data` as
     /// opaque and never inspect the plaintext coding timeline.
     OpaqueSnapshot { kind: String, data: Value },
+    /// Direct response to a mobile command (file listing, file content, etc.).
+    Response { kind: String, data: Value },
 }
 
 // ── Shared inner state ────────────────────────────────────────────────────────
@@ -222,6 +240,13 @@ impl SyncManager {
         self.sig_tx
             .send(Signal::OpaqueSnapshot { kind, data })
             .map_err(|_| "同步后台未运行".to_string())
+    }
+
+    pub fn push_response(&self, kind: &str, data: Value) {
+        let _ = self.sig_tx.send(Signal::Response {
+            kind: kind.to_string(),
+            data,
+        });
     }
 
     fn bump(&self) {
@@ -367,6 +392,11 @@ impl SyncManager {
             devices: g.devices.clone(),
             last_error: g.last_error.clone(),
         }
+    }
+
+    /// Return a clone of the current access token, if logged in.
+    pub async fn access_token(&self) -> Option<String> {
+        self.inner.lock().await.access_token.clone()
     }
 }
 
@@ -818,6 +848,8 @@ enum CommandAction {
     DispatchTask { task_id: String },
     AcceptTask { task_id: String },
     ChatPrompt { session_id: String, message: String },
+    ListFiles { path: String },
+    ReadFile { path: String },
     Unknown(String),
 }
 
@@ -831,6 +863,8 @@ fn parse_command(command: &str, data: &Value) -> CommandAction {
             session_id: s("session_id"),
             message: s("message"),
         },
+        "list_files" => CommandAction::ListFiles { path: s("path") },
+        "read_file" => CommandAction::ReadFile { path: s("path") },
         other => CommandAction::Unknown(other.to_string()),
     }
 }
@@ -904,7 +938,50 @@ async fn apply_command(action: CommandAction, app: &AppHandle) -> Result<(), Str
             });
             Ok(())
         }
-        CommandAction::Unknown(c) => Err(format!("未知命令：{c}")), 
+        CommandAction::ListFiles { path } => {
+            let workdir = if path.is_empty() {
+                st.db.settings_get("default_workdir").ok().flatten().unwrap_or_default()
+            } else {
+                path
+            };
+            if workdir.is_empty() {
+                return Err("无默认工作目录".to_string());
+            }
+            let root = std::path::PathBuf::from(&workdir);
+            let entries = crate::workspace_fs::list_dir_standalone(&root, ".")
+                .unwrap_or_default();
+            let data = json!({
+                "root": workdir,
+                "entries": entries,
+            });
+            st.sync.push_response("files", data);
+            Ok(())
+        }
+        CommandAction::ReadFile { path } => {
+            if path.is_empty() {
+                return Err("read_file 缺少 path".to_string());
+            }
+            let workdir = st.db.settings_get("default_workdir").ok().flatten().unwrap_or_default();
+            if workdir.is_empty() {
+                return Err("无默认工作目录".to_string());
+            }
+            let root = std::path::PathBuf::from(&workdir);
+            let content = crate::workspace_fs::read_file_standalone(&root, &path)
+                .unwrap_or_else(|e| crate::workspace_fs::WsFileContent {
+                    content: format!("读取失败: {e}"),
+                    encoding: "error".to_string(),
+                    too_large: false,
+                });
+            let data = json!({
+                "path": path,
+                "root": workdir,
+                "content": content.content,
+                "encoding": content.encoding,
+            });
+            st.sync.push_response("file_content", data);
+            Ok(())
+        }
+        CommandAction::Unknown(c) => Err(format!("未知命令：{c}")),
     }
 }
 
@@ -1163,6 +1240,13 @@ async fn run_session(
                             return SessionEnd::Disconnected;
                         }
                     }
+                    Some(Signal::Response { kind, data }) => {
+                        let frame = snapshot_frame(&kind, data);
+                        if write.send(Message::Text(frame.to_string())).await.is_err() {
+                            set_err(inner, "WS 发送响应失败".to_string()).await;
+                            return SessionEnd::Disconnected;
+                        }
+                    }
                 }
             }
 
@@ -1340,6 +1424,72 @@ pub(crate) async fn sync_publish_encrypted_snapshot(
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<(), String> {
     state.sync.publish_opaque_snapshot(kind, data)
+}
+
+#[tauri::command]
+pub(crate) async fn sync_generate_bind_code(
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<BindCodeResult, String> {
+    let token = state.sync.access_token().await
+        .ok_or("未登录，请先登录同步账号")?;
+    let client = http_client()?;
+    let (status, v) = post_status(&client, "/api/bind-code", &json!({}), Some(&token))
+        .await
+        .map_err(|e| format!("网络错误：{e}"))?;
+    if status != 200 || v.get("ok").and_then(|x| x.as_bool()) != Some(true) {
+        let msg = v.get("message").and_then(|x| x.as_str()).unwrap_or("未知错误");
+        return Err(format!("生成绑定码失败：{msg}"));
+    }
+    Ok(BindCodeResult {
+        code: v.get("code").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+        expires_at: v.get("expires_at").and_then(|x| x.as_i64()).unwrap_or(0),
+    })
+}
+
+#[tauri::command]
+pub(crate) async fn sync_list_chat_bindings(
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<Vec<ChatBinding>, String> {
+    let token = state.sync.access_token().await
+        .ok_or("未登录，请先登录同步账号")?;
+    let client = http_client()?;
+    let (status, v) = get_status(&client, "/api/chat-bindings", &token)
+        .await
+        .map_err(|e| format!("网络错误：{e}"))?;
+    if status != 200 || v.get("ok").and_then(|x| x.as_bool()) != Some(true) {
+        return Ok(vec![]);
+    }
+    let bindings = v.get("bindings")
+        .and_then(|x| x.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|b| serde_json::from_value::<ChatBinding>(b.clone()).ok())
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(bindings)
+}
+
+#[tauri::command]
+pub(crate) async fn sync_delete_chat_binding(
+    id: String,
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<(), String> {
+    let token = state.sync.access_token().await
+        .ok_or("未登录，请先登录同步账号")?;
+    let client = http_client()?;
+    let url = format!("{SYNC_BASE_URL}/api/chat-bindings/{id}");
+    let resp = client
+        .delete(&url)
+        .bearer_auth(&token)
+        .send()
+        .await
+        .map_err(|e| format!("网络错误：{e}"))?;
+    let status = resp.status().as_u16();
+    if status != 200 {
+        return Err("解绑失败".to_string());
+    }
+    Ok(())
 }
 
 // ── Unit tests ────────────────────────────────────────────────────────────────

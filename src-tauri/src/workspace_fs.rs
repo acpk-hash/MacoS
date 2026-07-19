@@ -616,6 +616,16 @@ pub(crate) async fn ws_recent_folders(state: State<'_, AppState>) -> Result<Vec<
     Ok(recent_get(&state.db))
 }
 
+// ── Standalone helpers for sync remote commands ─────────────────────────────
+
+pub fn list_dir_standalone(root: &Path, rel: &str) -> Result<Vec<WsEntry>, String> {
+    list_dir(root, rel)
+}
+
+pub fn read_file_standalone(root: &Path, rel: &str) -> Result<WsFileContent, String> {
+    read_file(root, rel)
+}
+
 // ── Unit tests ──────────────────────────────────────────────────────────────
 
 #[cfg(test)]

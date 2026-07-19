@@ -8,15 +8,21 @@ export interface Task {
   id: string
   title: string
   status: 'todo' | 'dispatched' | 'done' | 'error'
-  created_at: string
-  updated_at?: string
+  workdir: string
+  created_at: number
+  updated_at: number
+  session_count: number
+  file_count: number
+  last_session_id?: string
 }
 
 export interface Session {
   id: string
-  title: string
-  model?: string
-  created_at: string
+  task_id: string
+  engine: string
+  thread_id?: string
+  started_at: number
+  ended_at?: number
 }
 
 export interface ChatSession {
@@ -38,14 +44,33 @@ export interface ChatMessage {
 export interface AgentEvent {
   id: string
   type: string
+  session_id?: string
+  task_id?: string
   summary?: string
   cmd?: string
   exit_code?: number
   path?: string
+  kind?: string
   added?: number
   removed?: number
+  message?: string
   timestamp: string
   raw?: unknown
+}
+
+export interface FileEntry {
+  name: string
+  rel_path: string
+  is_dir: boolean
+  size: number
+  ext: string
+}
+
+export interface FileContent {
+  path: string
+  root: string
+  content: string
+  encoding: string
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────────
@@ -59,6 +84,12 @@ interface SyncState {
   events: AgentEvent[]
   unreadCount: number
 
+  // File browsing
+  fileRoot: string
+  fileEntries: FileEntry[]
+  fileContent: FileContent | null
+  fileBrowsing: boolean
+
   _ws: WsManager | null
 
   init: () => void
@@ -69,6 +100,8 @@ interface SyncState {
   dispatchTask: (taskId: string) => void
   acceptTask: (taskId: string) => void
   sendChatMessage: (sessionId: string, message: string) => void
+  listFiles: (path?: string) => void
+  readFile: (path: string) => void
 }
 
 export const useSyncStore = create<SyncState>((set, get) => ({
@@ -79,6 +112,10 @@ export const useSyncStore = create<SyncState>((set, get) => ({
   chatMessages: [],
   events: [],
   unreadCount: 0,
+  fileRoot: '',
+  fileEntries: [],
+  fileContent: null,
+  fileBrowsing: false,
   _ws: null,
 
   init() {
@@ -86,9 +123,19 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     if (existing) existing.close()
 
     const auth = useAuthStore.getState()
-    if (!auth.accessToken || !auth.deviceId) return
+    if (!auth.accessToken) return
 
-    const ws = new WsManager(auth.accessToken, auth.deviceId, {
+    // Generate local device ID if server registration failed
+    let deviceId = auth.deviceId
+    if (!deviceId) {
+      deviceId = localStorage.getItem('iris.remote.device_id_fallback')
+      if (!deviceId) {
+        deviceId = `mobile-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+        localStorage.setItem('iris.remote.device_id_fallback', deviceId)
+      }
+    }
+
+    const ws = new WsManager(auth.accessToken, deviceId, {
       onStateChange(state) {
         set({ wsState: state })
       },
@@ -132,6 +179,16 @@ export const useSyncStore = create<SyncState>((set, get) => ({
   sendChatMessage(sessionId, message) {
     get().sendCommand('chat_prompt', { session_id: sessionId, message })
   },
+
+  listFiles(path) {
+    set({ fileBrowsing: true })
+    get().sendCommand('list_files', { path: path ?? '' })
+  },
+
+  readFile(path) {
+    set({ fileContent: null })
+    get().sendCommand('read_file', { path })
+  },
 }))
 
 // ── Snapshot handler ──────────────────────────────────────────────────────────
@@ -154,6 +211,22 @@ function handleSnapshot(kind: string, data: unknown): void {
       }
       break
     }
+    case 'files': {
+      const d = data as { root?: string; entries?: FileEntry[] } | null
+      if (d) {
+        useSyncStore.setState({
+          fileRoot: d.root ?? '',
+          fileEntries: d.entries ?? [],
+          fileBrowsing: false,
+        })
+      }
+      break
+    }
+    case 'file_content': {
+      const d = data as FileContent | null
+      if (d) useSyncStore.setState({ fileContent: d })
+      break
+    }
     default:
       break
   }
@@ -169,12 +242,16 @@ function handleEvent(type: string, data: unknown): void {
     id: `ev-${Date.now()}-${_eventSeq++}`,
     type,
     timestamp: (raw?.timestamp as string | undefined) ?? new Date().toISOString(),
+    session_id: raw?.session_id as string | undefined,
+    task_id: raw?.task_id as string | undefined,
     summary: raw?.summary as string | undefined,
     cmd: raw?.cmd as string | undefined,
     exit_code: raw?.exit_code as number | undefined,
     path: raw?.path as string | undefined,
+    kind: raw?.kind as string | undefined,
     added: raw?.added as number | undefined,
     removed: raw?.removed as number | undefined,
+    message: raw?.message as string | undefined,
     raw: data,
   }
 
