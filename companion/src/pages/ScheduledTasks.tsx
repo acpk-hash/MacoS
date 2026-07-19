@@ -41,6 +41,10 @@ export default function ScheduledTasks() {
 
   function handleCreate() {
     if (!taskName.trim()) return
+    setTasks((prev) => [
+      ...prev,
+      { id: Date.now(), name: taskName, cron: cronExpr, nextRun: '', lastResult: 'success' as const, enabled: false },
+    ])
     setTaskName('')
     setCronExpr('0 * * * *')
     setActionConfig('')

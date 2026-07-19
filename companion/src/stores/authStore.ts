@@ -63,9 +63,11 @@ export const useAuthStore = create<AuthState>((set) => ({
 
       let deviceId = getDeviceId()
       if (!deviceId) {
-        const ua = navigator.userAgent
-        const name = /Android/i.test(ua) ? 'Android 手机' : /iPhone/i.test(ua) ? 'iPhone' : '手机端'
-        deviceId = await registerDevice('mobile', name)
+        try {
+          const ua = navigator.userAgent
+          const name = /Android/i.test(ua) ? 'Android 手机' : /iPhone/i.test(ua) ? 'iPhone' : '手机端'
+          deviceId = await registerDevice('mobile', name)
+        } catch { /* device registration is non-fatal */ }
       }
 
       localStorage.removeItem(LM_KEY)
@@ -88,7 +90,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ busy: true })
     try { await apiLogout() } catch { /* best-effort */ }
     clearAuth()
-    localStorage.setItem(LM_KEY, '1')
+    localStorage.removeItem(LM_KEY)
     set({
       loggedIn: false,
       username: '',
@@ -96,7 +98,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       deviceId: null,
       busy: false,
       error: null,
-      localMode: true,
+      localMode: false,
     })
   },
 

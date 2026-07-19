@@ -135,7 +135,12 @@ async function attemptRefresh(): Promise<boolean> {
 }
 
 async function expectOk(res: Response): Promise<Record<string, unknown>> {
-  const body = await res.json() as Record<string, unknown>
+  let body: Record<string, unknown>
+  try {
+    body = await res.json() as Record<string, unknown>
+  } catch {
+    throw new Error(res.ok ? '响应格式异常' : `服务器错误 (HTTP ${res.status})`)
+  }
   if (body.ok === false) {
     const code = (body.error as string) ?? 'unknown'
     const msg = (body.message as string) ?? ''

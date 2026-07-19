@@ -30,6 +30,7 @@ export default function Science() {
   const [showResults, setShowResults] = useState(false)
   const [newIdea, setNewIdea] = useState('')
   const [showIdeaInput, setShowIdeaInput] = useState(false)
+  const [ideas, setIdeas] = useState(mockIdeas)
 
   function handleSearch() {
     if (query.trim()) setShowResults(true)
@@ -107,7 +108,13 @@ export default function Science() {
                 className="input flex-1"
               />
               <button
-                onClick={() => { setNewIdea(''); setShowIdeaInput(false) }}
+                onClick={() => {
+                  if (newIdea.trim()) {
+                    setIdeas([{ id: Date.now(), title: newIdea.trim(), status: 'draft' as const, date: new Date().toISOString().slice(0, 10) }, ...ideas])
+                  }
+                  setNewIdea('')
+                  setShowIdeaInput(false)
+                }}
                 className="btn btn-primary btn-sm"
               >
                 保存
@@ -116,7 +123,7 @@ export default function Science() {
           )}
 
           <div className="flex flex-col gap-2">
-            {mockIdeas.map((idea) => {
+            {ideas.map((idea) => {
               const cfg = statusConfig[idea.status]
               return (
                 <div key={idea.id} className="card-flat p-3 flex items-start justify-between gap-2">
@@ -143,7 +150,7 @@ export default function Science() {
           <div className="bg-surface-2 rounded-xl p-5 text-center mb-4">
             <div className="text-3xl mb-2 opacity-60">📂</div>
             <p className="text-sm text-ink-muted">上传文献进行 AI 分析</p>
-            <button className="btn btn-secondary btn-sm mt-3">选择文件</button>
+            <button onClick={() => alert('文件选择功能开发中')} className="btn btn-secondary btn-sm mt-3">选择文件</button>
           </div>
 
           <div className="flex flex-col gap-2">

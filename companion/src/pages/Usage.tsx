@@ -130,7 +130,7 @@ export default function Usage() {
             模型调用排行
           </p>
           <div className="flex flex-col gap-2">
-            {modelUsage
+            {[...modelUsage]
               .sort((a, b) => b.tokens - a.tokens)
               .map((m, i) => (
                 <div key={m.name} className="card-flat flex items-center gap-3">

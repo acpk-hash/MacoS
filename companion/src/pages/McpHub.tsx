@@ -113,7 +113,7 @@ export default function McpHub() {
                 <label className="text-xs text-ink-muted block mb-1">{'环境变量 (可选)'}</label>
                 <input className="input" placeholder="API_KEY=xxx" value={formEnv} onChange={(e) => setFormEnv(e.target.value)} />
               </div>
-              <button className="btn btn-primary btn-block">{'保存'}</button>
+              <button onClick={() => alert('功能开发中')} className="btn btn-primary btn-block">{'保存'}</button>
             </div>
           )}
         </section>
@@ -135,7 +135,7 @@ export default function McpHub() {
                     </div>
                     <p className="text-xs text-ink-muted mt-0.5">{item.description}</p>
                   </div>
-                  <button className="btn btn-sm btn-primary shrink-0">{'安装'}</button>
+                  <button onClick={() => alert('功能开发中')} className="btn btn-sm btn-primary shrink-0">{'安装'}</button>
                 </div>
               </div>
             ))}

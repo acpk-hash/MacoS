@@ -182,6 +182,7 @@ export default function AgentHub() {
       <button
         className="fixed bottom-20 right-4 w-14 h-14 rounded-full bg-primary text-white shadow-lg flex items-center justify-center active:bg-primary-hover transition-colors"
         style={{ bottom: 'calc(56px + env(safe-area-inset-bottom, 0px) + 16px)' }}
+        onClick={() => alert('创建工作流功能开发中')}
       >
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
           <path d="M12 5v14M5 12h14" />

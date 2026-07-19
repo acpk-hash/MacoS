@@ -59,7 +59,7 @@ function Header() {
           {(username || '?')[0].toUpperCase()}
         </button>
       ) : (
-        <button onClick={() => navigate('/login')}
+        <button onClick={() => useAuthStore.getState().openPortal()}
           className="text-xs text-primary font-medium">登录</button>
       )}
     </header>

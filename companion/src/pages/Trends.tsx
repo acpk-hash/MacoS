@@ -155,7 +155,7 @@ export default function Trends() {
                     autoFocus
                   />
                   <div className="flex gap-2">
-                    <button className="btn btn-primary btn-sm flex-1">添加</button>
+                    <button className="btn btn-primary btn-sm flex-1" onClick={() => alert('RSS 订阅功能开发中')}>添加</button>
                     <button
                       className="btn btn-secondary btn-sm"
                       onClick={() => {
@@ -212,7 +212,7 @@ export default function Trends() {
                     autoFocus
                   />
                   <div className="flex gap-2">
-                    <button className="btn btn-primary btn-sm flex-1">添加</button>
+                    <button className="btn btn-primary btn-sm flex-1" onClick={() => alert('关键词追踪功能开发中')}>添加</button>
                     <button
                       className="btn btn-secondary btn-sm"
                       onClick={() => {

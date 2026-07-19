@@ -87,7 +87,7 @@ export default function Auto() {
             })}
           </div>
 
-          <button className="btn btn-primary btn-block mt-2">启动流水线</button>
+          <button className="btn btn-primary btn-block mt-2" onClick={() => alert('自动化流水线功能开发中')}>启动流水线</button>
         </div>
 
         {/* Config */}

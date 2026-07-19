@@ -136,7 +136,8 @@ export default function Office() {
               </div>
             </div>
 
-            <button className="btn btn-primary btn-block" disabled={disabled || !pptTopic.trim()}>
+            <button className="btn btn-primary btn-block" disabled={disabled || !pptTopic.trim()}
+              onClick={() => alert('PPT 生成功能需要配置高级模型（GPT/Gemini），Agnes 免费模型暂不支持此功能。')}>
               生成 PPT
             </button>
 
@@ -189,7 +190,8 @@ export default function Office() {
               <span style={{ fontSize: 13, color: 'var(--text-dim)' }}>等待文件上传</span>
             </div>
 
-            <button className="btn btn-primary btn-block" disabled={disabled}>
+            <button className="btn btn-primary btn-block" disabled={disabled}
+              onClick={() => alert('请先上传 Excel 文件')}>
               导出
             </button>
           </div>
@@ -245,7 +247,8 @@ export default function Office() {
               </div>
             </div>
 
-            <button className="btn btn-primary btn-block" disabled={disabled || !wordTopic.trim()}>
+            <button className="btn btn-primary btn-block" disabled={disabled || !wordTopic.trim()}
+              onClick={() => alert('Word 生成功能需要配置高级模型（GPT/Gemini），Agnes 免费模型暂不支持此功能。')}>
               生成 Word
             </button>
 

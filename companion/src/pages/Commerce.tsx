@@ -144,7 +144,7 @@ export default function Commerce() {
                             ))}
                           </div>
                         </div>
-                        <button className="btn btn-primary btn-block" disabled={!category.trim()}>
+                        <button className="btn btn-primary btn-block" disabled={!category.trim()} onClick={() => alert('选品分析功能开发中')}>
                           开始选品分析
                         </button>
                       </>
@@ -274,7 +274,7 @@ export default function Commerce() {
                           />
                         </div>
                         <div className="flex gap-2">
-                          <button className="btn btn-primary flex-1" disabled={!photoPrompt.trim()}>
+                          <button className="btn btn-primary flex-1" disabled={!photoPrompt.trim()} onClick={() => alert('图片生成功能开发中')}>
                             生成图片
                           </button>
                           <button className="btn btn-secondary" onClick={() => setPhotoPrompt('')}>
@@ -333,6 +333,7 @@ export default function Commerce() {
                         <button
                           className="btn btn-primary btn-block"
                           disabled={!listingTitle.trim()}
+                          onClick={() => alert('详情页生成功能开发中')}
                         >
                           生成详情页
                         </button>

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 
 const phases = [
   { id: 1, label: '问题分析' },
@@ -37,6 +37,15 @@ export default function DeepResearch() {
   const [currentPhase, setCurrentPhase] = useState(0) // 0 = idle
   const [running, setRunning] = useState(false)
   const [showResult, setShowResult] = useState(false)
+  const intervalRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current !== null) {
+        clearInterval(intervalRef.current)
+      }
+    }
+  }, [])
 
   function handleStart() {
     if (!topic.trim()) return
@@ -44,15 +53,15 @@ export default function DeepResearch() {
     setCurrentPhase(1)
     setShowResult(false)
 
-    // Simulate phase progression
     let phase = 1
-    const interval = setInterval(() => {
+    intervalRef.current = window.setInterval(() => {
       phase++
       if (phase > 5) {
-        clearInterval(interval)
+        clearInterval(intervalRef.current!)
+        intervalRef.current = null
         setRunning(false)
         setShowResult(true)
-        setCurrentPhase(6) // all done
+        setCurrentPhase(6)
         return
       }
       setCurrentPhase(phase)

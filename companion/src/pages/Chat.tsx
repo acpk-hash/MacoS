@@ -134,8 +134,11 @@ export default function Chat() {
     const abort = new AbortController()
     abortRef.current = abort
 
+    /* Build history from latest state to avoid stale closure */
+    const latestSession = localSessions.find((s) => s.id === activeLocal.id)
+    const currentMessages = latestSession ? latestSession.messages : activeLocal.messages
     const history = [
-      ...activeLocal.messages.map((m) => ({ role: m.role, content: m.content })),
+      ...currentMessages.map((m) => ({ role: m.role, content: m.content })),
       { role: 'user' as const, content: text },
     ]
 
@@ -184,6 +187,19 @@ export default function Chat() {
 
   function stopStreaming() {
     abortRef.current?.abort()
+    setStreamingContent((partial) => {
+      if (partial) {
+        const partialMsg: LocalMessage = { id: uid(), role: 'assistant', content: partial + '\n\n[已中止]' }
+        setLocalSessions((prev) =>
+          prev.map((s) =>
+            s.id === activeSessionId
+              ? { ...s, messages: [...s.messages, partialMsg], updatedAt: Date.now() }
+              : s,
+          ),
+        )
+      }
+      return ''
+    })
     setStreaming(false)
   }
 
@@ -259,7 +275,7 @@ export default function Chat() {
               time={relativeTime(sess.last_message_at)}
               model={sess.model}
               synced
-              onClick={() => {}}
+              onClick={() => alert('同步会话暂不支持在手机端查看详情')}
             />
           ))}
 

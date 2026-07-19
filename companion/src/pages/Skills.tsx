@@ -106,7 +106,7 @@ export default function Skills() {
                       <span className="text-[11px] text-ink-dim">{'⬇'} {formatDownloads(skill.downloads)}</span>
                     </div>
                   </div>
-                  <button className="btn btn-sm btn-primary shrink-0 self-center">
+                  <button onClick={() => alert('功能开发中')} className="btn btn-sm btn-primary shrink-0 self-center">
                     {'安装'}
                   </button>
                 </div>

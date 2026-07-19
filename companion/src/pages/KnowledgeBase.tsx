@@ -101,7 +101,7 @@ export default function KnowledgeBase() {
         </div>
 
         {/* Upload button */}
-        <button className="btn btn-secondary btn-block">
+        <button className="btn btn-secondary btn-block" onClick={() => alert('文档上传功能开发中')}>
           {'+ 上传文档'}
         </button>
         <p className="text-[11px] text-ink-faint text-center -mt-1">{'支持 PDF、TXT、MD、DOCX 格式'}</p>

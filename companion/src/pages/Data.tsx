@@ -122,7 +122,7 @@ export default function Data() {
               <p className="text-xs font-semibold text-ink-dim uppercase tracking-wide">
                 近期事件
               </p>
-              <Link to="/events" className="text-xs text-sky font-medium" style={{ textDecoration: 'none' }}>
+              <Link to="/settings" className="text-xs text-sky font-medium" style={{ textDecoration: 'none' }}>
                 查看全部
               </Link>
             </div>
