@@ -30,6 +30,7 @@ import ScheduledTasks from './pages/ScheduledTasks'
 import ModelCompare from './pages/ModelCompare'
 import VectorSearch from './pages/VectorSearch'
 import Webhooks from './pages/Webhooks'
+import Remote from './pages/Remote'
 
 export default function App() {
   const { checked, loggedIn, localMode } = useAuthStore()
@@ -88,6 +89,7 @@ export default function App() {
           <Route path="compare" element={<ModelCompare />} />
           <Route path="vector" element={<VectorSearch />} />
           <Route path="webhooks" element={<Webhooks />} />
+          <Route path="remote" element={<Remote />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

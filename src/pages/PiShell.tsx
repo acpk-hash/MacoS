@@ -35,7 +35,7 @@ function EmptyGuide({
   title: string
   hint: string
   action: string
-  onAction: () => void
+  onAction?: () => void
 }) {
   return (
     <div className="flex-1 flex items-center justify-center">
@@ -44,7 +44,8 @@ function EmptyGuide({
         <div className="text-[12px] text-ink-dim leading-6 mb-4 whitespace-pre-line">{hint}</div>
         <button
           onClick={onAction}
-          className="px-4 py-2 rounded-btn bg-primary hover:bg-primary-hover text-[12.5px] text-white transition-colors"
+          disabled={!onAction}
+          className="px-4 py-2 rounded-btn bg-primary hover:bg-primary-hover text-[12.5px] text-white transition-colors disabled:opacity-40"
         >
           {action}
         </button>
@@ -196,8 +197,8 @@ export default function PiShell() {
               <EmptyGuide
                 title="新建会话"
                 hint={`项目：${cwd}\n开一个会话，把任务交给 agent。`}
-                action="＋ 新会话"
-                onAction={handleNewSession}
+                action={canCreate ? '＋ 新会话' : '请先选择模型'}
+                onAction={canCreate ? handleNewSession : undefined}
               />
             ) : (
               <PiTimeline />

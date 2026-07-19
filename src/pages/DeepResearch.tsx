@@ -430,21 +430,24 @@ export default function DeepResearch() {
         setError(`阶段「${phase.label}」执行出错: ${String(e)}`)
         setResearchStatus('error')
 
-        // 保存到历史
-        setHistory((prev) => {
-          const session: ResearchSession = {
-            id: sessionId,
-            question,
-            context,
-            createdAt: Date.now(),
-            phases: { ...phases },
-            sources: parsedSources,
-            report: '',
-            status: 'error',
-          }
-          const next = [session, ...prev]
-          saveHistory(next)
-          return next
+        // 保存到历史 — use setPhases to read current state (avoid stale closure)
+        setPhases((currentPhases) => {
+          setHistory((prev) => {
+            const session: ResearchSession = {
+              id: sessionId,
+              question,
+              context,
+              createdAt: Date.now(),
+              phases: { ...currentPhases },
+              sources: parsedSources,
+              report: '',
+              status: 'error',
+            }
+            const next = [session, ...prev]
+            saveHistory(next)
+            return next
+          })
+          return currentPhases
         })
         return
       }
@@ -477,7 +480,7 @@ export default function DeepResearch() {
       })
       return currentPhases
     })
-  }, [question, context, updatePhase, phases])
+  }, [question, context, updatePhase])
 
   const stopResearch = useCallback(() => {
     abortRef.current = true

@@ -15,6 +15,13 @@ function formatTime(iso: string): string {
 
 const navCards = [
   {
+    emoji: '\u{1F4F1}',
+    title: '远程控制',
+    to: '/remote',
+    desc: '从手机管理 Windows 桌面端任务与对话',
+    accent: 'bg-primary/10 text-primary',
+  },
+  {
     emoji: '\u{1F4CA}',
     title: '用量统计',
     to: '/usage',
@@ -122,7 +129,7 @@ export default function Data() {
               <p className="text-xs font-semibold text-ink-dim uppercase tracking-wide">
                 近期事件
               </p>
-              <Link to="/settings" className="text-xs text-sky font-medium" style={{ textDecoration: 'none' }}>
+              <Link to="/remote" className="text-xs text-sky font-medium" style={{ textDecoration: 'none' }}>
                 查看全部
               </Link>
             </div>

@@ -234,6 +234,7 @@ function KnowledgeGraph({ docs }: { docs: KBDocument[] }) {
 function IOPanel() {
   const { importObsidianVault, importNotionZip, exportMarkdownFolder, documents } = useKnowledgeStore()
   const fileRef = useRef<HTMLInputElement>(null)
+  const dirRef = useRef<HTMLInputElement>(null)
   const [importMode, setImportMode] = useState<'obsidian' | 'notion' | null>(null)
 
   const handleFileChange = useCallback(
@@ -253,6 +254,7 @@ function IOPanel() {
       else if (importMode === 'notion') importNotionZip(entries)
       setImportMode(null)
       if (fileRef.current) fileRef.current.value = ''
+      if (dirRef.current) dirRef.current.value = ''
     },
     [importMode, importObsidianVault, importNotionZip],
   )
@@ -262,13 +264,21 @@ function IOPanel() {
       <div>
         <h3 className="text-sm font-semibold text-ink mb-3">导入</h3>
         <div className="flex gap-3">
-          <button className="px-4 py-2 rounded-lg bg-surface-2 hover:bg-primary-tint text-sm text-ink transition-colors" onClick={() => { setImportMode('obsidian'); fileRef.current?.click() }}>
+          <button className="px-4 py-2 rounded-lg bg-surface-2 hover:bg-primary-tint text-sm text-ink transition-colors" onClick={() => { setImportMode('obsidian'); dirRef.current?.click() }}>
             导入 Obsidian Vault
           </button>
           <button className="px-4 py-2 rounded-lg bg-surface-2 hover:bg-primary-tint text-sm text-ink transition-colors" onClick={() => { setImportMode('notion'); fileRef.current?.click() }}>
             导入 Notion 导出
           </button>
         </div>
+        {/* Separate inputs: dirRef for Obsidian (folder), fileRef for Notion (files) */}
+        <input
+          ref={dirRef}
+          type="file"
+          className="hidden"
+          onChange={handleFileChange}
+          {...{ webkitdirectory: '', directory: '' } as InputHTMLAttributes<HTMLInputElement>}
+        />
         <input
           ref={fileRef}
           type="file"
@@ -276,7 +286,6 @@ function IOPanel() {
           accept=".md,.html,.txt"
           className="hidden"
           onChange={handleFileChange}
-          {...(importMode === 'obsidian' ? { webkitdirectory: '', directory: '' } as InputHTMLAttributes<HTMLInputElement> : {})}
         />
         <p className="text-xs text-ink-faint mt-2">Obsidian: 选择 vault 文件夹，保留相对路径并提取 #tag / [[双链]] 生成图谱。Notion: 选择导出的 .md/.html 文件。</p>
       </div>

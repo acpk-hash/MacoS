@@ -68,9 +68,9 @@ export default function McpHub() {
         (e) =>
           e.name.toLowerCase().includes(q) ||
           e.id.toLowerCase().includes(q) ||
-          e.description.toLowerCase().includes(q) ||
-          e.npm_package.toLowerCase().includes(q) ||
-          e.category.toLowerCase().includes(q),
+          (e.description ?? '').toLowerCase().includes(q) ||
+          (e.npm_package ?? '').toLowerCase().includes(q) ||
+          (e.category ?? '').toLowerCase().includes(q),
       )
     }
     return list

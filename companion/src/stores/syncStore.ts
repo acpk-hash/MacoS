@@ -66,6 +66,8 @@ interface SyncState {
   clearEvents: () => void
   sendCommand: (command: string, data: unknown) => void
   createTask: (title: string) => void
+  dispatchTask: (taskId: string) => void
+  acceptTask: (taskId: string) => void
   sendChatMessage: (sessionId: string, message: string) => void
 }
 
@@ -117,6 +119,14 @@ export const useSyncStore = create<SyncState>((set, get) => ({
 
   createTask(title) {
     get().sendCommand('create_task', { title })
+  },
+
+  dispatchTask(taskId) {
+    get().sendCommand('dispatch_task', { task_id: taskId })
+  },
+
+  acceptTask(taskId) {
+    get().sendCommand('accept_task', { task_id: taskId })
   },
 
   sendChatMessage(sessionId, message) {

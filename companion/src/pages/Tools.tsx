@@ -10,6 +10,7 @@ const tiles = [
   { emoji: '⏰', label: '定时', to: '/schedule', desc: '计划任务', bg: 'rgba(183,121,31,0.12)' },
   { emoji: '\u{1F504}', label: '盲测', to: '/compare', desc: '模型对比', bg: 'rgba(208,52,44,0.12)' },
   { emoji: '\u{1F4E1}', label: 'Webhook', to: '/webhooks', desc: '事件推送', bg: 'rgba(75,85,99,0.12)' },
+  { emoji: '\u{1F4F1}', label: '远程', to: '/remote', desc: '控制桌面端', bg: 'rgba(99,102,241,0.18)' },
 ]
 
 export default function Tools() {

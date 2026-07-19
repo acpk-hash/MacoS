@@ -109,9 +109,15 @@ function CanvasBoard({
   const handleMouseDown = useCallback(
     (e: React.MouseEvent, nodeId?: string) => {
       if (nodeId) {
-        // If connecting mode, finish connection
-        if (connecting && connecting !== nodeId) {
-          store.addEdge({ id: uid(), sourceId: connecting, targetId: nodeId, label: '' })
+        // Connecting mode: first click sets source, second click creates edge
+        if (connecting) {
+          if (connecting === '__start__') {
+            setConnecting(nodeId)
+            return
+          }
+          if (connecting !== nodeId) {
+            store.addEdge({ id: uid(), sourceId: connecting, targetId: nodeId, label: '' })
+          }
           setConnecting(null)
           return
         }
@@ -122,7 +128,9 @@ function CanvasBoard({
         if (!svg) return
         const pt = svg.createSVGPoint()
         pt.x = e.clientX; pt.y = e.clientY
-        const svgP = pt.matrixTransform(svg.getScreenCTM()?.inverse())
+        const ctm = svg.getScreenCTM()
+        if (!ctm) return
+        const svgP = pt.matrixTransform(ctm.inverse())
         setDragging({ nodeId, offsetX: svgP.x - node.x, offsetY: svgP.y - node.y })
       } else if (e.button === 0 && !e.shiftKey) {
         setSelectedNodeId(null)
@@ -141,7 +149,9 @@ function CanvasBoard({
         if (!svg) return
         const pt = svg.createSVGPoint()
         pt.x = e.clientX; pt.y = e.clientY
-        const svgP = pt.matrixTransform(svg.getScreenCTM()?.inverse())
+        const ctm = svg.getScreenCTM()
+        if (!ctm) return
+        const svgP = pt.matrixTransform(ctm.inverse())
         store.updateNode(dragging.nodeId, {
           x: svgP.x - dragging.offsetX,
           y: svgP.y - dragging.offsetY,
@@ -172,7 +182,9 @@ function CanvasBoard({
         if (!svg) return
         const pt = svg.createSVGPoint()
         pt.x = e.clientX; pt.y = e.clientY
-        const svgP = pt.matrixTransform(svg.getScreenCTM()?.inverse())
+        const ctm = svg.getScreenCTM()
+        if (!ctm) return
+        const svgP = pt.matrixTransform(ctm.inverse())
         const newNode: CanvasNode = {
           id: uid(),
           x: svgP.x,

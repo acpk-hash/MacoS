@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import {
   useProviderStore,
   type ProviderInfo,
@@ -772,11 +772,13 @@ function EngineSection() {
   const [saving, setSaving] = useState<Record<string, boolean>>({})
   const [iris, setIris] = useState<PiEngineStatusInfo | null>(null)
   const [probing, setProbing] = useState(false)
+  const savedWorkdirRef = useRef('')
 
   const loadSettings = useCallback(async () => {
     try {
       const all = await tauriInvoke<Record<string, string>>('settings_get_all')
       setSettings(all)
+      savedWorkdirRef.current = all['default_workdir'] ?? ''
     } catch (e) {
       console.error('Failed to load settings:', e)
     }
@@ -953,7 +955,8 @@ function EngineSection() {
               setSettings((s) => ({ ...s, default_workdir: e.target.value }))
             }
             onBlur={(e) => {
-              if (e.target.value !== settings['default_workdir']) {
+              if (e.target.value !== savedWorkdirRef.current) {
+                savedWorkdirRef.current = e.target.value
                 saveSetting('default_workdir', e.target.value)
               }
             }}

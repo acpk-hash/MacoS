@@ -541,9 +541,14 @@ export default function ModelCompare() {
       promises.push(p)
     }
 
-    // Wait for all to finish, then transition to voting
+    // Wait for all to finish, then transition — skip voting if all errored
     await Promise.allSettled(promises)
-    setPhase('voting')
+    setSlots((cur) => {
+      const anyDone = cur.some((s) => s.status === 'done')
+      if (anyDone) setPhase('voting')
+      else setPhase('setup')
+      return cur
+    })
   }, [selectedKeys, prompt, allModels])
 
   // ── Vote ───────────────────────────────────────────────────────────────────
