@@ -137,14 +137,19 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   },
 
   logout: async () => {
+    // Immediately update UI to logged-out state before awaiting backend
+    writeLocalMode(true)
+    set({
+      localMode: true,
+      loggedIn: false,
+      username: null,
+      status: get().status ? { ...get().status!, logged_in: false, state: 'disabled', enabled: false } : null,
+    })
     try {
       await tauriInvoke('sync_logout')
     } catch (e) {
       console.warn('[authStore] sync_logout failed:', e)
     }
-    // 退出后回本地模式：本地功能全可用，只是不再跨端同步。
-    writeLocalMode(true)
-    set({ localMode: true })
     await get().refresh()
   },
 

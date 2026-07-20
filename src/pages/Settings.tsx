@@ -6,8 +6,6 @@ import {
   type ProviderTestResult,
 } from '../stores/providerStore'
 import { useAuthStore } from '../stores/authStore'
-import { QRCodeSVG } from 'qrcode.react'
-import { createPairingPayload, encodePairingPayload, initializeRemoteRootKey } from '../lib/e2ee'
 
 // ── Tauri invoke helper ───────────────────────────────────────────────────────
 
@@ -77,6 +75,26 @@ const WIRE_API_OPTIONS = ['responses', 'chat']
 
 /** New wire_api options for user providers (chat is the safe default). */
 const PROVIDER_WIRE_API_OPTIONS = ['chat', 'responses']
+
+/** One-click provider presets covering major LLM vendors worldwide. */
+const PROVIDER_PRESETS: { label: string; base_url: string; wire_api: string; models: string[] }[] = [
+  { label: 'OpenAI', base_url: 'https://api.openai.com/v1', wire_api: 'chat', models: ['gpt-4.1', 'gpt-4o', 'gpt-4o-mini', 'o3', 'o4-mini', 'gpt-5.5'] },
+  { label: 'Anthropic (Claude)', base_url: 'https://api.anthropic.com/v1', wire_api: 'chat', models: ['claude-sonnet-4-5-20250514', 'claude-haiku-3-5-20241022', 'claude-opus-4-0-20250514'] },
+  { label: 'Google Gemini', base_url: 'https://generativelanguage.googleapis.com/v1beta/openai', wire_api: 'chat', models: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'] },
+  { label: 'DeepSeek', base_url: 'https://api.deepseek.com/v1', wire_api: 'chat', models: ['deepseek-chat', 'deepseek-reasoner'] },
+  { label: 'Qwen (通义千问)', base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', wire_api: 'chat', models: ['qwen-max', 'qwen-plus', 'qwen-turbo', 'qwen3-235b-a22b'] },
+  { label: 'Zhipu (智谱 GLM)', base_url: 'https://open.bigmodel.cn/api/paas/v4', wire_api: 'chat', models: ['glm-4-plus', 'glm-4-flash', 'glm-4-air'] },
+  { label: 'Moonshot (Kimi)', base_url: 'https://api.moonshot.cn/v1', wire_api: 'chat', models: ['moonshot-v1-128k', 'moonshot-v1-32k', 'moonshot-v1-8k'] },
+  { label: 'Doubao (豆包)', base_url: 'https://ark.cn-beijing.volces.com/api/v3', wire_api: 'chat', models: ['doubao-1.5-pro-256k', 'doubao-1.5-lite-32k'] },
+  { label: 'Baichuan (百川)', base_url: 'https://api.baichuan-ai.com/v1', wire_api: 'chat', models: ['Baichuan4', 'Baichuan3-Turbo'] },
+  { label: 'MiniMax', base_url: 'https://api.minimax.chat/v1', wire_api: 'chat', models: ['MiniMax-Text-01', 'abab6.5s-chat'] },
+  { label: 'Yi (零一万物)', base_url: 'https://api.lingyiwanwu.com/v1', wire_api: 'chat', models: ['yi-large', 'yi-medium', 'yi-spark'] },
+  { label: 'Mistral', base_url: 'https://api.mistral.ai/v1', wire_api: 'chat', models: ['mistral-large-latest', 'mistral-medium-latest', 'mistral-small-latest'] },
+  { label: 'Groq', base_url: 'https://api.groq.com/openai/v1', wire_api: 'chat', models: ['llama-3.3-70b-versatile', 'mixtral-8x7b-32768'] },
+  { label: 'Together', base_url: 'https://api.together.xyz/v1', wire_api: 'chat', models: ['meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo'] },
+  { label: 'SiliconFlow (硅基流动)', base_url: 'https://api.siliconflow.cn/v1', wire_api: 'chat', models: ['deepseek-ai/DeepSeek-V3', 'Qwen/Qwen2.5-72B-Instruct'] },
+  { label: 'xAI (Grok)', base_url: 'https://api.x.ai/v1', wire_api: 'chat', models: ['grok-3', 'grok-3-mini', 'grok-2'] },
+]
 
 function ProvidersSection() {
   const {
@@ -250,6 +268,36 @@ function ProvidersSection() {
           等更强模型，请添加自己的 OpenAI 兼容服务商（Base URL + API Key）。
         </div>
       )}
+
+      {/* Quick-add presets */}
+      <div>
+        <p className="text-xs text-ink-dim mb-2">快速添加：点击厂商名一键填入，只需输入 API Key</p>
+        <div className="flex flex-wrap gap-1.5">
+          {PROVIDER_PRESETS.map((preset) => {
+            const exists = providers.some((p) => p.base_url === preset.base_url)
+            return (
+              <button
+                key={preset.label}
+                disabled={exists}
+                onClick={() => {
+                  setEditId(null)
+                  setForm({ label: preset.label, base_url: preset.base_url, wire_api: preset.wire_api, key: '' })
+                  setFormError('')
+                  setShowForm(true)
+                }}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all ${
+                  exists
+                    ? 'bg-surface-2 text-ink-dim cursor-default opacity-50'
+                    : 'bg-primary/10 text-primary hover:bg-primary/20 active:scale-95'
+                }`}
+                title={exists ? '已添加' : `${preset.base_url}\n模型: ${preset.models.join(', ')}`}
+              >
+                {exists ? `${preset.label} ✓` : `+ ${preset.label}`}
+              </button>
+            )
+          })}
+        </div>
+      </div>
 
       {/* Provider cards */}
       <div className="space-y-2">
@@ -1287,147 +1335,6 @@ function McpSection() {
   )
 }
 
-// ── Chat Binding Section (replaces Feishu + WeChat Work) ─────────────────────
-
-function ChatBindingSection() {
-  const [code, setCode] = useState<string | null>(null)
-  const [expiresAt, setExpiresAt] = useState(0)
-  const [countdown, setCountdown] = useState('')
-  const [generating, setGenerating] = useState(false)
-  const [bindings, setBindings] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-
-  // Load bindings on mount
-  useEffect(() => {
-    loadBindings()
-  }, [])
-
-  // Countdown timer for the code
-  useEffect(() => {
-    if (!expiresAt) return
-    const timer = setInterval(() => {
-      const remaining = Math.max(0, expiresAt - Date.now())
-      if (remaining <= 0) {
-        setCode(null)
-        setCountdown('')
-        clearInterval(timer)
-        return
-      }
-      const min = Math.floor(remaining / 60000)
-      const sec = Math.floor((remaining % 60000) / 1000)
-      setCountdown(`${min}:${String(sec).padStart(2, '0')}`)
-    }, 1000)
-    return () => clearInterval(timer)
-  }, [expiresAt])
-
-  async function loadBindings() {
-    try {
-      const result = await tauriInvoke<any[]>('sync_list_chat_bindings')
-      setBindings(result)
-    } catch {
-      setBindings([])
-    }
-    setLoading(false)
-  }
-
-  async function generateCode() {
-    setGenerating(true)
-    try {
-      const result = await tauriInvoke<{ code: string; expires_at: number }>('sync_generate_bind_code')
-      setCode(result.code)
-      setExpiresAt(result.expires_at)
-    } catch (e) {
-      alert(String(e))
-    }
-    setGenerating(false)
-  }
-
-  async function unbind(id: string) {
-    try {
-      await tauriInvoke('sync_delete_chat_binding', { id })
-      setBindings(prev => prev.filter(b => b.id !== id))
-    } catch (e) {
-      alert(String(e))
-    }
-  }
-
-  const platformLabel = (p: string) => p === 'feishu' ? '飞书' : p === 'wecom' ? '企业微信' : p
-
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h3 className="text-base font-semibold text-ink mb-1">聊天平台绑定</h3>
-        <p className="text-sm text-ink-dim">通过飞书或企业微信远程控制桌面端 Iris</p>
-      </div>
-
-      {/* Instructions */}
-      <div className="bg-surface rounded-lg p-4 text-sm text-ink-dim space-y-2">
-        <p className="font-medium text-ink">使用步骤：</p>
-        <ol className="list-decimal list-inside space-y-1">
-          <li>在飞书或企业微信中添加 Iris 机器人到群聊或私聊</li>
-          <li>点击下方按钮生成 6 位绑定码</li>
-          <li>在聊天中发送「绑定 XXXXXX」完成绑定</li>
-          <li>绑定后，直接在聊天中发消息即可命令桌面端</li>
-        </ol>
-      </div>
-
-      {/* Generate button */}
-      <div>
-        <button
-          onClick={generateCode}
-          disabled={generating}
-          className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
-        >
-          {generating ? '生成中...' : '生成绑定码'}
-        </button>
-      </div>
-
-      {/* Bind code display */}
-      {code && (
-        <div className="bg-primary/10 border border-primary/20 rounded-lg p-4">
-          <div className="flex items-center gap-3">
-            <span className="text-3xl font-mono font-bold tracking-[0.3em] text-primary">{code}</span>
-            <span className="text-sm text-ink-dim">剩余 {countdown}</span>
-          </div>
-          <p className="text-sm text-ink-dim mt-2">
-            在飞书或企业微信中发送「<span className="text-ink font-medium">绑定 {code}</span>」
-          </p>
-        </div>
-      )}
-
-      {/* Bindings list */}
-      <div>
-        <h4 className="text-sm font-medium text-ink mb-3">已绑定的聊天</h4>
-        {loading ? (
-          <p className="text-sm text-ink-muted">加载中...</p>
-        ) : bindings.length === 0 ? (
-          <p className="text-sm text-ink-muted">暂无已绑定的聊天</p>
-        ) : (
-          <div className="space-y-2">
-            {bindings.map(b => (
-              <div key={b.id} className="flex items-center justify-between bg-surface rounded-lg px-4 py-3">
-                <div className="flex items-center gap-2 text-sm">
-                  <span className="text-primary">●</span>
-                  <span className="font-medium text-ink">{platformLabel(b.platform)}</span>
-                  {b.chat_type && <span className="text-ink-muted">· {b.chat_type}</span>}
-                  <span className="text-ink-faint">· {new Date(b.bound_at).toLocaleDateString()}</span>
-                </div>
-                <button
-                  onClick={() => unbind(b.id)}
-                  className="text-xs text-ink-muted hover:text-red-400 transition-colors"
-                >
-                  解绑
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
 // ── Skills Section (static) ───────────────────────────────────────────────────
 
 function SkillsSection() {
@@ -1499,70 +1406,7 @@ function AgentMarketSection() {
 }
 
 
-// ── 账号与同步 Section（A3 长连接 + v0.8 账号门户） ───────────────────────────
-
-// 绑定占位（v0.8）：真实 OAuth / 短信登录需要对应平台资质（短信服务 / 微信
-// 开放平台 / QQ 互联），资质到位后再接入；本期仅提供 UI 框架与路线说明。
-const BIND_ITEMS = [
-  {
-    key: 'phone',
-    label: '手机号',
-    desc: '手机号 + 短信验证码登录',
-    note: '手机号绑定需要配置短信服务平台，即将开放。',
-  },
-  {
-    key: 'wechat',
-    label: '微信',
-    desc: '微信扫码快捷登录',
-    note: '微信绑定需要接入微信开放平台（应用资质审核），即将开放。',
-  },
-  {
-    key: 'qq',
-    label: 'QQ',
-    desc: 'QQ 快捷登录',
-    note: 'QQ 绑定需要接入 QQ 互联平台（应用资质审核），即将开放。',
-  },
-] as const
-
-function BindSection() {
-  const [openKey, setOpenKey] = useState<string | null>(null)
-
-  return (
-    <div>
-      <p className="text-xs font-semibold text-ink-muted uppercase tracking-wider mb-2">
-        账号绑定
-      </p>
-      <div className="space-y-1.5">
-        {BIND_ITEMS.map((b) => (
-          <div key={b.key} className="bg-surface border border-line rounded-lg px-3 py-2.5">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-sm text-ink">{b.label}</p>
-                <p className="text-xs text-ink-dim mt-0.5">{b.desc}</p>
-              </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <span className="text-xs text-ink-dim bg-surface-2 px-1.5 py-0.5 rounded">
-                  未绑定
-                </span>
-                <button
-                  onClick={() => setOpenKey((k) => (k === b.key ? null : b.key))}
-                  className="text-xs text-primary hover:text-primary-hover transition-colors"
-                >
-                  绑定
-                </button>
-              </div>
-            </div>
-            {openKey === b.key && (
-              <p className="mt-2 text-xs text-ink-muted bg-primary-tint border border-lavender/40 rounded px-2 py-1.5 leading-relaxed">
-                {b.note}
-              </p>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
+// ── 账号与同步 Section ───────────────────────────────────────────────────────
 
 function SyncSection() {
   const status = useAuthStore((s) => s.status)
@@ -1570,23 +1414,20 @@ function SyncSection() {
   const authLogout = useAuthStore((s) => s.logout)
   const openPortal = useAuthStore((s) => s.openPortal)
   const [submitting, setSubmitting] = useState(false)
-  const [toggling, setToggling] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
-  const [pairingUri, setPairingUri] = useState('')
 
-  useEffect(() => {
-    void initializeRemoteRootKey()
-      .then(() => setPairingUri(encodePairingPayload(createPairingPayload('https://192-210-231-152.nip.io:8443'))))
-      .catch((error) => setActionError(`初始化端到端加密失败：${String(error)}`))
-  }, [])
-
-  // 账号状态由 authStore 统一维护（与门户/侧栏一致）；这里加快轮询以便
-  // 设备列表与连接状态及时刷新。
   useEffect(() => {
     void refresh()
     const timer = setInterval(() => void refresh(), 3000)
     return () => clearInterval(timer)
   }, [refresh])
+
+  // Auto-enable sync when logged in
+  useEffect(() => {
+    if (status?.logged_in && !status.enabled) {
+      void tauriInvoke('sync_set_enabled', { enabled: true }).catch(() => {})
+    }
+  }, [status?.logged_in, status?.enabled])
 
   const doLogout = async () => {
     setSubmitting(true)
@@ -1597,19 +1438,6 @@ function SyncSection() {
       setActionError(String(e))
     } finally {
       setSubmitting(false)
-    }
-  }
-
-  const toggleEnabled = async () => {
-    if (!status) return
-    setToggling(true)
-    try {
-      await tauriInvoke('sync_set_enabled', { enabled: !status.enabled })
-      await refresh()
-    } catch (e) {
-      console.error('sync_set_enabled failed:', e)
-    } finally {
-      setToggling(false)
     }
   }
 
@@ -1636,59 +1464,36 @@ function SyncSection() {
 
   return (
     <div className="space-y-5">
-      {/* Data-scope notice */}
-      <div className="bg-primary-tint border border-lavender/40 rounded-lg p-3">
-        <p className="text-xs text-sky/90 leading-relaxed">
-          登录同一账号的设备间同步任务、进度与对话内容；数据按账号隔离，各账号互不可见。
-          对话正文会同步（API 密钥绝不上传，附件仅同步文本与文件名、大图不上传）。
-        </p>
-      </div>
-
       {status?.logged_in ? (
-        // ── Logged in ────────────────────────────────────────────────────────
         <div className="space-y-4">
-          {/* Account + connection */}
-          <div className="bg-surface border border-line rounded-lg p-3 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0">
-                <p className="text-xs text-ink-dim">当前账号</p>
-                <p className="text-sm font-medium text-ink truncate">
+          {/* Account card */}
+          <div className="bg-surface border border-line rounded-lg p-4 space-y-3">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-full bg-primary/15 flex items-center justify-center text-primary text-xl font-bold flex-shrink-0">
+                {(status.username ?? '?')[0].toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-base font-semibold text-ink truncate">
                   {status.username ?? '—'}
                 </p>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className={`w-1.5 h-1.5 rounded-full ${dotClass}`} />
+                  <span className="text-xs text-ink-dim">{stateLabel}</span>
+                </div>
               </div>
-              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium bg-surface-2 text-ink-muted">
-                <span className={`w-1.5 h-1.5 rounded-full ${dotClass}`} />
-                {stateLabel}
-              </span>
-            </div>
-
-            {/* Sync switch */}
-            <div className="flex items-center justify-between pt-1 border-t border-line">
-              <div>
-                <p className="text-sm font-medium text-ink">启用同步</p>
-                <p className="text-xs text-ink-dim mt-0.5">
-                  关闭后停止推送并断开长连接
-                </p>
-              </div>
-              <button
-                onClick={toggleEnabled}
-                disabled={toggling}
-                className={`relative w-11 h-6 rounded-full transition-colors focus:outline-none ${
-                  status.enabled ? 'bg-sakura' : 'bg-elevated'
-                }`}
-                aria-label="Toggle mobile sync"
-              >
-                <span
-                  className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                    status.enabled ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
-              </button>
             </div>
 
             {status.last_error && state !== 'connected' && (
               <p className="text-xs text-failed break-words">{status.last_error}</p>
             )}
+          </div>
+
+          {/* Sync info */}
+          <div className="bg-primary-tint border border-lavender/40 rounded-lg p-3">
+            <p className="text-xs text-sky/90 leading-relaxed">
+              云同步已自动开启。登录同一账号的设备间实时同步任务、进度与对话内容。
+              API 密钥绝不上传，数据按账号隔离。
+            </p>
           </div>
 
           {/* Device list */}
@@ -1698,7 +1503,7 @@ function SyncSection() {
             </p>
             {status.devices.length === 0 ? (
               <p className="text-xs text-ink-dim italic">
-                暂无其他设备。在手机上安装 AgentBoard App 并登录同一账号即可实时查看。
+                暂无其他设备。在手机上安装 Iris Remote 并登录同一账号即可实时查看。
               </p>
             ) : (
               <div className="space-y-1.5">
@@ -1717,58 +1522,29 @@ function SyncSection() {
             )}
           </div>
 
-          {/* Happy-style E2EE device pairing. The root key exists only inside
-              this QR and paired clients; it is never uploaded to the server. */}
-          <div className="bg-surface border border-line rounded-lg p-4">
-            <p className="text-sm font-medium text-ink">端到端加密配对</p>
-            <p className="text-xs text-ink-dim mt-1 leading-relaxed">
-              在 Android Iris 的设置中扫描二维码。编码会话、工具输出和 diff
-              会在本机加密，中转服务器只能保存密文。
-            </p>
-            <div className="mt-3 inline-flex rounded-xl bg-white p-3">
-              {pairingUri ? (
-                <QRCodeSVG value={pairingUri} size={184} level="M" />
-              ) : (
-                <div className="w-[184px] h-[184px] grid place-items-center text-xs text-gray-500">正在加载安全密钥…</div>
-              )}
-            </div>
-            <p className="mt-2 text-[11px] text-ink-dim">
-              二维码包含解密密钥，请勿截图或发送给他人。
-            </p>
-          </div>
-
-          {/* 绑定占位（手机号 / 微信 / QQ） */}
-          <BindSection />
-
-          {/* Guidance */}
-          <div className="bg-surface rounded-lg p-3">
-            <p className="text-xs text-ink-muted leading-relaxed">
-              在手机上安装 AgentBoard App 并登录同一账号，即可实时查看任务进度并远程派发。
-            </p>
-          </div>
-
           {/* Logout */}
-          <button
-            onClick={doLogout}
-            disabled={submitting}
-            className="px-4 py-2 bg-elevated hover:bg-elevated disabled:bg-surface-2
-                       text-ink text-sm rounded-lg transition-colors"
-          >
-            {submitting ? '处理中…' : '退出登录'}
-          </button>
-          <p className="text-xs text-ink-dim -mt-2">
-            退出后回到本地模式：本地数据保留，仅停止跨端同步。
-          </p>
-          {actionError && <p className="text-xs text-failed">{actionError}</p>}
+          <div className="pt-2 border-t border-line">
+            <button
+              onClick={doLogout}
+              disabled={submitting}
+              className="px-4 py-2 bg-elevated hover:bg-elevated disabled:bg-surface-2
+                         text-ink text-sm rounded-lg transition-colors"
+            >
+              {submitting ? '处理中…' : '退出登录'}
+            </button>
+            <p className="text-xs text-ink-dim mt-1.5">
+              退出后回到本地模式：本地数据保留，仅停止跨端同步。
+            </p>
+            {actionError && <p className="text-xs text-failed mt-1">{actionError}</p>}
+          </div>
         </div>
       ) : (
-        // ── Logged out（本地模式）：登录/注册统一走账号门户，不再放重复表单 ──
         <div className="space-y-4">
-          <div className="bg-surface border border-line rounded-lg p-3">
+          <div className="bg-surface border border-line rounded-lg p-4">
             <p className="text-sm font-medium text-ink">本地模式（未登录）</p>
-            <p className="text-xs text-ink-dim mt-1 leading-relaxed">
-              当前所有数据仅保存在本机。登录账号后，本机已有的任务与对话会自动上传到该账号，
-              手机端登录同一账号即可同步查看与远程派发。
+            <p className="text-xs text-ink-dim mt-1.5 leading-relaxed">
+              当前所有数据仅保存在本机。登录账号后，云同步自动开启，
+              手机端登录同一账号即可远程控制、查看任务进度与对话。
             </p>
           </div>
           <button
@@ -2043,7 +1819,6 @@ type SectionId =
   | 'hermes'
   | 'mcp'
   | 'sync'
-  | 'chat'
   | 'skills'
   | 'market'
 
@@ -2073,12 +1848,7 @@ const SECTIONS: Section[] = [
   {
     id: 'sync',
     title: '账号与同步',
-    description: '登录/注册、账号绑定与跨端同步：同一账号下手机与电脑实时同步任务、进度与对话。',
-  },
-  {
-    id: 'chat',
-    title: '聊天绑定',
-    description: '飞书 / 企业微信远程控制桌面端 Iris，通过绑定码一键关联。',
+    description: '登录即自动开启云同步，手机与桌面端实时同步任务、进度与对话。',
   },
   {
     id: 'skills',
@@ -2153,7 +1923,6 @@ export default function Settings() {
             {activeSection === 'hermes' && <HermesSection />}
             {activeSection === 'mcp' && <McpSection />}
             {activeSection === 'sync' && <SyncSection />}
-            {activeSection === 'chat' && <ChatBindingSection />}
             {activeSection === 'skills' && <SkillsSection />}
             {activeSection === 'market' && <AgentMarketSection />}
           </div>
