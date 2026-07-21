@@ -347,25 +347,30 @@ impl SyncManager {
         Ok(())
     }
 
-    /// Revoke the refresh token server-side (best-effort) and clear all local state.
+    /// Clear all local state immediately, then revoke the refresh token
+    /// server-side in the background (best-effort, never blocks the caller).
     pub async fn logout(&self, db: &Db) {
         let (refresh, access) = {
             let g = self.inner.lock().await;
             (g.refresh_token.clone(), g.access_token.clone())
         };
-        if let Some(rt) = refresh {
-            if let Ok(client) = http_client() {
-                let _ = post_status(
-                    &client,
-                    "/api/logout",
-                    &json!({"refresh_token": rt}),
-                    access.as_deref(),
-                )
-                .await;
-            }
-        }
+        // Clear local state FIRST so the Tauri command returns instantly.
         clear_creds(&self.inner, db).await;
         self.bump();
+        // Server-side token revocation in the background (fire-and-forget).
+        if let Some(rt) = refresh {
+            tokio::spawn(async move {
+                if let Ok(client) = http_client() {
+                    let _ = post_status(
+                        &client,
+                        "/api/logout",
+                        &json!({"refresh_token": rt}),
+                        access.as_deref(),
+                    )
+                    .await;
+                }
+            });
+        }
     }
 
     /// Flip the sync switch (persisted) and wake the loop.
