@@ -129,28 +129,23 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       username,
       password,
     })
-    // 登录成功：清除本地模式标记；后端已自动开启同步并在连上后推送
-    // 本机现有快照（tasks/sessions/chat）到该账号。
     writeLocalMode(false)
     set({ localMode: false })
-    await get().refresh()
+    // Backend switched to a per-account database; full reload ensures
+    // all components re-fetch from the new (empty) database.
+    window.location.reload()
   },
 
   logout: async () => {
-    // Immediately update UI to logged-out state before awaiting backend
     writeLocalMode(true)
-    set({
-      localMode: true,
-      loggedIn: false,
-      username: null,
-      status: get().status ? { ...get().status!, logged_in: false, state: 'disabled', enabled: false } : null,
-    })
     try {
       await tauriInvoke('sync_logout')
     } catch (e) {
       console.warn('[authStore] sync_logout failed:', e)
     }
-    await get().refresh()
+    // Backend switched back to the default database; full reload ensures
+    // UI shows the local-mode data (not the previous account's data).
+    window.location.reload()
   },
 
   enterLocalMode: () => {

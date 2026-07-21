@@ -249,9 +249,15 @@ pub struct Db {
 }
 
 impl Db {
-    /// Open (or create) the on-disk database at the platform data dir.
+    /// Open (or create) the default on-disk database (`data.db`).
     pub fn open() -> SqlResult<Self> {
-        let path = db_path();
+        Self::open_for(None)
+    }
+
+    /// Open (or create) a per-account database. `None` → default `data.db`
+    /// (local mode); `Some("xiong123")` → `data_xiong123.db`.
+    pub fn open_for(username: Option<&str>) -> SqlResult<Self> {
+        let path = db_path_for(username);
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).ok();
         }
@@ -260,6 +266,24 @@ impl Db {
         let db = Self { conn: Mutex::new(conn) };
         db.migrate()?;
         Ok(db)
+    }
+
+    /// Switch the internal connection to a different per-account database.
+    /// All subsequent queries go to the new file. Existing `Arc<Db>`
+    /// references keep working transparently.
+    pub fn reopen(&self, username: Option<&str>) -> SqlResult<()> {
+        let path = db_path_for(username);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).ok();
+        }
+        let new_conn = Connection::open(&path)?;
+        new_conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
+        {
+            let mut guard = self.conn.lock().unwrap();
+            *guard = new_conn;
+        }
+        self.migrate()?;
+        Ok(())
     }
 
     /// In-memory database used by unit tests.
@@ -1117,7 +1141,8 @@ impl Db {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-fn db_path() -> PathBuf {
+/// Return the agentboard data directory (`%APPDATA%/agentboard` on Windows).
+fn db_dir() -> PathBuf {
     #[cfg(windows)]
     let base = std::env::var("APPDATA")
         .map(PathBuf::from)
@@ -1128,7 +1153,50 @@ fn db_path() -> PathBuf {
         .map(|h| PathBuf::from(h).join(".local/share"))
         .unwrap_or_else(|_| PathBuf::from("/tmp"));
 
-    base.join("agentboard").join("data.db")
+    base.join("agentboard")
+}
+
+/// Resolve the database file path for a given account. `None` → default
+/// `data.db` (local mode); `Some("xiong123")` → `data_xiong123.db`.
+fn db_path_for(username: Option<&str>) -> PathBuf {
+    let dir = db_dir();
+    match username {
+        Some(u) => dir.join(format!("data_{}.db", sanitize_username(u))),
+        None => dir.join("data.db"),
+    }
+}
+
+/// Strip a username down to ASCII alphanumeric + underscore to prevent
+/// path-traversal or encoding issues in the database filename.
+fn sanitize_username(username: &str) -> String {
+    username
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '_')
+        .collect()
+}
+
+// ── Per-account persistence (last_user.txt) ──────────────────────────────────
+
+/// Read the last logged-in username from `last_user.txt`. Returns `None` if
+/// the file is absent, empty, or unreadable.
+pub fn last_user_read() -> Option<String> {
+    let path = db_dir().join("last_user.txt");
+    std::fs::read_to_string(path)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// Persist the current username to `last_user.txt` so the next app startup
+/// opens the correct per-user database. Pass `None` to clear (logout).
+pub fn last_user_write(username: Option<&str>) {
+    let dir = db_dir();
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("last_user.txt");
+    match username {
+        Some(u) => { let _ = std::fs::write(&path, u); }
+        None => { let _ = std::fs::remove_file(&path); }
+    }
 }
 
 fn now_ms() -> i64 {

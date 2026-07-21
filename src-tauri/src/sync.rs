@@ -330,10 +330,15 @@ impl SyncManager {
             g.refresh_token = Some(sess.refresh_token.clone());
             g.enabled = true;
             g.last_error = None;
-            // New account context → force fresh device registration.
             g.device_id = None;
             g.devices.clear();
         }
+        // Switch to the per-account database (creates it empty on first login).
+        crate::db::last_user_write(Some(&sess.username));
+        if let Err(e) = db.reopen(Some(&sess.username)) {
+            eprintln!("[sync] failed to open user db for {}: {e}", sess.username);
+        }
+        // Persist auth in the user-specific database.
         let _ = db.settings_set("sync_refresh_token", &sess.refresh_token);
         let _ = db.settings_set("sync_username", &sess.username);
         let _ = db.settings_set("sync_device_id", "");
@@ -412,6 +417,11 @@ async fn clear_creds(inner: &Arc<Mutex<SyncInner>>, db: &Db) {
         g.devices.clear();
         g.enabled = false;
         g.conn_state = ConnState::Disabled;
+    }
+    // Switch back to the default (local-mode) database.
+    crate::db::last_user_write(None);
+    if let Err(e) = db.reopen(None) {
+        eprintln!("[sync] failed to reopen default db on logout: {e}");
     }
     let _ = db.settings_set("sync_refresh_token", "");
     let _ = db.settings_set("sync_device_id", "");

@@ -1055,7 +1055,11 @@ async fn stats_recent_runs(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let db = Arc::new(Db::open().expect("failed to open agentboard database"));
+    let last_user = db::last_user_read();
+    let db = Arc::new(
+        Db::open_for(last_user.as_deref())
+            .expect("failed to open agentboard database"),
+    );
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
